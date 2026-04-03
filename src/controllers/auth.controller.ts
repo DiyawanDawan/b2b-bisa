@@ -2,7 +2,6 @@ import * as authService from '#services/auth.service';
 import catchAsync from '#utils/catchAsync';
 import { successResponse, createdResponse } from '#utils/response.util';
 import { AuthRequest } from '#types/index';
-import { TokenType } from '#prisma';
 import { Response, Request } from 'express';
 
 export const registerSupplier = catchAsync(async (req: AuthRequest, res: Response) => {
@@ -111,7 +110,7 @@ export const loginWithFacebook = catchAsync(async (req: Request, res: Response) 
 export const resendOTP = catchAsync(async (req: Request, res: Response) => {
   const { email, type } = req.body as {
     email: string;
-    type: TokenType.EMAIL_VERIFICATION | TokenType.RESET_PASSWORD;
+    type: 'EMAIL_VERIFICATION' | 'RESET_PASSWORD';
   };
   await authService.resendOTP(email, type);
   successResponse(res, null, 'Kode OTP baru telah dikirim');

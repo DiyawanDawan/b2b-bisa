@@ -8,6 +8,8 @@ import * as tokenService from '#services/token.service';
 
 import * as emailService from '#services/email.service';
 
+type ResendOtpType = typeof TokenType.EMAIL_VERIFICATION | typeof TokenType.RESET_PASSWORD;
+
 // ─── Register ────────────────────────────────────────────
 export const register = async (userData: {
   fullName: string;
@@ -286,7 +288,7 @@ export const updateProfile = async (userId: string, data: UpdateProfileInput) =>
 // ─── Resend OTP ──────────────────────────────────────────
 export const resendOTP = async (
   email: string,
-  type: TokenType.EMAIL_VERIFICATION | TokenType.RESET_PASSWORD,
+  type: ResendOtpType,
 ) => {
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) return;
