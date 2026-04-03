@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .details { background-color: #F9F9F9; padding: 15px; border-radius: 5px; margin: 20px 0; border: 1px solid #eee; }
+        .footer { color: #B2BEC3; font-size: 12px; margin-top: 40px; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 style="color: #2D3436;">Booking Anda Berhasil!</h1>
+        </div>
+        <p>Halo <strong><%= booking.customer.fullName %></strong>,</p>
+        <p>Terima kasih telah memesan kendaraan di <strong>T-Rex Rent</strong>. Berikut adalah detail pesanan Anda:</p>
+        
+        <div class="details">
+            <p style="margin: 5px 0;"><strong>ID Pesanan:</strong> #<%= booking.id %></p>
+            <p style="margin: 5px 0;"><strong>Kendaraan:</strong> <%= booking.vehicle.brand %> <%= booking.vehicle.model %></p>
+            <p style="margin: 5px 0;"><strong>Periode Sewa:</strong> <%= new Date(booking.startDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) %> - <%= new Date(booking.endDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) %></p>
+            <p style="margin: 5px 0;"><strong>Total Biaya:</strong> <span style="color: #00B894; font-weight: bold;">Rp <%= Number(booking.totalPrice).toLocaleString('id-ID') %></span></p>
+        </div>
+
+        <p>Silakan segera lakukan pembayaran sesuai dengan petunjuk di aplikasi untuk mengonfirmasi pesanan Anda.</p>
+        <p>Jika ada pertanyaan, jangan ragu untuk menghubungi layanan bantuan kami.</p>
+        
+        <div class="footer">
+            <hr style="border: 0; border-top: 1px solid #eee; margin-bottom: 20px;">
+            &copy; 2026 T-Rex Rent. All rights reserved.
+        </div>
+    </div>
+</body>
+</html>

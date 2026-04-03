@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .btn { display: inline-block; padding: 12px 24px; background-color: #00B894; color: white !important; text-decoration: none; border-radius: 5px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 style="color: #2D3436;">Selamat Datang di T-Rex Rent! 🛵</h1>
+        </div>
+        <p>Halo <strong><%= user.fullName %></strong>,</p>
+        <p>Terima kasih telah bergabung dengan <strong>T-Rex Rent</strong>. Kami sangat senang Anda menjadi bagian dari komunitas kami.</p>
+        <p>Sekarang Anda dapat mulai menyewa kendaraan untuk menjelajahi keindT-Rex Rent dengan lebih mudah dan nyaman.</p>
+        <div style="text-align: center; margin-top: 30px;">
+            <a href="<%= clientHost %>" class="btn">Mulai Jelajah</a>
+        </div>
+        <p style="margin-top: 30px;">Selamat berkendara!</p>
+        <hr style="border: 0; border-top: 1px solid #eee; margin-top: 40px;">
+        <p style="color: #B2BEC3; font-size: 12px; text-align: center;">&copy; 2026 T-Rex Rent. All rights reserved.</p>
+    </div>
+</body>
+</html>

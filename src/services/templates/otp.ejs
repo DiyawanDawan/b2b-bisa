@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px; }
+        .header { text-align: center; padding-bottom: 20px; }
+        .content { padding: 20px; background-color: #f9f9f9; border-radius: 5px; }
+        .otp-code { 
+            display: block; 
+            width: fit-content; 
+            margin: 20px auto; 
+            padding: 15px 30px; 
+            font-size: 32px; 
+            font-weight: bold; 
+            letter-spacing: 5px; 
+            color: #2c3e50; 
+            background: #fff; 
+            border: 2px dashed #3498db;
+            border-radius: 5px;
+        }
+        .footer { text-align: center; font-size: 12px; color: #777; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>Verifikasi Akun</h2>
+        </div>
+        <div class="content">
+            <p>Halo,</p>
+            <p>Terima kasih telah bergabung dengan kami. Gunakan kode OTP di bawah ini untuk memverifikasi akun Anda:</p>
+            <div class="otp-code"><%= code %></div>
+            <p>Kode ini berlaku selama 10 menit. Jangan berikan kode ini kepada siapa pun.</p>
+            <p>Jika Anda tidak merasa melakukan permintaan ini, silakan abaikan email ini.</p>
+        </div>
+        <div class="footer">
+            <p>&copy; <%= new Date().getFullYear() %> T-Rex Rets. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>

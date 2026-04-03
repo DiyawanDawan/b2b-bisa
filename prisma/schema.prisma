@@ -1,0 +1,1412 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+// =========================================================
+// ENUMS - aligned to BISA B2B Proposal
+// =========================================================
+
+// FeeCalculationType moved below to consolidated enums block
+
+enum UserRole {
+  SUPPLIER
+  BUYER
+  ADMIN
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum UserStatus {
+  ACTIVE
+  BLOCKED
+  INACTIVE
+  DELETED
+}
+
+enum TokenType {
+  REFRESH
+  RESET_PASSWORD
+  EMAIL_VERIFICATION
+  PHONE_OTP
+}
+
+// BiomassaType and BiocharGrade moved below to consolidated enums block
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  COMPLETED
+  CANCELLED
+  DISPUTED
+}
+
+enum TransactionStatus {
+  PENDING
+  ESCROW_HELD
+  RELEASED
+  REFUNDED
+  FAILED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  EXPIRED
+}
+
+enum PaymentMethod {
+  BANK_TRANSFER
+  E_WALLET
+  QRIS
+  CREDIT_CARD
+  CASH
+}
+
+enum TransactionType {
+  SALES
+  PAYOUT
+  REFUND
+  PLATFORM_FEE
+  SUBSCRIPTION
+}
+
+enum PayoutStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum NotificationType {
+  ORDER_STATUS
+  PAYMENT_RECEIVED
+  IOT_ALERT
+  SYSTEM_ANNOUNCEMENT
+}
+
+enum NotificationPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum DevicePlatform {
+  ANDROID
+  IOS
+  WEB
+  IOT_HARDWARE
+}
+
+enum DeviceStatus {
+  ACTIVE
+  INACTIVE
+  MAINTENANCE
+}
+
+enum PostStatus {
+  PUBLISHED
+  DRAFT
+  ARCHIVED
+}
+
+enum UserTier {
+  FREE
+  PRO
+}
+
+enum VillageType {
+  KELURAHAN
+  DESA
+}
+
+enum VoteType {
+  UP
+  DOWN
+}
+
+enum TrendType {
+  UP
+  DOWN
+  STABLE
+}
+
+enum TrendCategory {
+  CARBON
+  LOGISTICS
+  BIOMASSA
+}
+
+enum SectionType {
+  HERO
+  GRID
+  METRICS
+  TEAM
+  FAQ
+  POLICY
+  MAP
+  FORUM_HEADER
+  SUB_NAV
+}
+
+
+enum BiomassaType {
+  BIOCHAR
+  SEKAM_PADI
+  TONGKOL_JAGUNG
+  TEMPURUNG_KELAPA
+  WOOD_CHIP
+  OTHER
+}
+
+enum BiocharGrade {
+  A
+  B
+  C
+}
+
+enum FeeCalculationType {
+  PERCENTAGE
+  FIXED
+}
+
+enum PlatformFeeType {
+  TRANSACTION_FEE
+  WITHDRAWAL_FEE
+  ADMIN_FEE
+  LOGISTICS_FEE
+  CARBON_FEE
+  BIOMASS_FEE
+  SUBSCRIPTION
+  VAT
+}
+
+enum ShipmentType {
+  SEA_FREIGHT
+  LAND_CARGO
+  AIR_FREIGHT
+}
+
+enum VesselType {
+  CARGO_SHIP
+  BARGE
+  TRUCK_CARGO
+  PLANE_CARGO
+  OTHER
+}
+
+enum PackagingType {
+  ECO_SACK
+  JUMBO_BAG
+  BULK
+  OTHER
+}
+
+enum NegotiationStatus {
+    OPEN_NEGOTIATION
+    OFFER_SUBMITTED
+    OFFER_ACCEPTED
+    OFFER_REJECTED
+    EXPIRED
+    LOCKED
+    CANCELLED
+  }
+
+enum TaxStatus {
+  INCLUDED
+  EXCLUDED
+}
+
+enum IoTAlertType {
+  OVERHEATING
+  TEMP_TOO_LOW
+  OFFLINE
+  SENSOR_FAILURE
+  OTHER
+}
+
+
+// =========================================================
+// AUTH & USERS
+// =========================================================
+
+model User {
+  id                 String             @id @default(uuid())
+  email              String             @unique
+  phone              String?            @unique
+  password           String?
+  fullName           String     @map("full_name")
+  role               UserRole   @map("role")        @default(SUPPLIER)
+  isEmailVerified    Boolean    @map("is_email_verified") @default(false)
+  isPhoneVerified    Boolean    @map("is_phone_verified") @default(false)
+  firebaseUid        String?    @map("firebase_uid") @unique
+  avatarUrl          String?    @map("avatar_url") @db.Text
+  province           String?    @map("province") // Lokasi user untuk GIS matching
+  regency            String?    @map("regency")            // Kabupaten
+  
+  // Enterprise Profile (from Account Settings UI)
+  jobTitle           String?    @map("job_title")            // e.g. "Procurement Manager"
+  region             String?    @map("region")            // e.g. "East Java, Indonesia"
+  preferredLanguage  String?    @map("preferred_language") @default("Bahasa Indonesia")
+  
+  // Settings & Security
+  enableNotifications Boolean    @map("enable_notifications") @default(true)
+  enable2FA           Boolean    @map("enable_2fa") @default(false)
+  isPublicInMarketplace Boolean    @map("is_public_in_marketplace") @default(true)
+  
+  // Impact Stats (Cached)
+  esgScore           Decimal    @map("esg_score") @db.Decimal(15, 2) @default(0)
+  greenRank          String?    @map("green_rank") @default("Seedling")
+
+  // Subscription Details (IoT Pro Feature)
+  tier               UserTier           @default(FREE)
+  subscriptionExpiresAt DateTime? @map("subscription_expires_at")
+
+  status             UserStatus         @default(ACTIVE) @map("status")
+  createdAt          DateTime           @default(now())  @map("created_at")
+  updatedAt          DateTime @map("updated_at")           @updatedAt
+
+  addressId          String? @map("address_id")
+  address            Address?           @relation(fields: [addressId], references: [id], onDelete: SetNull)
+
+  profile            UserProfile?
+  tokens             Token[]
+  verification       UserVerification?
+  products           Product[]
+  ordersAsBuyer      Order[]            @relation("BuyerOrders")
+  ordersAsSeller     Order[]            @relation("SellerOrders")
+  transactions       Transaction[]
+  iotDevices         IotDevice[]
+  forumPosts         ForumPost[]
+  forumComments      ForumComment[]
+  notifications      Notification[]
+  aiPredictions      AIPrediction[]
+  documents          UserDocument[]
+  chatMessages       ChatMessage[]
+  forumVotes         ForumVote[]
+  customerAddresses  CustomerAddress[]
+  payoutAccounts     UserPayoutAccount[]
+  wallet             Wallet?
+  operatingHours     OperatingHour[]
+  givenReviews       Review[]           @relation("GivenReviews")
+  articles           Article[]
+  auditLogs          AuditLog[]
+  buyerNegotiations  Negotiation[]      @relation("BuyerNegotiations")
+  sellerNegotiations Negotiation[]      @relation("SellerNegotiations")
+
+  @@index([role])
+  @@index([status])
+  @@index([createdAt])
+  @@index([isPublicInMarketplace])
+  @@index([province, regency])
+  @@index([fullName])
+  @@map("users")
+}
+
+model UserProfile {
+  id           String  @id @default(uuid())
+  userId       String  @map("user_id") @unique
+  bio          String? @db.Text
+  website      String?
+  // Business info for Suppliers/Buyers
+  companyName  String? @map("company_name")
+  npwp         String?
+  businessType String? @map("business_type")   // e.g. "Pengepul", "Distributor", "Industri Biochar"
+
+  addressId    String? @map("address_id") @unique
+  address      Address?  @relation(fields: [addressId], references: [id], onDelete: SetNull)
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+model Token {
+  id        String    @id @default(uuid())
+  userId    String @map("user_id")
+  token     String    @db.Text
+  type      TokenType
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token(length: 191)])
+  @@index([userId, type])
+  @@map("tokens")
+}
+
+model UserVerification {
+  id             String              @id @default(uuid())
+  userId         String @map("user_id")           @unique
+  ktpUrl         String? @db.Text @map("ktp_url")
+  selfieUrl      String? @db.Text @map("selfie_url")
+  businessName    String? @map("business_name")
+  taxId           String? @map("tax_id")                      // NPWP / Tax ID for Invoices
+  businessAddress String? @db.Text @map("business_address")
+  verificationStatus VerificationStatus @default(PENDING)
+  nibUrl          String? @db.Text @map("nib_url")         // Business Registration Number
+  siupUrl         String? @db.Text @map("siup_url")         // Trade License
+  isVerified      Boolean @default(false)
+  reviewedBy     String? @map("reviewed_by")
+  reviewedAt     DateTime? @map("reviewed_at")
+  rejectionReason String? @db.Text @map("rejection_reason")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_verifications")
+}
+
+model UserDocument {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  title       String   @map("title")             // e.g. "VAT_Report_Q3_2023.pdf"
+  fileUrl     String   @db.Text @map("file_url")
+  fileType    String   @map("file_type")             // e.g. "TAX_REPORT", "IDENTITY", "CERTIFICATE"
+  fileSize    String?  @map("file_size")            // e.g. "1.2 MB"
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_documents")
+}
+
+// =========================================================
+
+enum CATEGORY_TYPE {
+  PRODUK
+  FORUM
+  ARTICLE
+}
+
+// =========================================================
+// MARKETPLACE B2B - Biomassa & Biochar Products
+// =========================================================
+
+model Category {
+  id          String    @id @default(uuid())
+  name        String    @unique    // e.g. "Limbah Biomassa", "Produk Biochar"
+  description String?   @db.Text
+  createdAt   DateTime  @default(now()) @map("created_at")
+  categoryType CATEGORY_TYPE @map("category_type")
+  
+  products    Product[]
+  articles    Article[]
+  forumPosts  ForumPost[]
+
+  @@index([categoryType])
+  @@map("categories")
+}
+
+enum ProductStatus {
+  ACTIVE
+  DRAFT
+  INACTIVE
+  BLOCKED
+  OUT_OF_STOCK
+  DELETED
+}
+
+enum UnitStatus {
+  KG
+  TON
+}
+
+model Product {
+  id            String       @id @default(uuid())
+  userId        String                       // SUPPLIER who lists the product
+  categoryId    String? @map("category_id")
+  name          String                       // e.g. "Sekam Padi Kering Grade A"
+  biomassaType  BiomassaType               @map("biomassa_type")  // SEKAM_PADI, TONGKOL_JAGUNG, etc.
+  grade         BiocharGrade?              @map("grade")  // Only for BIOCHAR type
+  description   String?      @db.Text
+  pricePerUnit  Decimal      @db.Decimal(15, 2) @map("price_per_unit")
+  stock         Decimal      @db.Decimal(15, 2) @map("stock") // Changed from Int to support decimal weights (e.g. 1.5 Ton)
+  unit          UnitStatus                   @map("unit") // Unit of stock (KG/TON)
+  minOrder      Decimal      @db.Decimal(15, 2) @default(100) @map("min_order") // Changed from Int
+  
+  
+  province      String?                      @map("province") // Location for GIS matching
+  regency       String?                      @map("regency")
+  thumbnailUrl  String?      @db.Text @map("thumbnail_url")
+  status        ProductStatus @default(ACTIVE) @map("status")
+  isCertified   Boolean       @default(false)  @map("is_certified") // Verified quality product
+  isIotMonitored Boolean     @default(false) @map("is_iot_monitored")
+  isEscrowProtected Boolean  @default(true) @map("is_escrow_protected")
+  
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  user          User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  category      Category?    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  technicalSpec ProductTechnicalSpec?
+  orderItems    OrderItem[]
+  negotiations  Negotiation[]
+  reviews       Review[]
+  images        ProductImage[]
+
+  @@index([userId])
+  @@index([categoryId])
+  @@index([biomassaType])
+  @@index([status])
+  @@index([createdAt])
+  @@index([province, regency])
+  @@index([name])
+  @@map("products")
+}
+
+model ProductTechnicalSpec {
+  id            String   @id @default(uuid())
+  productId     String   @unique @map("product_id")
+  
+  // Technical Specs
+  carbonPurity        Decimal? @db.Decimal(5, 2) @map("carbon_purity") // % Carbon Purity
+  moistureContent     Decimal? @db.Decimal(5, 2) @map("moisture_content") // % Moisture
+  surfaceArea         Decimal? @db.Decimal(10, 2) @map("surface_area") // m2/g
+  phLevel             Decimal? @db.Decimal(4, 2) @map("ph_level")
+  density             String?                   @map("density") // e.g. "95-105 kg/m3"
+  productionCapacity  Decimal? @db.Decimal(15, 2) @map("production_capacity") // Monthly capacity Ton
+  carbonOffsetPerTon  Decimal? @db.Decimal(10, 2) @map("carbon_offset_per_ton") // tCO2e offset contribution
+
+  // Packaging & Logistics
+  grossWeightPerSak   Decimal? @db.Decimal(10, 2)  @map("gross_weight_per_sak") // kg
+  netWeightPerSak     Decimal? @db.Decimal(10, 2) @map("net_weight_per_sak") // kg
+  bagDimension        String?                   @map("bag_dimension") // e.g. "115x75 cm"
+  heavyMetals         Json?                     @map("heavy_metals") // { "As": 10, "Hg": 1, ... }
+
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("product_technical_specs")
+}
+
+model ProductImage {
+  id        String   @id @default(uuid())
+  productId String   @map("product_id")
+  url       String   @db.Text
+  isPrimary Boolean  @default(false) @map("is_primary")
+  order     Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("product_images")
+}
+
+// =========================================================
+// ORDERS & ESCROW TRANSACTIONS
+// =========================================================
+
+model Order {
+  id            String      @id @default(uuid())
+  orderNumber   String      @unique // e.g. #BISA-99283-TRX 
+  buyerId       String      @map("buyer_id")                          
+  sellerId      String      @map("seller_id")                          
+  status        OrderStatus @default(PENDING) @map("status")
+  
+  // Financial Breakdowns (from Invoice UI)
+  subtotal      Decimal     @db.Decimal(15, 2) @map("subtotal")
+  platformFee   Decimal     @db.Decimal(15, 2) @map("platform_fee") // e.g. 0.5%
+  feeBreakdownSnapshot Json? @map("fee_breakdown_snapshot") // e.g. { "feeName": "TRANSACTION_FEE", "type": "PERCENTAGE", "appliedValue": 0.5 }
+  logisticsFee  Decimal     @db.Decimal(15, 2) @map("logistics_fee")
+  vatAmount     Decimal     @db.Decimal(15, 2) @map("vat_amount") // 11% VAT
+  totalAmount   Decimal     @db.Decimal(15, 2) @map("total_amount")
+  totalQuantity Decimal     @db.Decimal(15, 2) @map("total_quantity") // Changed from Int to support decimal weights
+  specifications String?    @db.Text @map("specifications") // Agreed final specs (PPM, Moisture, etc.)
+  creditsApplied Decimal    @db.Decimal(15, 2) @default(0) @map("credits_applied")
+  
+  shippingAddressId String? @map("shipping_address_id")
+  shippingAddress Address? @relation("ShippingAddress", fields: [shippingAddressId], references: [id], onDelete: Restrict)
+  shippingAddressSnapshot Json? @map("shipping_address_snapshot") // Untuk menyimpan data alamat lengkap saat order dibuat (Snapshot)
+  
+  // Status Badges
+  isInsured     Boolean     @default(true) @map("is_insured")
+  isDigitalSigned Boolean   @default(true) @map("is_digital_signed")
+
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  buyer         User        @relation("BuyerOrders", fields: [buyerId], references: [id], onDelete: Restrict)
+  seller        User        @relation("SellerOrders", fields: [sellerId], references: [id], onDelete: Restrict)
+  shipment      ShipmentTracking?
+  items         OrderItem[]
+  transaction   Transaction?
+  negotiation   Negotiation?
+  review        Review?
+
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("orders")
+}
+
+model ShipmentTracking {
+  id            String   @id @default(uuid())
+  orderId       String   @unique @map("order_id")
+
+  // Logistics & Route (from Shipment Tracking UI)
+  shipmentType  ShipmentType? @default(LAND_CARGO) @map("shipment_type")
+  vesselName    String?                    @map("vessel_name") // e.g. "MV Nusantara-9"
+  vesselType    VesselType? @default(TRUCK_CARGO) @map("vessel_type")
+  originHub     String?                    @map("origin_hub") // e.g. "Semarang Hub"
+  destinationHub String?                   @map("destination_hub") // e.g. "Surabaya Industrial Hub"
+  
+  // Real-time Telemetry
+  currentLat    Decimal?    @db.Decimal(10, 8) @map("current_lat")
+  currentLng    Decimal?    @db.Decimal(11, 8) @map("current_lng")
+  estimatedSpeed String?                   @map("estimated_speed") // e.g. "14.2 Knots"
+  aiInsight     String?     @db.Text       @map("ai_insight") // Weather/ETA insights
+  
+  // Packaging & Identification
+  batchId       String?                    @map("batch_id") // e.g. #BIO-INA-2023-042
+  packagingType PackagingType? @default(JUMBO_BAG) @map("packaging_type")
+
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  order         Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("shipment_tracking")
+}
+
+model OrderItem {
+  id          String   @id @default(uuid())
+  orderId     String         @map("order_id")
+  productId   String   @map("product_id")
+  quantity    Decimal  @db.Decimal(15, 2) @map("quantity") // Changed from Int
+  pricePerUnit Decimal  @db.Decimal(15, 2) @map("price_per_unit")
+  subtotal    Decimal  @db.Decimal(15, 2) @map("subtotal")
+
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("order_items")
+}
+
+model Negotiation {
+  id            String    @id @default(uuid())
+  productId     String    @map("product_id")
+  orderId       String?   @unique @map("order_id")
+  buyerId       String    @map("buyer_id")
+  sellerId      String    @map("seller_id")
+  
+  // Quote Details (from Mitra Chat UI)
+  quantity      Decimal   @db.Decimal(15, 2) @default(0) @map("quantity") // Changed from Int
+  pricePerUnit  Decimal   @db.Decimal(15, 2) @map("price_per_unit")
+  moistureLevel Decimal?  @db.Decimal(5, 2) @map("moisture_level") // % Moisture, changed from String for AI
+  specifications String?   @db.Text @map("specifications") // Agreed final specs from chat
+  taxStatus     TaxStatus @default(INCLUDED) @map("tax_status")
+  totalEstimate Decimal   @db.Decimal(15, 2) @map("total_estimate")
+  
+  status        NegotiationStatus @default(OPEN_NEGOTIATION) @map("status") // OPEN, ACCEPTED, REJECTED, LOCKED
+  isLocked      Boolean   @default(false) @map("is_locked")
+  
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  product       Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
+  buyer         User      @relation("BuyerNegotiations", fields: [buyerId], references: [id], onDelete: Restrict)
+  seller        User      @relation("SellerNegotiations", fields: [sellerId], references: [id], onDelete: Restrict)
+  order         Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  messages      ChatMessage[]
+
+  @@index([productId])
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("negotiations")
+}
+
+model ChatMessage {
+  id              String   @id @default(uuid())
+  negotiationId   String   @map("negotiation_id")
+  senderId        String   @map("sender_id")
+  content         String   @db.Text @map("content")
+  attachmentUrl   String?  @db.Text @map("attachment_url")
+  isSystemMessage Boolean  @default(false) @map("is_system_message")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  negotiation     Negotiation @relation(fields: [negotiationId], references: [id], onDelete: Cascade)
+  sender          User        @relation(fields: [senderId], references: [id], onDelete: Restrict)
+
+  @@index([negotiationId])
+  @@index([createdAt])
+  @@map("chat_messages")
+}
+
+model Transaction {
+  id              String            @id @default(uuid())
+  orderId         String?           @unique @map("order_id") // Optional to support SUBSCRIPTION transactions
+  userId          String            @map("user_id") // Buyer who pays
+  amount          Decimal           @db.Decimal(15, 2) @map("amount") // Gross amount paid by buyer
+  platformFee     Decimal           @db.Decimal(15, 2) @default(0) @map("platform_fee") // 3% BISA commission
+  feeBreakdownSnapshot Json? @map("fee_breakdown_snapshot") // e.g. { "feeName": "ADMIN_FEE", "type": "PERCENTAGE", "appliedValue": 3 }
+  sellerAmount    Decimal           @db.Decimal(15, 2) @default(0) @map("seller_amount") // Net amount for supplier
+  status          TransactionStatus @default(PENDING)
+  type            TransactionType   @default(SALES)
+  paymentMethod   PaymentMethod?
+  paymentStatus   PaymentStatus?    @default(PENDING)
+  
+  // Financial Links
+  paymentChannelId String? @map("payment_channel_id")
+  payoutAccountId  String? @map("payout_account_id")
+  
+  // Payment Provider Details (External)
+  externalId       String?          @unique @map("external_id")
+  paymentRequestId String? @map("payment_request_id")
+  paymentUrl       String?          @db.Text   @map("payment_url")
+  providerActions  Json?            @map("provider_actions") // Actions from Xendit/Midtrans
+
+  paymentProofUrl String?           @db.Text @map("payment_proof_url")         // For manual bank transfers
+  xenditInvoiceId String?           @unique @map("xendit_invoice_id")
+  paymentLink     String?           @db.Text @map("payment_link")
+  paidAt          DateTime?         @map("paid_at")
+  escrowReleasedAt DateTime?         @map("escrow_released_at")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  order           Order?            @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  user            User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  paymentChannel  PaymentChannel?   @relation(fields: [paymentChannelId], references: [id])
+  payoutAccount   UserPayoutAccount? @relation(fields: [payoutAccountId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@index([type])
+  @@index([paymentStatus])
+  @@index([paymentChannelId])
+  @@index([payoutAccountId])
+  @@index([createdAt])
+  @@map("transactions")
+}
+
+// =========================================================
+// AI PREDICTOR - Biochar Quality & Price Forecast
+// =========================================================
+
+model AIPrediction {
+  id             String       @id @default(uuid())
+  userId         String       @map("user_id")
+  biomassaType   BiomassaType @map("biomassa_type")
+  // Input parameters for XGBoost model
+  suhuPirolisis  Decimal?     @db.Decimal(6,2)  @map("suhu_pirolisis")  // Pyrolysis temperature (°C)
+  waktuPembakaran Int?                           @map("waktu_pembakaran") // Burning time (minutes)
+  beratInput     Decimal?     @db.Decimal(10,2) @map("berat_input") // Input biomass weight (kg)
+  // AI Output results
+  predictedGrade BiocharGrade? @map("predicted_grade")
+  predictedYield  Decimal?    @db.Decimal(5,2)  @map("predicted_yield")  // Yield percentage (%)
+  cOrganik       Decimal?     @db.Decimal(5,2)  @map("c_organik")  // C-Organic content (%)
+  dosis          Decimal?     @db.Decimal(5,2)  @map("dosis")  // Recommended dose ton/ha
+  rawOutput      String?      @db.Text          @map("raw_output") // Full JSON output from model
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  user           User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@map("ai_predictions")
+}
+
+// =========================================================
+// IoT MONITORING - Tungku Pembakaran Biochar
+// =========================================================
+
+model IotDevice {
+  id          String       @id @default(uuid())
+  userId      String       @map("user_id")
+  deviceId    String       @unique   @map("device_id") // Hardware device ID
+  name        String?                @map("name") // Custom name e.g. "Tungku Desa Masbagek"
+  status      DeviceStatus @default(ACTIVE) @map("status")
+  lat         Decimal?     @db.Decimal(10,7) @map("lat") // GPS coordinates
+  lng         Decimal?     @db.Decimal(10,7) @map("lng")
+  thresholdMin Decimal?     @default(200) @db.Decimal(15,2) @map("threshold_min")
+  thresholdMax Decimal?     @default(600) @db.Decimal(15,2) @map("threshold_max")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  readings    IotReading[]
+  alerts      IotAlert[]
+
+  @@map("iot_devices")
+}
+
+model IotReading {
+  id           String    @id @default(uuid())
+  deviceId     String    @map("device_id")
+  temperature  Decimal   @db.Decimal(6,2)  @map("temperature")  // °C
+  humidity     Decimal?  @db.Decimal(5,2)  @map("humidity")  // %
+  co2Level     Decimal?  @db.Decimal(8,2)  @map("co2_level")  // ppm
+  recordedAt   DateTime  @default(now()) @map("recorded_at")
+
+  device       IotDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, recordedAt])
+  @@map("iot_readings")
+}
+
+model IotAlert {
+  id          String       @id @default(uuid())
+  deviceId    String       @map("device_id")
+  alertType   IoTAlertType @map("alert_type") // "OVERHEATING", "TEMP_TOO_LOW", "OFFLINE"
+  message     String       @db.Text @map("message")
+  temperature Decimal?  @db.Decimal(6,2) @map("temperature")
+  isRead      Boolean   @default(false) @map("is_read")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  device      IotDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, createdAt])
+  @@index([isRead])
+  @@map("iot_alerts")
+}
+
+// =========================================================
+// GIS & WASTE MAPPING
+// =========================================================
+
+model WasteData {
+  id            String       @id @default(uuid())
+  province      String       @map("province")
+  regency       String?      @map("regency")
+  biomassaType  BiomassaType @map("biomassa_type")
+  volumeTon     Decimal      @db.Decimal(15,2) @map("volume_ton") // Estimated volume in tons
+  year          Int          @map("year")
+  source        String?      @map("source") // "BPS 2025", "Kemtan 2025"
+  lat           Decimal?     @db.Decimal(10,7) @map("lat")
+  lng           Decimal?     @db.Decimal(10,7) @map("lng")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  @@index([province])
+  @@index([biomassaType])
+  @@index([year])
+  @@map("waste_data")
+}
+
+// =========================================================
+// FORUM & COMMUNITY
+// =========================================================
+
+model ForumPost {
+  id        String         @id @default(uuid())
+  userId    String         @map("user_id")
+  title     String         @map("title")
+  content   String         @db.Text @map("content")
+  categoryId String?        @map("category_id")
+  status    PostStatus     @default(PUBLISHED) @map("status")
+  viewCount Int            @default(0) @map("view_count")
+  upvotes   Int            @default(0) @map("upvotes")
+  downvotes Int            @default(0) @map("downvotes")
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @updatedAt @map("updated_at")
+
+  user      User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  category  Category?      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  comments  ForumComment[]
+  votes     ForumVote[]    @relation("PostVotes")
+
+  @@index([userId])
+  @@index([categoryId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@map("forum_posts")
+}
+
+model ForumComment {
+  id        String    @id @default(uuid())
+  postId    String    @map("post_id")
+  userId    String    @map("user_id")
+  content   String    @db.Text @map("content")
+  upvotes   Int       @default(0) @map("upvotes")
+  downvotes Int       @default(0) @map("downvotes")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  post      ForumPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+  votes     ForumVote[] @relation("CommentVotes")
+
+  @@index([postId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("forum_comments")
+}
+
+model ForumVote {
+  id        String   @id @default(uuid())
+  postId    String?  @map("post_id")
+  commentId String?  @map("comment_id")
+  userId    String   @map("user_id")
+  type      VoteType @map("type")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  post      ForumPost?    @relation("PostVotes", fields: [postId], references: [id], onDelete: Cascade)
+  comment   ForumComment? @relation("CommentVotes", fields: [commentId], references: [id], onDelete: Cascade)
+  user      User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, postId])
+  @@unique([userId, commentId])
+  @@map("forum_votes")
+}
+
+model Article {
+  id            String          @id @default(uuid())
+  title         String          @map("title")
+  content       String          @db.Text @map("content")
+  categoryId    String?         @map("category_id")
+  imageUrl      String?         @db.Text @map("image_url")
+  status        PostStatus      @default(PUBLISHED) @map("status")
+  authorId      String?         @map("author_id")
+  publishedAt   DateTime?       @map("published_at")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+  
+  author        User?           @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  category      Category?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  @@index([categoryId])
+  @@index([status])
+  @@index([publishedAt])
+  @@index([updatedAt])
+  @@map("articles")
+}
+
+// =========================================================
+// NOTIFICATIONS
+// =========================================================
+
+model Notification {
+  id        String               @id @default(uuid())
+  userId    String               @map("user_id")
+  title     String               @map("title")
+  body      String               @db.Text @map("body")
+  type      NotificationType?    @map("type")
+  priority  NotificationPriority @default(MEDIUM) @map("priority")
+  refId     String ?                 @map("ref_id") // Reference ID (orderId, alertId, etc.)
+  isRead    Boolean              @default(false) @map("is_read")
+  createdAt DateTime             @default(now()) @map("created_at")
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([isRead])
+  @@map("notifications")
+}
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?  @map("user_id")
+  action    String   @map("action")
+  entity    String   @map("entity")
+  entityId  String?  @map("entity_id")
+  oldValue  Json?    @map("old_value")
+  newValue  Json?    @map("new_value")
+  ipAddress String?  @map("ip_address")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([entity])
+  @@map("audit_logs")
+}
+
+// =========================================================
+// ELITE CMS & NAVIGATION SYSTEM (Dynamic sections & Page Meta)
+// =========================================================
+
+model CmsPage {
+  id              String         @id @default(uuid())
+  slug            String         @unique // e.g. "home", "marketplace", "dashboard"
+  title           String
+  metaTitle       String?        @map("meta_title")
+  metaDescription String?        @db.Text @map("meta_description")
+  isActive        Boolean        @default(true) @map("is_active")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  sections        CmsSection[]
+  
+  @@map("cms_pages")
+}
+
+model CmsSection {
+  id        String         @id @default(uuid())
+  pageId    String?        @map("page_id")
+  name      String         // e.g. "Hero Section", "Impact Metrics"
+  type      SectionType    // Typed as Enum for strict security
+  order     Int            @default(0)
+  platform  DevicePlatform @default(WEB)
+  isActive  Boolean        @default(true) @map("is_active")
+
+  page      CmsPage?       @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  settings  PlatformSetting[]
+  team      TeamMember[]
+  cards     ContentCard[]
+  faqs      Faq[]
+  metrics   ImpactMetric[]
+  policies  Policy[]
+
+  @@index([pageId])
+  @@index([type])
+  @@index([isActive])
+  @@map("cms_sections")
+}
+
+model CmsMenu {
+  id        String         @id @default(uuid())
+  name      String         // e.g. "Main Navigation", "Dashboard Menu"
+  platform  DevicePlatform @default(WEB)
+  isActive  Boolean        @default(true) @map("is_active")
+  
+  items     CmsMenuItem[]
+
+  @@map("cms_menus")
+}
+
+model CmsMenuItem {
+  id        String         @id @default(uuid())
+  menuId    String         @map("menu_id")
+  parentId  String?        @map("parent_id")
+  label     String
+  link      String
+  icon      String?
+  order     Int            @default(0)
+  isActive  Boolean        @default(true) @map("is_active")
+
+  menu      CmsMenu        @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  parent    CmsMenuItem?   @relation("MenuHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children  CmsMenuItem[]  @relation("MenuHierarchy")
+
+  @@index([menuId])
+  @@index([parentId])
+  @@index([isActive])
+  @@map("cms_menu_items")
+}
+
+model PlatformSetting {
+  id        String       @id @default(uuid())
+  sectionId String?      @map("section_id")
+  key       String       @unique
+  value     String       @db.Text
+  imageUrl  String?      @db.Text @map("image_url")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+
+  section   CmsSection?  @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+
+  @@index([sectionId])
+  @@map("platform_settings")
+}
+
+model TeamMember {
+  id        String       @id @default(uuid())
+  sectionId String?      @map("section_id")
+  name      String
+  role      String
+  location  String?
+  imageUrl  String?      @db.Text @map("image_url")
+  order     Int          @default(0)
+  createdAt DateTime     @default(now()) @map("created_at")
+
+  section   CmsSection?  @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+
+  @@index([sectionId])
+  @@map("team_members")
+}
+
+model ContentCard {
+  id          String       @id @default(uuid())
+  sectionId   String?      @map("section_id")
+  title       String
+  description String?      @db.Text
+  icon        String?
+  image       String?      @db.Text
+  order       Int          @default(0)
+
+  section     CmsSection?  @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+
+  @@index([sectionId])
+  @@map("content_cards")
+}
+
+model ImpactMetric {
+  id        String       @id @default(uuid())
+  sectionId String?      @map("section_id")
+  label     String
+  value     String
+  sublabel  String?
+  unit      String?
+  change    String?
+  isPrimary Boolean      @default(false) @map("is_primary")
+
+  section   CmsSection?  @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+
+  @@index([sectionId])
+  @@map("impact_metrics")
+}
+
+
+model Faq {
+  id        String       @id @default(uuid())
+  sectionId String?      @map("section_id")
+  question  String       @db.Text @map("question")
+  answer    String       @db.Text @map("answer")
+  order     Int          @default(0) @map("order")
+  isActive  Boolean      @default(true) @map("is_active")
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+
+  section   CmsSection?  @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+
+  @@index([sectionId])
+  @@index([isActive])
+  @@map("faqs")
+}
+
+
+model Review {
+  id          String   @id @default(uuid())
+  orderId     String   @unique @map("order_id")
+  buyerId     String   @map("buyer_id")
+  productId   String   @map("product_id")
+  rating      Int      @default(5) @map("rating") // 1-5
+  comment     String?  @db.Text @map("comment")
+  imageUrl    String?  @db.Text @map("image_url")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  buyer       User     @relation("GivenReviews", fields: [buyerId], references: [id], onDelete: Restrict)
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, rating])
+  @@index([orderId])
+  @@index([createdAt])
+  @@map("reviews")
+}
+
+model Policy {
+  id        String       @id @default(uuid())
+  sectionId String?      @map("section_id")
+  title     String       @unique @map("title") // e.g. "Privacy Policy"
+  content   String       @db.Text @map("content")
+  version   String       @default("1.0.0") @map("version")
+  isActive  Boolean      @default(true) @map("is_active")
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+
+  section   CmsSection?  @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+
+  @@index([sectionId])
+  @@map("policies")
+}
+
+
+model MarketTrend {
+  id              String   @id @default(uuid())
+  label           String   @map("label") // e.g. "Grade A Carbon"
+  currentValue    String   @map("current_value") // e.g. "+2.4%"
+  trendType       TrendType @map("trend_type")
+  category        TrendCategory @map("category")
+  historyData     Json?    @map("history_data") // Sparkline data: [10, 12, 11, 14, ...]
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("market_trends")
+}
+
+// =========================================================
+// GEOGRAPHIC & ADDRESS MANAGEMENT
+// =========================================================
+
+model Country {
+  id         String     @id @default(uuid())
+  sequenceId Int        @unique @default(autoincrement()) @map("sequence_id")
+  name       String     @unique @map("name")
+  continent  String     @map("continent")
+  createdAt  DateTime   @default(now()) @map("created_at")
+  updatedAt  DateTime   @updatedAt @map("updated_at")
+  code       String     @unique @map("code")
+  addresses  Address[]  @relation("CountryAddress")
+  provinces  Province[] @relation("CountryProvinces")
+
+  @@index([sequenceId])
+  @@index([name])
+  @@index([createdAt])
+  @@map("countries")
+}
+
+model Province {
+  id         String    @id @default(uuid())
+  sequenceId Int       @unique @default(autoincrement()) @map("sequence_id")
+  countryId  String    @map("country_id") 
+  name       String    @map("name")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  code       String    @map("code")
+  shortCode  String?   @map("short_code")
+  addresses  Address[] @relation("ProvinceAddress")
+  country    Country   @relation("CountryProvinces", fields: [countryId], references: [id], onDelete: Restrict)
+  regencies  Regency[] @relation("ProvinceRegencies")
+
+  @@unique([name, countryId])
+  @@unique([code, countryId])
+  @@index([sequenceId])
+  @@index([name])
+  @@index([createdAt])
+  @@map("provinces")
+}
+
+model Regency {
+  id         String     @id @default(uuid())
+  sequenceId Int        @unique @default(autoincrement()) @map("sequence_id")
+  provinceId String     @map("province_id")
+  name       String
+  createdAt  DateTime   @default(now()) @map("created_at")
+  updatedAt  DateTime   @updatedAt @map("updated_at")
+  code       String     @map("code")
+  shortCode  String?    @map("short_code")
+  addresses  Address[]  @relation("RegencyAddress")
+  districts  District[] @relation("RegencyDistricts")
+  province   Province   @relation("ProvinceRegencies", fields: [provinceId], references: [id], onDelete: Restrict)
+
+  @@unique([name, provinceId])
+  @@unique([code, provinceId])
+  @@index([sequenceId])
+  @@index([name])
+  @@index([createdAt])
+  @@map("regencies")
+}
+
+model District {
+  id         String    @id @default(uuid())
+  sequenceId Int       @unique @default(autoincrement()) @map("sequence_id")
+  regencyId  String    @map("regency_id")
+  name       String
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  code       String    @map("code")
+  addresses  Address[] @relation("DistrictAddress")
+  regency    Regency   @relation("RegencyDistricts", fields: [regencyId], references: [id], onDelete: Restrict)
+  villages   Village[] @relation("DistrictVillages")
+
+  @@unique([name, regencyId])
+  @@unique([code, regencyId])
+  @@index([sequenceId])
+  @@index([createdAt])
+  @@map("districts")
+}
+
+model Village {
+  id         String      @id @default(uuid())
+  sequenceId Int         @unique @default(autoincrement()) @map("sequence_id")
+  districtId String      @map("district_id")
+  name       String
+  type       VillageType @default(DESA)
+  createdAt  DateTime    @default(now()) @map("created_at")
+  updatedAt  DateTime    @updatedAt @map("updated_at")
+  code       String      @map("code")
+  addresses  Address[]   @relation("VillageAddress")
+  district   District    @relation("DistrictVillages", fields: [districtId], references: [id], onDelete: Restrict)
+
+  @@unique([name, districtId])
+  @@unique([code, districtId])
+  @@index([sequenceId])
+  @@index([createdAt])
+  @@map("villages")
+}
+
+model Address {
+  id          String  @id @default(uuid())
+  sequenceId  Int     @unique @default(autoincrement()) @map("sequence_id")
+  countryId   String  @map("country_id")
+  provinceId  String? @map("province_id")
+  regencyId   String? @map("regency_id")
+  districtId  String? @map("district_id")
+  villageId   String? @map("village_id")
+  fullAddress String  @map("full_address") @db.Text
+  zipCode     String  @map("zip_code")
+  latitude    Decimal @db.Decimal(9, 6)
+  longitude   Decimal @db.Decimal(10, 6)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  country           Country           @relation("CountryAddress", fields: [countryId], references: [id])
+  province          Province?          @relation("ProvinceAddress", fields: [provinceId], references: [id])
+  regency           Regency?           @relation("RegencyAddress", fields: [regencyId], references: [id])
+  district          District?          @relation("DistrictAddress", fields: [districtId], references: [id])
+  village           Village?           @relation("VillageAddress", fields: [villageId], references: [id])
+  
+  // Relations to other business models
+  users             User[]
+  userProfile       UserProfile?
+  shippingOrders    Order[]           @relation("ShippingAddress")
+  partner           Partner?
+  companyProfile    CompanyProfile?
+  shippingCenter    ShippingCenter?
+  customerAddresses CustomerAddress[]
+
+  @@index([sequenceId])
+  @@index([createdAt])
+  @@map("addresses")
+}
+
+model CustomerAddress {
+  id        String  @id @default(uuid())
+  addressId String  @map("address_id")
+  userId    String  @map("user_id")
+  label     String  @map("label") // e.g. "Kantor Cabang", "Gudang Utama"
+  
+  address   Address @relation(fields: [addressId], references: [id])
+  user      User    @relation(fields: [userId], references: [id])
+
+  @@index([addressId])
+  @@index([userId])
+  @@map("customer_addresses")
+}
+
+// Business placeholders for Address relations
+model Partner {
+  id        String  @id @default(uuid())
+  addressId String  @unique @map("address_id")
+  address   Address @relation(fields: [addressId], references: [id])
+
+  @@map("partners")
+}
+
+model CompanyProfile {
+  id        String  @id @default(uuid())
+  addressId String  @unique @map("address_id")
+  address   Address @relation(fields: [addressId], references: [id])
+}
+
+model ShippingCenter {
+  id        String  @id @default(uuid())
+  addressId String  @unique @map("address_id")
+  address   Address @relation(fields: [addressId], references: [id])
+
+  @@map("shipping_centers")
+}
+
+// =========================================================
+// FINANCIAL & OPERATIONAL MANAGEMENT
+// =========================================================
+
+model PlatformFeeSetting {
+  id           String             @id @default(uuid())
+  name         PlatformFeeType    @unique 
+  description  String?            @db.Text @map("description")
+  type         FeeCalculationType @default(PERCENTAGE) @map("type")
+  amount       Decimal            @db.Decimal(15, 2) @map("amount") // Nominal konstan (5000) atau persentase (2.5)
+  isActive     Boolean            @default(true) @map("is_active")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+
+  @@map("platform_fee_settings")
+}
+
+
+model PaymentChannel {
+  id               String            @id @default(uuid())
+  name             String            @unique // e.g. "Mandiri Virtual Account"
+  code             String            @unique // e.g. "MANDIRI", "OVO", "QRIS"
+  group            PaymentMethod?    @map("group") // e.g. BANK_TRANSFER, E_WALLET, QRIS
+  logoUrl          String?           @db.Text @map("logo_url")
+  isActive         Boolean           @default(true) @map("is_active")
+  
+  platformAccounts PlatformBankAccount[]
+  transactions     Transaction[]
+
+  @@map("payment_channels")
+}
+
+model PayoutBank {
+  id               String            @id @default(uuid())
+  name             String            @unique // e.g. "Bank Mandiri"
+  code             String            @unique // e.g. "008" (LBU Code for Disbursement)
+  logoUrl          String?           @db.Text @map("logo_url")
+  isActive         Boolean           @default(true) @map("is_active")
+  
+  userPayoutAccounts UserPayoutAccount[]
+
+  @@map("payout_banks")
+}
+
+model PlatformBankAccount {
+  id               String            @id @default(uuid())
+  paymentChannelId String            @map("payment_channel_id")
+  accountNumber    String            @map("account_number")
+  accountName      String            @map("account_name") // e.g. "PT BISA EKOSISTEM INDONESIA"
+  branch           String?           @map("branch")
+  isActive         Boolean           @default(true) @map("is_active")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt
+
+  paymentChannel   PaymentChannel    @relation(fields: [paymentChannelId], references: [id], onDelete: Restrict)
+
+  @@map("platform_bank_accounts")
+}
+
+model UserPayoutAccount {
+  id            String   @id @default(uuid())
+  userId        String     @map("user_id")
+  bankId        String   @map("bank_id")
+  accountNumber String   @map("account_number")
+  accountName   String   @map("account_name") // Name as seen on the bank book
+  isMain        Boolean  @default(false) @map("is_main")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt
+
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bank          PayoutBank    @relation(fields: [bankId], references: [id])
+  transactions  Transaction[]
+
+  @@unique([userId, accountNumber, bankId])
+  @@map("user_payout_accounts")
+}
+
+model Wallet {
+  id             String        @id @default(uuid())
+  userId         String        @unique @map("user_id")
+  balance        Decimal       @default(0) @db.Decimal(15, 2) @map("balance") // Current withdrawable balance
+  totalEarned    Decimal       @default(0) @db.Decimal(15, 2) @map("total_earned") // Historical total earnings
+  totalWithdrawn Decimal       @default(0) @db.Decimal(15, 2) @map("total_withdrawn") // Historical total withdrawals
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+  
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("wallets")
+}
+
+model OperatingHour {
+  id           String       @id @default(uuid())
+  userId       String       @map("user_id")                 // Linked to Supplier/User
+  dayOfWeek    Int          @map("day_of_week")             // 0-6 (Sunday to Saturday)
+  openTime     String       @map("open_time")               // Opening hour (HH:mm)
+  closeTime    String       @map("close_time")              // Closing hour (HH:mm)
+  isClosed     Boolean      @default(false) @map("is_closed")
+  
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dayOfWeek])
+  @@map("operating_hours")
+}

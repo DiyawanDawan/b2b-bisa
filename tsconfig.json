@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "target": "ES2023",
+    "strict": true,
+    "esModuleInterop": true,
+    "ignoreDeprecations": "5.0",
+    "outDir": "./dist",
+    "rootDir": "./",
+    "paths": {
+      "#prisma": ["./generated/prisma/client.js"],
+      "#db": ["./src/config/prisma.ts"],
+      "#types/*": ["./src/types/*"],
+      "#controllers/*": ["./src/controllers/*"],
+      "#services/*": ["./src/services/*"],
+      "#middlewares/*": ["./src/middlewares/*"],
+      "#utils/*": ["./src/utils/*"],
+      "#routes/*": ["./src/routes/*"],
+      "#config/*": ["./src/config/*"],
+      "#crons/*": ["./src/crons/*"],
+      "#worker/*": ["./src/workers/*"],
+      "#validations/*": ["./src/validations/*"],
+      "#constants/*": ["./src/constants/*"]
+    }
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", "dist", "generated"]
+}
