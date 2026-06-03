@@ -6,3 +6,7 @@ export const createReviewSchema = z.object({
   // comment adalah Optional di schema Prisma (String?), tapi disarankan diisi minimal 10 karakter
   comment: z.string().min(10, 'Berikan ulasan singkat (minimal 10 karakter)').optional(),
 });
+
+export const updateReviewSchema = createReviewSchema.partial({
+  orderId: true,
+});

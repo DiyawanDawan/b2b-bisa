@@ -2,7 +2,7 @@ import { Response } from 'express';
 import * as notificationService from '#services/notification.service';
 import { successResponse, paginatedResponse } from '#utils/response.util';
 import catchAsync from '#utils/catchAsync';
-import { AuthRequest } from '#middlewares/authMiddleware';
+import { AuthRequest } from '#types/index';
 
 /**
  * GET /api/v1/notifications
@@ -30,6 +30,14 @@ export const listNotifications = catchAsync(async (req: AuthRequest, res: Respon
 });
 
 /**
+ * GET /api/v1/notifications/:id
+ */
+export const getNotification = catchAsync(async (req: AuthRequest, res: Response) => {
+  const data = await notificationService.getNotificationById(req.params.id, req.user!.id);
+  return successResponse(res, data, 'Detail notifikasi berhasil diambil');
+});
+
+/**
  * PATCH /api/v1/notifications/:id/read
  */
 export const markAsRead = catchAsync(async (req: AuthRequest, res: Response) => {
@@ -43,6 +51,15 @@ export const markAsRead = catchAsync(async (req: AuthRequest, res: Response) => 
 export const markAllAsRead = catchAsync(async (req: AuthRequest, res: Response) => {
   await notificationService.markAllAsRead(req.user!.id);
   return successResponse(res, null, 'Semua notifikasi ditandai dibaca');
+});
+
+/**
+ * POST /api/v1/notifications/tokens
+ */
+export const registerToken = catchAsync(async (req: AuthRequest, res: Response) => {
+  const { fcmToken, platform } = req.body;
+  const data = await notificationService.registerFCMToken(req.user!.id, fcmToken, platform);
+  return successResponse(res, data, 'Token FCM berhasil didaftarkan');
 });
 
 /**

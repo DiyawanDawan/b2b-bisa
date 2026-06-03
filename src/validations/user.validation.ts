@@ -9,6 +9,7 @@ export const updateAddressSchema = z.object({
   villageId: z.string().optional(),
   fullAddress: z.string().min(5, 'Alamat lengkap minimal 5 karakter').optional(),
   zipCode: z.string().optional(),
+  phone: z.string().optional(),
   latitude: z.coerce.number().optional(),
   longitude: z.coerce.number().optional(),
 });
@@ -16,6 +17,10 @@ export const updateAddressSchema = z.object({
 export const createAddressSchema = updateAddressSchema.extend({
   label: z.string().min(1, 'Label alamat wajib diisi'),
   countryId: z.string().min(1, 'ID Negara wajib diisi'),
+  provinceId: z.string().min(1, 'Provinsi wajib dipilih').optional(),
+  regencyId: z.string().min(1, 'Kota/Kabupaten wajib dipilih').optional(),
+  districtId: z.string().min(1, 'Kecamatan wajib dipilih').optional(),
+  villageId: z.string().min(1, 'Desa/Kelurahan wajib dipilih').optional(),
   fullAddress: z.string().min(5, 'Alamat lengkap minimal 5 karakter'),
   zipCode: z.string().min(1, 'Kode POS wajib diisi'),
 });

@@ -15,25 +15,8 @@ router.get(
 );
 
 /**
- * PATCH /api/v1/admin/products/:id/moderate
- */
-router.patch(
-  '/:id/moderate',
-  validate(adminValidation.moderateProductSchema),
-  adminController.moderateProduct,
-);
-
-/**
- * PATCH /api/v1/admin/products/:id/certify
- */
-router.patch(
-  '/:id/certify',
-  validate(adminValidation.certifyProductSchema),
-  adminController.certifyProduct,
-);
-
-/**
  * GET /api/v1/admin/products/categories
+ * Static path sebelum /:id/*
  */
 router.get('/categories', adminController.listCategories);
 
@@ -53,6 +36,26 @@ router.put(
   '/categories/:id',
   validate(adminValidation.categorySchema),
   adminController.updateCategory,
+);
+
+/**
+ * PATCH /api/v1/admin/products/:id/moderate
+ */
+router.patch(
+  '/:id/moderate',
+  validate(adminValidation.productIdParamSchema, 'params'),
+  validate(adminValidation.moderateProductSchema),
+  adminController.moderateProduct,
+);
+
+/**
+ * PATCH /api/v1/admin/products/:id/certify
+ */
+router.patch(
+  '/:id/certify',
+  validate(adminValidation.productIdParamSchema, 'params'),
+  validate(adminValidation.certifyProductSchema),
+  adminController.certifyProduct,
 );
 
 export default router;

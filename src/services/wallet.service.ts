@@ -3,81 +3,195 @@ import AppError from '#utils/appError';
 import { Prisma, TransactionStatus, OrderStatus, PaymentStatus, TransactionType } from '#prisma';
 import { Xendit } from 'xendit-node';
 import { withRetry } from '#utils/retry.util';
+import { resolveXenditPayoutSecretKey } from '#utils/env.util';
+import { notifyOrderStatusChange } from '#services/orderNotification.service';
 
 /**
  * 1. Release Escrow (Buyer Mengonfirmasi Penerimaan Barang)
+ *
+ * SEC-BE-003: Sebelumnya validasi status escrow dilakukan di LUAR transaction,
+ * menyebabkan race condition — dua request paralel bisa lolos cek dan keduanya
+ * meng-increment saldo supplier. Sekarang:
+ *   1. Semua validasi & ownership check dilakukan di dalam $transaction.
+ *   2. Isolation level Serializable agar dua tx paralel di-serialize secara DB.
+ *   3. Idempotency guard: `transaction.updateMany` dengan filter `status: ESCROW_HELD`
+ *      + cek `count` agar concurrent retry yang kalah race akan menerima 409.
+ *   4. Retry policy untuk Prisma P2034 (serialization failure) — max 3x.
  */
-export const releaseEscrow = async (orderId: string, buyerId: string) => {
-  const order = await prisma.order.findUnique({
-    where: { id: orderId },
-    include: { transaction: true },
-  });
+export const releaseEscrow = async (
+  orderId: string,
+  buyerId: string,
+  options: { actorRole?: 'ADMIN' | 'BUYER' | 'SUPPLIER' | string } = {},
+) => {
+  const { actorRole } = options;
 
-  if (!order) throw new AppError('Kontrak Pesanan tidak ditemukan.', 404);
-  if (order.buyerId !== buyerId)
-    throw new AppError('Hanya pembeli yang bisa merilis escrow pesanan ini.', 403);
-  if (order.status !== OrderStatus.SHIPPED)
-    throw new AppError('Barang harus berstatus SHIPPED sebelum mengonfirmasi penerimaan.', 400);
+  // Manual retry loop — hanya retry untuk Prisma P2034 (serialization conflict).
+  // AppError (4xx/5xx business logic) dilempar langsung tanpa retry.
+  const MAX_RETRIES = 3;
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      const result = await prisma.$transaction(
+        async (tx) => {
+          const order = await tx.order.findUnique({
+            where: { id: orderId },
+            select: {
+              id: true,
+              buyerId: true,
+              sellerId: true,
+              status: true,
+              transaction: {
+                select: { id: true, status: true, sellerAmount: true },
+              },
+            },
+          });
 
-  const transaction = order.transaction;
-  if (!transaction || transaction.status !== TransactionStatus.ESCROW_HELD) {
-    throw new AppError('Dana escrow gagal divalidasi atau belum tersimpan penuh.', 400);
+          if (!order) throw new AppError('Kontrak Pesanan tidak ditemukan.', 404);
+
+          // SEC-BE-020: izinkan ADMIN bypass untuk admin release escrow flow.
+          if (order.buyerId !== buyerId && actorRole !== 'ADMIN') {
+            throw new AppError(
+              'Hanya pembeli atau admin yang bisa merilis escrow pesanan ini.',
+              403,
+            );
+          }
+
+          if (order.status !== OrderStatus.SHIPPED) {
+            throw new AppError(
+              'Barang harus berstatus SHIPPED sebelum mengonfirmasi penerimaan.',
+              400,
+            );
+          }
+
+          const transaction = order.transaction;
+          if (!transaction) {
+            throw new AppError('Dana escrow belum tersimpan untuk pesanan ini.', 400);
+          }
+
+          // Idempotency guard — hanya update jika masih ESCROW_HELD.
+          const updateResult = await tx.transaction.updateMany({
+            where: { id: transaction.id, status: TransactionStatus.ESCROW_HELD },
+            data: {
+              status: TransactionStatus.RELEASED,
+              escrowReleasedAt: new Date(),
+            },
+          });
+
+          if (updateResult.count === 0) {
+            // Race lost — sudah dilepas oleh request paralel.
+            throw new AppError('Dana escrow sudah dilepas sebelumnya. Mohon refresh halaman.', 409);
+          }
+
+          // Update Order => COMPLETED setelah guard transaction sukses.
+          const completedOrder = await tx.order.update({
+            where: { id: orderId },
+            data: { status: OrderStatus.COMPLETED },
+          });
+
+          const netSellerAmount = transaction.sellerAmount;
+
+          // Pessimistic lock row wallet sebelum increment (paranoid double-safety).
+          await tx.$queryRaw`SELECT * FROM wallets WHERE user_id = ${order.sellerId} FOR UPDATE`;
+
+          const wallet = await tx.wallet.upsert({
+            where: { userId: order.sellerId },
+            create: {
+              userId: order.sellerId,
+              balance: netSellerAmount,
+              totalEarned: netSellerAmount,
+            },
+            update: {
+              balance: { increment: netSellerAmount },
+              totalEarned: { increment: netSellerAmount },
+            },
+          });
+
+          return { order: completedOrder, walletBalance: wallet.balance };
+        },
+        {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          maxWait: 5000,
+          timeout: 10000,
+        },
+      );
+
+      void notifyOrderStatusChange({
+        buyerId: result.order.buyerId,
+        sellerId: result.order.sellerId,
+        orderId: result.order.id,
+        orderNumber: result.order.orderNumber,
+        status: 'COMPLETED',
+      });
+
+      return result;
+    } catch (err) {
+      lastErr = err;
+      const code = (err as { code?: string })?.code;
+      // Hanya retry serialization conflict; AppError + error lain dilempar langsung.
+      if (err instanceof AppError || code !== 'P2034') throw err;
+      // Backoff dengan jitter sebelum retry berikutnya
+      const delay = 100 * Math.pow(2, attempt) + Math.random() * 100;
+      await new Promise((r) => setTimeout(r, delay));
+    }
   }
-
-  // Hitung ulang deposit
-  const netSellerAmount = transaction.sellerAmount;
-
-  const res = await prisma.$transaction(async (tx) => {
-    // 1. Update Order => COMPLETED
-    const completedOrder = await tx.order.update({
-      where: { id: orderId },
-      data: { status: OrderStatus.COMPLETED },
-    });
-
-    // 2. Update Transaction => RELEASED
-    await tx.transaction.update({
-      where: { id: transaction.id },
-      data: { status: TransactionStatus.RELEASED, escrowReleasedAt: new Date() },
-    });
-
-    // 3. Pesimistic Locking & Update Wallet Supplier
-    // Kunci row wallet sebelum menambah saldo
-    await tx.$queryRaw`SELECT * FROM wallets WHERE user_id = ${order.sellerId} FOR UPDATE`;
-
-    const wallet = await tx.wallet.upsert({
-      where: { userId: order.sellerId },
-      create: {
-        userId: order.sellerId,
-        balance: netSellerAmount,
-        totalEarned: netSellerAmount,
-      },
-      update: {
-        balance: { increment: netSellerAmount },
-        totalEarned: { increment: netSellerAmount },
-      },
-    });
-
-    return { order: completedOrder, walletBalance: wallet.balance };
-  });
-
-  // TODO: Send Notification to Supplier "Dana Rp X berhasil mendarat di dompet BISA Anda."
-  return res;
+  throw lastErr;
 };
 
 /**
  * 2. Withdraw Funds / Payout (Supplier Mencairkan ke Bank)
  */
-export const withdrawFunds = async (
-  supplierId: string,
-  data: { amount: number; bankCode: string; accountNo: string; accountName: string },
-) => {
+export const withdrawFunds = async (supplierId: string, data: { amount: number }) => {
   const amountToWithdraw = new Prisma.Decimal(data.amount);
 
   if (amountToWithdraw.lte(0)) throw new AppError('Jumlah penarikan tidak valid.', 400);
 
+  const mainAccount = await prisma.userPayoutAccount.findFirst({
+    where: { userId: supplierId, isMain: true },
+    include: {
+      bank: {
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          isActive: true,
+          minAmount: true,
+          maxAmount: true,
+          currency: true,
+        },
+      },
+    },
+  });
+
+  if (!mainAccount) {
+    throw new AppError(
+      'Rekening utama belum diatur. Tambahkan rekening dan jadikan utama di Pengaturan Rekening Pencairan.',
+      400,
+    );
+  }
+
+  const payoutBank = mainAccount.bank;
+  if (!payoutBank || !payoutBank.isActive) {
+    throw new AppError('Bank rekening utama tidak dikenali atau tidak didukung.', 400);
+  }
+
+  const bankCode = payoutBank.code;
+  const accountNo = mainAccount.accountNumber;
+  const accountName = mainAccount.accountName;
+
+  if (payoutBank.minAmount && amountToWithdraw.lt(payoutBank.minAmount)) {
+    throw new AppError(
+      `Minimal penarikan ${Number(payoutBank.minAmount)} ${payoutBank.currency || 'IDR'}.`,
+      400,
+    );
+  }
+  if (payoutBank.maxAmount && amountToWithdraw.gt(payoutBank.maxAmount)) {
+    throw new AppError(
+      `Maksimal penarikan ${Number(payoutBank.maxAmount)} ${payoutBank.currency || 'IDR'}.`,
+      400,
+    );
+  }
+
   const payoutTrx = await prisma.$transaction(async (tx) => {
-    // 1. Pesimistic Locking: Kunci Row Wallet agar tidak bisa dimanipulasi request lain
-    // MySQL: SELECT * FROM wallets WHERE user_id = ? FOR UPDATE
     await tx.$queryRaw`SELECT * FROM wallets WHERE user_id = ${supplierId} FOR UPDATE`;
 
     const wallet = await tx.wallet.findUnique({ where: { userId: supplierId } });
@@ -85,7 +199,6 @@ export const withdrawFunds = async (
       throw new AppError('Saldo di Dompet BISA tidak mencukupi atau Wallet tidak ditemukan.', 400);
     }
 
-    // 2. Kurangi Saldo di Wallet
     await tx.wallet.update({
       where: { userId: supplierId },
       data: {
@@ -94,28 +207,6 @@ export const withdrawFunds = async (
       },
     });
 
-    // 2. Upsert Rekening (PayoutAccount)
-    const payoutBank = await tx.payoutBank.findUnique({ where: { code: data.bankCode } });
-    if (!payoutBank) throw new AppError('Kode Bank tidak dikenali/didukung.', 400);
-
-    const payoutAccount = await tx.userPayoutAccount.upsert({
-      where: {
-        userId_accountNumber_bankId: {
-          userId: supplierId,
-          accountNumber: data.accountNo,
-          bankId: payoutBank.id,
-        },
-      },
-      update: { accountName: data.accountName },
-      create: {
-        userId: supplierId,
-        bankId: payoutBank.id,
-        accountNumber: data.accountNo,
-        accountName: data.accountName,
-      },
-    });
-
-    // 3. Catat di Tabel Transaksi sebagai 'PAYOUT' dengan status PENDING
     return tx.transaction.create({
       data: {
         userId: supplierId,
@@ -123,17 +214,20 @@ export const withdrawFunds = async (
         status: TransactionStatus.PENDING,
         paymentStatus: PaymentStatus.PENDING,
         type: TransactionType.PAYOUT,
-        payoutAccountId: payoutAccount.id,
+        payoutAccountId: mainAccount.id,
         externalId: `WDL-${Date.now()}-${supplierId.substring(0, 4)}`,
       },
     });
   });
 
-  // 4. API Xendit Payout (DILUAR blok $transaction untuk mencegah Lock Timeout)
+  // API Xendit Payout (DILUAR blok $transaction untuk mencegah Lock Timeout)
   try {
-    const xenditKey = process.env.XENDIT_SECRET_KEY;
+    const xenditKey = resolveXenditPayoutSecretKey();
     if (!xenditKey) {
-      throw new AppError('Xendit config missing: XENDIT_SECRET_KEY is required.', 500);
+      throw new AppError(
+        'Xendit config missing: set XENDIT_PAYOUT_SECRET_KEY (or XENDIT_SECRET_KEY) in .env.',
+        500,
+      );
     }
 
     const xenditClient = new Xendit({ secretKey: xenditKey });
@@ -145,10 +239,10 @@ export const withdrawFunds = async (
           referenceId: payoutTrx.externalId!,
           amount: Number(amountToWithdraw.toString()),
           currency: 'IDR',
-          channelCode: data.bankCode,
+          channelCode: bankCode,
           channelProperties: {
-            accountHolderName: data.accountName,
-            accountNumber: data.accountNo,
+            accountHolderName: accountName,
+            accountNumber: accountNo,
           },
         },
       }),
@@ -194,19 +288,31 @@ export const getSupportedBanks = async () => {
   // xenditClient.Disbursement.getAvailableBanks()
   return prisma.payoutBank.findMany({
     where: { isActive: true },
-    select: { id: true, name: true, code: true, logoUrl: true },
+    select: {
+      id: true,
+      name: true,
+      code: true,
+      channelType: true,
+      currency: true,
+      minAmount: true,
+      maxAmount: true,
+      logoUrl: true,
+    },
+    orderBy: [{ channelType: 'asc' }, { name: 'asc' }],
   });
 };
 
 /**
  * 4. Get My Wallet
+ * Uses atomic upsert to prevent race condition when concurrent requests
+ * attempt to create a wallet for the same user simultaneously.
  */
 export const getMyWallet = async (userId: string) => {
-  let wallet = await prisma.wallet.findUnique({ where: { userId } });
-  if (!wallet) {
-    wallet = await prisma.wallet.create({ data: { userId } });
-  }
-  return wallet;
+  return prisma.wallet.upsert({
+    where: { userId },
+    create: { userId },
+    update: {}, // No changes if wallet already exists
+  });
 };
 
 /**
@@ -214,14 +320,33 @@ export const getMyWallet = async (userId: string) => {
  */
 export const getWalletTransactions = async (
   userId: string,
-  page: number = 1,
-  limit: number = 20,
+  params: {
+    page?: number;
+    limit?: number;
+    type?: TransactionType;
+    status?: TransactionStatus;
+    startDate?: string; // ISO String
+    endDate?: string; // ISO String
+  } = {},
 ) => {
+  const { page = 1, limit = 20, type, status, startDate, endDate } = params;
   const skip = (page - 1) * limit;
+
+  const where: Prisma.TransactionWhereInput = {
+    userId,
+    ...(type && { type }),
+    ...(status && { status }),
+    ...((startDate || endDate) && {
+      createdAt: {
+        ...(startDate && { gte: new Date(startDate) }),
+        ...(endDate && { lte: new Date(endDate) }),
+      },
+    }),
+  };
 
   const [transactions, total] = await Promise.all([
     prisma.transaction.findMany({
-      where: { userId },
+      where,
       orderBy: { createdAt: 'desc' },
       skip,
       take: limit,
@@ -240,9 +365,15 @@ export const getWalletTransactions = async (
         order: {
           select: { orderNumber: true, totalAmount: true },
         },
+        paymentChannel: {
+          select: { name: true },
+        },
+        payoutAccount: {
+          select: { accountName: true, bank: { select: { name: true } } },
+        },
       },
     }),
-    prisma.transaction.count({ where: { userId } }),
+    prisma.transaction.count({ where }),
   ]);
 
   return {

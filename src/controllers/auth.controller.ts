@@ -2,7 +2,9 @@ import * as authService from '#services/auth.service';
 import catchAsync from '#utils/catchAsync';
 import { successResponse, createdResponse } from '#utils/response.util';
 import { AuthRequest } from '#types/index';
+import type { UserRole } from '#prisma';
 import { Response, Request } from 'express';
+import { attachAuthResponseMedia } from '#utils/userMedia.util';
 
 export const registerSupplier = catchAsync(async (req: AuthRequest, res: Response) => {
   const { email, password, fullName, phone, province, regency } = req.body as {
@@ -55,7 +57,7 @@ export const verifyRegistration = catchAsync(async (req: Request, res: Response)
 export const login = catchAsync(async (req: AuthRequest, res: Response) => {
   const { email, password } = req.body as { email: string; password: string };
   const { user, token } = await authService.loginUser(email, password);
-  successResponse(res, { user, token }, 'Login berhasil');
+  successResponse(res, attachAuthResponseMedia({ user, token }), 'Login berhasil');
 });
 
 export const logout = catchAsync(async (req: AuthRequest, res: Response) => {
@@ -96,15 +98,15 @@ export const resetPassword = catchAsync(async (req: AuthRequest, res: Response) 
 });
 
 export const loginWithGoogle = catchAsync(async (req: Request, res: Response) => {
-  const { token, role } = req.body as { token: string; role?: any };
+  const { token, role } = req.body as { token: string; role?: UserRole };
   const result = await authService.loginWithSocial('google', token, role);
-  successResponse(res, result, 'Login dengan Google berhasil');
+  successResponse(res, attachAuthResponseMedia(result), 'Login dengan Google berhasil');
 });
 
 export const loginWithFacebook = catchAsync(async (req: Request, res: Response) => {
-  const { token, role } = req.body as { token: string; role?: any };
+  const { token, role } = req.body as { token: string; role?: UserRole };
   const result = await authService.loginWithSocial('facebook', token, role);
-  successResponse(res, result, 'Login dengan Facebook berhasil');
+  successResponse(res, attachAuthResponseMedia(result), 'Login dengan Facebook berhasil');
 });
 
 export const resendOTP = catchAsync(async (req: Request, res: Response) => {
@@ -114,4 +116,28 @@ export const resendOTP = catchAsync(async (req: Request, res: Response) => {
   };
   await authService.resendOTP(email, type);
   successResponse(res, null, 'Kode OTP baru telah dikirim');
+});
+
+/**
+ * SEC-BE-012: hindari email enumeration. Sebelumnya response eksplisit
+ * mengungkap apakah email terdaftar.
+ *
+ * Strategi: tetap return field `available` (mobile UX butuh untuk inline validation),
+ * tapi tambah random jitter timing untuk hindari timing-based enumeration; pesan
+ * dibuat generik (tanpa kata "sudah terdaftar"). Untuk hardening penuh, sebaiknya
+ * endpoint ini dihapus dan validasi dilakukan saat submit register.
+ */
+export const checkEmail = catchAsync(async (req: Request, res: Response) => {
+  const { email } = req.query as { email: string };
+
+  const [isAvailable] = await Promise.all([
+    authService.isEmailAvailable(email),
+    new Promise<void>((resolve) => setTimeout(resolve, 50 + Math.random() * 100)),
+  ]);
+
+  successResponse(res, {
+    email,
+    available: isAvailable,
+    message: 'Email berhasil divalidasi.',
+  });
 });

@@ -13,12 +13,15 @@ const router = Router();
 router.get(
   '/my-reviews',
   requireAuth,
-  requireRole(UserRole.BUYER, UserRole.ADMIN),
+  requireRole(UserRole.ADMIN, UserRole.BUYER),
   reviewController.getMyReviews,
 );
 
 // = [PUBLIC] GET PRODUCT REVIEWS =
 router.get('/products/:productId', reviewController.getReviewsByProduct);
+
+// = [PUBLIC] GET PRODUCT REVIEW SUMMARY (Rating Badge) =
+router.get('/products/:productId/summary', reviewController.getReviewSummary);
 
 // ==========================================
 // [BUYER] CREATE A REVIEW AFTER ORDER COMPLETED
@@ -29,6 +32,14 @@ router.post(
   requireRole(UserRole.BUYER, UserRole.ADMIN),
   validate(v.createReviewSchema),
   reviewController.postReview,
+);
+
+router.patch(
+  '/:reviewId',
+  requireAuth,
+  requireRole(UserRole.BUYER, UserRole.ADMIN),
+  validate(v.updateReviewSchema), // use update schema
+  reviewController.updateReview,
 );
 
 export default router;

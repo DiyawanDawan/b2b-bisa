@@ -1,59 +1,151 @@
 import logger from '../../src/config/logger.js';
 import { faker } from '@faker-js/faker/locale/id_ID';
 
-export async function seedIoT(prisma, users) {
-  logger.info('🌱 [06] Seeding Full IoT Telemetry & AI (10+ Data)...');
+const IOT_ONLINE_TIMEOUT_MS = 5 * 60 * 1000;
 
-  await prisma.iotDevice.deleteMany({});
-  await prisma.aIPrediction.deleteMany({});
+async function seedDeviceTelemetry(prisma, device, { readingCount = 8, withAlert = false }) {
+  for (let i = 0; i < readingCount; i++) {
+    const isAlertReading = withAlert && i === readingCount - 1;
+    const recordedAt = new Date(Date.now() - (readingCount - i) * 3 * 60 * 1000);
 
-  if (!users.allSuppliers || users.allSuppliers.length === 0) return;
-
-  // 1 IoT Device per Supplier
-  for (const supplier of users.allSuppliers) {
-    const deviceIdStr = `BISA-IOT-${faker.string.numeric(5)}`;
-
-    const device = await prisma.iotDevice.upsert({
-      where: { deviceId: deviceIdStr },
-      update: {},
-      create: {
-        userId: supplier.id,
-        deviceId: deviceIdStr,
-        name: `Mesin ${faker.commerce.productMaterial()} ${faker.location.city()}`,
-        status: faker.helpers.arrayElement(['ACTIVE', 'INACTIVE', 'MAINTENANCE']),
-        lat: faker.location.latitude(),
-        lng: faker.location.longitude(),
+    await prisma.iotReading.create({
+      data: {
+        deviceId: device.id,
+        temperature: isAlertReading
+          ? faker.number.float({ min: 620, max: 750, fractionDigits: 1 })
+          : faker.number.float({ min: 280, max: 460, fractionDigits: 1 }),
+        humidity: faker.number.float({ min: 8, max: 22, fractionDigits: 1 }),
+        co2Level: faker.number.float({ min: 380, max: 680, fractionDigits: 1 }),
+        recordedAt,
       },
     });
 
-    // Generate 5-10 Readings per device
-    const readingCount = faker.number.int({ min: 5, max: 10 });
-    for (let i = 0; i < readingCount; i++) {
-      const isAlert = i === 2; // Simulate an overheating event
-      await prisma.iotReading.create({
+    if (isAlertReading) {
+      await prisma.iotAlert.create({
         data: {
           deviceId: device.id,
-          temperature: isAlert
-            ? faker.number.float({ min: 500, max: 800, fractionDigits: 1 })
-            : faker.number.float({ min: 300, max: 480, fractionDigits: 1 }),
-          humidity: faker.number.float({ min: 5, max: 20, fractionDigits: 1 }),
-          co2Level: faker.number.float({ min: 350, max: 700, fractionDigits: 1 }),
+          alertType: 'OVERHEATING',
+          message: 'Suhu tungku melewati batas wajar. Segera periksa lokasi produksi.',
+          temperature: faker.number.float({ min: 620, max: 750, fractionDigits: 1 }),
+          isRead: false,
         },
       });
+    }
+  }
+}
 
-      if (isAlert) {
-        await prisma.iotAlert.create({
-          data: {
-            deviceId: device.id,
-            alertType: faker.helpers.arrayElement(['OVERHEATING', 'SENSOR_FAILURE']),
-            message: 'Suhu tungku melewati batas wajar (>500C). Segera kurangi suplai oksigen.',
-            temperature: faker.number.float({ min: 500, max: 800, fractionDigits: 1 }),
-          },
-        });
+export async function seedIoT(prisma, users) {
+  logger.info('🌱 [06] Seeding IoT Devices, Telemetry & AI...');
+
+  await prisma.iotAlert.deleteMany({});
+  await prisma.iotReading.deleteMany({});
+  await prisma.iotDevice.deleteMany({});
+  await prisma.aIPrediction.deleteMany({});
+
+  if (!users?.allSuppliers?.length) {
+    logger.warn('⚠️ [06] Tidak ada supplier — IoT dilewati.');
+    return;
+  }
+
+  const demoDevicePlans = new Map();
+
+  if (users.siti?.id) {
+    demoDevicePlans.set(users.siti.id, [
+      {
+        deviceId: 'BISA-IOT-SITI-001',
+        name: 'Tungku Biochar Utama',
+        status: 'ACTIVE',
+        readingCount: 12,
+        withAlert: true,
+      },
+      {
+        deviceId: 'BISA-IOT-SITI-002',
+        name: 'Gudang Sayur Organik',
+        status: 'ACTIVE',
+        readingCount: 6,
+        withAlert: false,
+      },
+      {
+        deviceId: 'BISA-IOT-SITI-OLD',
+        name: 'Mesin Produksi (Nonaktif)',
+        status: 'INACTIVE',
+        readingCount: 3,
+        withAlert: false,
+        oldReadings: true,
+      },
+    ]);
+  }
+
+  if (users.green?.id) {
+    demoDevicePlans.set(users.green.id, [
+      {
+        deviceId: 'BISA-IOT-GREEN-001',
+        name: 'Kiln Green Earth A',
+        status: 'ACTIVE',
+        readingCount: 10,
+        withAlert: false,
+      },
+      {
+        deviceId: 'BISA-IOT-GREEN-002',
+        name: 'Sensor Gudang Ekspor',
+        status: 'MAINTENANCE',
+        readingCount: 2,
+        withAlert: false,
+        oldReadings: true,
+      },
+    ]);
+  }
+
+  let deviceTotal = 0;
+
+  for (const supplier of users.allSuppliers) {
+    const plans = demoDevicePlans.get(supplier.id) ?? [
+      {
+        deviceId: `BISA-IOT-${faker.string.numeric(5)}`,
+        name: `Sensor ${faker.commerce.productMaterial()} ${faker.location.city()}`,
+        status: faker.helpers.arrayElement(['ACTIVE', 'INACTIVE']),
+        readingCount: faker.number.int({ min: 4, max: 8 }),
+        withAlert: false,
+      },
+    ];
+
+    for (const plan of plans) {
+      const device = await prisma.iotDevice.create({
+        data: {
+          userId: supplier.id,
+          deviceId: plan.deviceId,
+          name: plan.name,
+          status: plan.status,
+          thresholdMin: 200,
+          thresholdMax: 600,
+          lat: faker.location.latitude(),
+          lng: faker.location.longitude(),
+        },
+      });
+      deviceTotal++;
+
+      if (plan.status === 'ACTIVE' || plan.readingCount > 0) {
+        if (plan.oldReadings) {
+          for (let i = 0; i < plan.readingCount; i++) {
+            await prisma.iotReading.create({
+              data: {
+                deviceId: device.id,
+                temperature: faker.number.float({ min: 250, max: 400, fractionDigits: 1 }),
+                humidity: faker.number.float({ min: 10, max: 25, fractionDigits: 1 }),
+                co2Level: faker.number.float({ min: 350, max: 500, fractionDigits: 1 }),
+                recordedAt: new Date(Date.now() - IOT_ONLINE_TIMEOUT_MS - i * 3600000),
+              },
+            });
+          }
+        } else {
+          await seedDeviceTelemetry(prisma, device, {
+            readingCount: plan.readingCount,
+            withAlert: plan.withAlert,
+          });
+        }
       }
     }
 
-    // Generate 1-2 AI Predictions per supplier
     for (let j = 0; j < 2; j++) {
       await prisma.aIPrediction.create({
         data: {
@@ -78,5 +170,5 @@ export async function seedIoT(prisma, users) {
     }
   }
 
-  console.log('✅ [06] 10+ IoT Devices & AI Predictions seeded.');
+  logger.info(`✅ [06] ${deviceTotal} perangkat IoT + prediksi AI untuk supplier.`);
 }

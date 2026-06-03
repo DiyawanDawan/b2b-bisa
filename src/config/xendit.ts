@@ -1,35 +1,66 @@
 import dotenv from 'dotenv';
 import { Xendit } from 'xendit-node';
-import type {
-  PaymentRequest as XenditPaymentRequest,
-  PaymentRequestParameters,
-  PaymentMethodParameters,
+import {
+  PaymentMethodReusability,
+  PaymentRequestCurrency,
+  type PaymentRequest as XenditPaymentRequest,
+  type PaymentRequestParameters,
+  type PaymentMethodParameters,
+  type PaymentSimulation,
+  type VirtualAccountChannelCode,
+  type VirtualAccountChannelProperties,
+  type QRCodeChannelCode,
+  type QRCodeChannelProperties,
+  type EWalletChannelCode,
+  type EWalletChannelProperties,
+  type OverTheCounterChannelCode,
+  type OverTheCounterChannelProperties,
 } from 'xendit-node/payment_request/models';
-import type { CreatePayoutRequest } from 'xendit-node/payout/models';
+import {
+  CreateRefundReasonEnum as RefundReason,
+  type Refund,
+  type CreateRefundReasonEnum,
+} from 'xendit-node/refund/models';
+import type {
+  CreatePayoutRequest,
+  GetPayouts200ResponseDataInner,
+} from 'xendit-node/payout/models';
 import { PaymentMethod } from '#prisma';
 import { mapMethodToXenditType } from '#utils/paymentMethod.util';
+import { roundIdrAmount } from '#utils/currency.util';
 
 dotenv.config();
 
-const XENDIT_SECRET_KEY = process.env.XENDIT_SECRET_KEY!;
-const XENDIT_WEBHOOK_TOKEN = process.env.XENDIT_WEBHOOK_TOKEN!;
+const XENDIT_SECRET_KEY = process.env.XENDIT_SECRET_KEY;
+const XENDIT_WEBHOOK_TOKEN = process.env.XENDIT_WEBHOOK_TOKEN;
 
+// Fail fast in production if credentials are missing
 if (!XENDIT_SECRET_KEY) {
-  console.error('FATAL: Missing XENDIT_SECRET_KEY in .env file');
-  process.exit(1);
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'FATAL: XENDIT_SECRET_KEY must be set in production environment. Payment features will not work.',
+    );
+  }
+  console.warn(
+    'WARN: XENDIT_SECRET_KEY not set. Payment features will be disabled in development.',
+  );
 }
 
-// Initialize Xendit Client
+if (!XENDIT_WEBHOOK_TOKEN && process.env.NODE_ENV === 'production') {
+  throw new Error(
+    'FATAL: XENDIT_WEBHOOK_TOKEN must be set in production environment for webhook security.',
+  );
+}
+
+// Initialize Xendit Client (may fail if key is missing/invalid)
 export const xenditClient = new Xendit({
-  secretKey: XENDIT_SECRET_KEY,
+  secretKey: XENDIT_SECRET_KEY || 'xendit_development_only',
 });
 
-const API_VERSION = '2024-11-11';
-
-// Verify webhook token from Xendit
-export const verifyWebhookToken = (token: string): boolean => {
-  return token === XENDIT_WEBHOOK_TOKEN;
-};
+// SEC-BE-024: fungsi `verifyWebhookToken` lama (non-constant-time) DIHAPUS untuk
+// hindari pemakaian salah di masa depan. Verifikasi aktual ada di
+// `payment.service.ts` yang sudah pakai `crypto.timingSafeEqual` dengan
+// XENDIT_WEBHOOK_TOKEN.
 
 // ==================== Payment Request API (v3) ====================
 
@@ -39,53 +70,52 @@ export const createPaymentRequest = async (params: {
   currency?: string;
   channel_code: string;
   method: PaymentMethod;
-  channel_properties?: any;
+  channel_properties?: Record<string, unknown>;
   description?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }): Promise<XenditPaymentRequest> => {
   const xenditType = mapMethodToXenditType(params.method);
 
   const paymentMethod: PaymentMethodParameters = {
     type: xenditType,
-    reusability: 'ONE_TIME_USE' as any,
+    reusability: PaymentMethodReusability.OneTimeUse,
     referenceId: params.reference_id,
     description: params.description,
   };
 
   if (xenditType === 'VIRTUAL_ACCOUNT') {
     paymentMethod.virtualAccount = {
-      channelCode: params.channel_code as any,
-      channelProperties: params.channel_properties,
+      channelCode: params.channel_code as unknown as VirtualAccountChannelCode,
+      channelProperties: params.channel_properties as unknown as VirtualAccountChannelProperties,
     };
   } else if (xenditType === 'QR_CODE') {
     paymentMethod.qrCode = {
-      channelCode: params.channel_code as any,
-      channelProperties: params.channel_properties,
+      channelCode: params.channel_code as unknown as QRCodeChannelCode,
+      channelProperties: params.channel_properties as unknown as QRCodeChannelProperties,
     };
   } else if (xenditType === 'EWALLET') {
     paymentMethod.ewallet = {
-      channelCode: params.channel_code as any,
-      channelProperties: params.channel_properties,
+      channelCode: params.channel_code as unknown as EWalletChannelCode,
+      channelProperties: params.channel_properties as unknown as EWalletChannelProperties,
     };
   } else if (xenditType === 'OVER_THE_COUNTER') {
     paymentMethod.overTheCounter = {
-      channelCode: params.channel_code as any,
-      channelProperties: params.channel_properties,
+      channelCode: params.channel_code as unknown as OverTheCounterChannelCode,
+      channelProperties: params.channel_properties as unknown as OverTheCounterChannelProperties,
     };
   }
 
   const data: PaymentRequestParameters = {
     referenceId: params.reference_id,
-    currency: (params.currency as any) || 'IDR',
-    amount: params.amount,
+    currency: (params.currency as PaymentRequestCurrency | undefined) || PaymentRequestCurrency.Idr,
+    amount: roundIdrAmount(params.amount),
     paymentMethod,
     metadata: params.metadata,
   };
 
   return await xenditClient.PaymentRequest.createPaymentRequest({
     data,
-    apiVersion: API_VERSION,
-  } as any);
+  });
 };
 
 export const getPaymentRequestStatus = async (id: string): Promise<XenditPaymentRequest> => {
@@ -94,18 +124,27 @@ export const getPaymentRequestStatus = async (id: string): Promise<XenditPayment
   });
 };
 
-export const simulatePayment = async (id: string, _amount: number): Promise<any> => {
+export const simulatePayment = async (id: string, _amount: number): Promise<PaymentSimulation> => {
   return await xenditClient.PaymentRequest.simulatePaymentRequestPayment({
     paymentRequestId: id,
   });
 };
 
-export const refundPayment = async (id: string, amount: number, reason: string): Promise<any> => {
+export const refundPayment = async (
+  id: string,
+  amount: number,
+  reason: string,
+): Promise<Refund> => {
+  const normalizedReason = reason.toUpperCase();
+  const refundReason = (Object.values(RefundReason) as string[]).includes(normalizedReason)
+    ? (normalizedReason as CreateRefundReasonEnum)
+    : RefundReason.Others;
+
   return await xenditClient.Refund.createRefund({
     data: {
       paymentRequestId: id,
       amount,
-      reason: reason as any,
+      reason: refundReason,
     },
   });
 };
@@ -120,8 +159,8 @@ export const createPayout = async (params: {
   amount: number;
   description?: string;
   currency?: string;
-  metadata?: Record<string, any>;
-}): Promise<any> => {
+  metadata?: Record<string, unknown>;
+}): Promise<GetPayouts200ResponseDataInner> => {
   const data: CreatePayoutRequest = {
     referenceId: params.reference_id,
     channelCode: params.channel_code,
@@ -131,7 +170,7 @@ export const createPayout = async (params: {
     },
     amount: params.amount,
     description: params.description || 'Penarikan dana',
-    currency: (params.currency as any) || 'IDR',
+    currency: params.currency || 'IDR',
     metadata: params.metadata,
   };
 
@@ -141,13 +180,13 @@ export const createPayout = async (params: {
   });
 };
 
-export const getPayoutById = async (id: string): Promise<any> => {
+export const getPayoutById = async (id: string): Promise<GetPayouts200ResponseDataInner> => {
   return await xenditClient.Payout.getPayoutById({
     id,
   });
 };
 
-export const cancelPayout = async (id: string): Promise<any> => {
+export const cancelPayout = async (id: string): Promise<GetPayouts200ResponseDataInner> => {
   return await xenditClient.Payout.cancelPayout({
     id,
   });

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import * as gisController from '#controllers/gis.controller';
+import { requireAuth } from '#middlewares/authMiddleware';
 
 const router = Router();
 
@@ -19,6 +20,6 @@ router.get('/waste', gisController.getWasteMap);
  * @route POST /api/v1/gis/match
  * @desc Match supply and demand - PUBLIC
  */
-router.post('/match', gisController.matchSupplyDemand);
+router.post('/match', requireAuth, gisController.matchSupplyDemand);
 
 export default router;

@@ -88,6 +88,8 @@ export const updateProfileSchema = z
     companyName: z.string().optional(),
     npwp: z.string().optional(),
     businessType: z.string().optional(),
+    rajaongkirOriginId: z.coerce.number().int().positive().optional(),
+    rajaongkirOriginLabel: z.string().max(500).optional(),
   })
   .optional();
 
@@ -115,4 +117,8 @@ export const submitVerificationSchema = z
 export const resendOtpSchema = z.object({
   email: z.string().email('Format email tidak valid'),
   type: resendOtpTypeSchema.default(TokenType.EMAIL_VERIFICATION),
+});
+
+export const checkEmailSchema = z.object({
+  email: z.string().email('Format email tidak valid'),
 });

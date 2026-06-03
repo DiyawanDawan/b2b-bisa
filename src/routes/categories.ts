@@ -13,4 +13,9 @@ router.get('/', categoryController.listCategories);
  */
 router.get('/:id', categoryController.getCategoryById);
 
+/**
+ * @route   GET /api/v1/categories/:id/products
+ */
+router.get('/:id/products', categoryController.listCategoryProducts);
+
 export default router;

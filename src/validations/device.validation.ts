@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { PaymentMethod } from '#prisma';
+import { DeviceStatus, PaymentMethod } from '#prisma';
 
 export const registerDeviceSchema = z.object({
   body: z.object({
@@ -26,6 +26,7 @@ export const updateDeviceSchema = z.object({
       name: z.string().min(1, 'Nama tidak boleh kosong').optional(),
       thresholdMin: z.number().nonnegative().optional(),
       thresholdMax: z.number().nonnegative().optional(),
+      status: z.nativeEnum(DeviceStatus).optional(),
     })
     .refine(
       (value) =>
@@ -49,6 +50,8 @@ export const paginationSchema = z.object({
       .string()
       .optional()
       .transform((v) => (v ? parseInt(v, 10) : 20)),
+    search: z.string().optional(),
+    status: z.string().optional(),
   }),
 });
 
@@ -58,5 +61,39 @@ export const subscriptionSchema = z.object({
     method: z.nativeEnum(PaymentMethod, {
       required_error: 'Payment method diperlukan',
     }),
+  }),
+});
+
+export const iotDashboardQuerySchema = z.object({
+  params: z.object({
+    deviceId: z.string().uuid('Invalid Device UUID format'),
+  }),
+  query: z.object({
+    range: z.enum(['1h', '24h', '7d', '30d']).optional().default('24h'),
+    limit: z.coerce.number().int().min(1).max(500).optional(),
+    metrics: z.string().optional(),
+  }),
+});
+
+export const iotFleetQuerySchema = z.object({
+  query: z.object({
+    range: z.enum(['1h', '24h', '7d', '30d']).optional().default('24h'),
+  }),
+});
+
+export const iotDeviceAlertsQuerySchema = z.object({
+  params: z.object({
+    deviceId: z.string().uuid('Invalid Device UUID format'),
+  }),
+  query: z.object({
+    page: z.coerce.number().int().min(1).optional().default(1),
+    limit: z.coerce.number().int().min(1).max(50).optional().default(20),
+    isRead: z.enum(['true', 'false']).optional(),
+  }),
+});
+
+export const iotDeviceIdParamsSchema = z.object({
+  params: z.object({
+    deviceId: z.string().uuid('Invalid Device UUID format'),
   }),
 });

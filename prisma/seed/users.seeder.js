@@ -1,9 +1,6 @@
-import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
 
 export async function seedUsers(prisma) {
-  console.log('🌱 Seeding Users...');
-
   const passwordHash = await bcrypt.hash('password123', 10);
 
   // 1. Admin
@@ -53,6 +50,5 @@ export async function seedUsers(prisma) {
     },
   });
 
-  console.log('✅ Users seeded successfully.');
   return supplier; // Return for product seeding
 }

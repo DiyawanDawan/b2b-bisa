@@ -6,6 +6,8 @@ import upload from '#middlewares/upload';
 import * as v from '#validations/auth.validation';
 import * as uv from '#validations/user.validation';
 import * as verificationController from '#controllers/verification.controller';
+import * as storeBannerController from '#controllers/storeBanner.controller';
+import * as sbv from '#validations/storeBanner.validation';
 
 const router = Router();
 
@@ -20,6 +22,35 @@ router.patch(
   upload.single('avatar'),
   validate(v.updateProfileSchema),
   userController.updateProfile,
+);
+
+// ─── Store Banners (Supplier) ────────────────────────────
+
+router.get('/me/store-banners', requireAuth, storeBannerController.listMyStoreBanners);
+router.post(
+  '/me/store-banners',
+  requireAuth,
+  upload.single('image'),
+  storeBannerController.createStoreBanner,
+);
+router.patch(
+  '/me/store-banners/:bannerId',
+  requireAuth,
+  validate(sbv.updateStoreBannerSchema, 'all'),
+  storeBannerController.updateStoreBanner,
+);
+router.delete(
+  '/me/store-banners/:bannerId',
+  requireAuth,
+  validate(sbv.bannerIdParamSchema, 'all'),
+  storeBannerController.deleteStoreBanner,
+);
+
+router.get(
+  '/:userId/store-banners',
+  optionalAuth,
+  validate(sbv.userIdParamSchema, 'all'),
+  storeBannerController.listUserStoreBanners,
 );
 
 // Permintaan ganti nomor telepon
@@ -68,6 +99,7 @@ router.put(
   userController.updateAddress,
 );
 router.delete('/me/addresses/:id', requireAuth, userController.deleteAddress);
+router.patch('/me/addresses/:id/set-default', requireAuth, userController.setDefaultAddress);
 
 // ─── Operating Hours (Authenticated) ───────────────────
 

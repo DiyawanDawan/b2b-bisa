@@ -2,6 +2,7 @@ import { Router } from 'express';
 import * as walletController from '#controllers/wallet.controller';
 import validate from '#middlewares/validate';
 import { requireAuth, requireRole } from '#middlewares/authMiddleware';
+import { financialLimiter } from '#middlewares/rateLimiter';
 import * as v from '#validations/finance.validation';
 import { UserRole } from '#prisma';
 
@@ -21,12 +22,14 @@ router.get('/me', requireRole(UserRole.SUPPLIER, UserRole.ADMIN), walletControll
 router.get(
   '/transactions',
   requireRole(UserRole.SUPPLIER, UserRole.ADMIN),
+  validate(v.getWalletHistorySchema, 'all'),
   walletController.getWalletHistory,
 );
 
 // [SUPPLIER] Request Fund Withdrawal to Bank
 router.post(
   '/withdraw',
+  financialLimiter,
   requireRole(UserRole.SUPPLIER, UserRole.ADMIN),
   validate(v.withdrawRequestSchema),
   walletController.withdrawBalance,
@@ -53,7 +56,23 @@ router.post(
 router.delete(
   '/payout-accounts/:id',
   requireRole(UserRole.SUPPLIER, UserRole.ADMIN),
+  validate(v.payoutAccountIdParamSchema, 'params'),
   walletController.deletePayoutAccount,
+);
+
+// SEC-BE-010: PATCH payout account sekarang punya Zod schema (params UUID + body strict).
+router.patch(
+  '/payout-accounts/:id',
+  requireRole(UserRole.SUPPLIER, UserRole.ADMIN),
+  validate(v.updatePayoutAccountSchema, 'all'),
+  walletController.updatePayoutAccount,
+);
+
+router.patch(
+  '/payout-accounts/:id/main',
+  requireRole(UserRole.SUPPLIER, UserRole.ADMIN),
+  validate(v.payoutAccountIdParamSchema, 'params'),
+  walletController.setMainPayoutAccount,
 );
 
 /**

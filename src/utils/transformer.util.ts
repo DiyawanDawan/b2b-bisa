@@ -6,10 +6,12 @@ import { Prisma } from '#prisma';
 interface CustomerAddressWithAddress {
   id: string;
   label: string;
+  isPrimary: boolean;
   addressId: string;
   address: {
     fullAddress: string;
     zipCode: string;
+    phoneNumber: string | null;
     latitude: Prisma.Decimal | null;
     longitude: Prisma.Decimal | null;
     countryId: string;
@@ -36,6 +38,7 @@ export const transformAddress = (ca: CustomerAddressWithAddress) => {
     label: ca.label,
     fullAddress: ca.address.fullAddress,
     zipCode: ca.address.zipCode,
+    phone: ca.address.phoneNumber || null,
     country: ca.address.country?.name || null,
     province: ca.address.province?.name || null,
     regency: ca.address.regency?.name || null,
@@ -50,5 +53,6 @@ export const transformAddress = (ca: CustomerAddressWithAddress) => {
     regencyId: ca.address.regencyId,
     districtId: ca.address.districtId,
     villageId: ca.address.villageId,
+    isPrimary: ca.isPrimary,
   };
 };

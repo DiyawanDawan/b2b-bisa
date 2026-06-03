@@ -1,19 +1,21 @@
 import { Router } from 'express';
 import * as paymentController from '#controllers/payment.controller';
+import { webhookLimiter, publicApiLimiter } from '#middlewares/rateLimiter';
 
 const router = Router();
 
 // ==========================================
 // [PUBLIC] WEBHOOK PAYMENT LISTENER
-// Dilarang memakai requireAuth di sini!
+// Dilarang memakai requireAuth di sini! Signature di-verify constant-time di service.
+// SEC-BE-006: tambahan webhookLimiter sebagai defense-in-depth.
 // ==========================================
-router.post('/xendit-webhook', paymentController.xenditInvoiceWebhook);
-router.post('/payout-webhook', paymentController.xenditPayoutWebhook);
-router.post('/session-webhook', paymentController.xenditPaymentSessionWebhook);
+router.post('/xendit-webhook', webhookLimiter, paymentController.xenditInvoiceWebhook);
+router.post('/payout-webhook', webhookLimiter, paymentController.xenditPayoutWebhook);
+router.post('/session-webhook', webhookLimiter, paymentController.xenditPaymentSessionWebhook);
 
 // ==========================================
 // [PUBLIC] PAYMENT METHODS CATALOG
 // ==========================================
-router.get('/channels', paymentController.paymentChannels);
+router.get('/channels', publicApiLimiter, paymentController.paymentChannels);
 
 export default router;

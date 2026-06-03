@@ -7,7 +7,10 @@ import { successResponse, createdResponse, paginatedResponse } from '#utils/resp
 import catchAsync from '#utils/catchAsync';
 import { AuthRequest } from '#types/index';
 import prisma from '#config/prisma';
+import * as productService from '#services/product.service';
+import { ProductStatus } from '#prisma';
 import AppError from '#utils/appError';
+import { attachUserMediaUrls } from '#utils/userMedia.util';
 
 /**
  * GET /api/v1/users/:id
@@ -16,7 +19,7 @@ import AppError from '#utils/appError';
 export const getUserById = catchAsync(async (req: AuthRequest, res: Response) => {
   const isAuthorized = !!req.user;
   const data = await userService.getUserById(req.params.id, isAuthorized);
-  return successResponse(res, data, 'Profil user berhasil diambil');
+  return successResponse(res, attachUserMediaUrls(data), 'Profil user berhasil diambil');
 });
 
 /**
@@ -26,7 +29,7 @@ export const getUserById = catchAsync(async (req: AuthRequest, res: Response) =>
 export const getMe = catchAsync(async (req: AuthRequest, res: Response) => {
   const data = await authService.getMe(req.user!.id);
   if (!data) throw new AppError('User tidak ditemukan.', 404);
-  successResponse(res, data, 'Data profil');
+  successResponse(res, attachUserMediaUrls(data), 'Data profil');
 });
 
 /**
@@ -35,10 +38,9 @@ export const getMe = catchAsync(async (req: AuthRequest, res: Response) => {
  */
 export const updateProfile = catchAsync(async (req: AuthRequest, res: Response) => {
   const updateData = { ...req.body };
+  const userId = req.user!.id;
 
-  // Handle avatar upload if present
   if (req.file) {
-    const userId = req.user!.id;
     const oldUser = await prisma.user.findUnique({
       where: { id: userId },
       select: { avatarUrl: true },
@@ -55,13 +57,8 @@ export const updateProfile = catchAsync(async (req: AuthRequest, res: Response) 
     updateData.avatarUrl = uploadedPath;
   }
 
-  const data = await authService.updateProfile(req.user!.id, updateData);
-
-  if (data.avatarUrl) {
-    (data as any).avatarUrl = storageService.getPublicUrl(data.avatarUrl);
-  }
-
-  successResponse(res, data, 'Profil berhasil diperbarui');
+  const data = await authService.updateProfile(userId, updateData);
+  successResponse(res, attachUserMediaUrls(data), 'Profil berhasil diperbarui');
 });
 
 /**
@@ -130,6 +127,14 @@ export const deleteAddress = catchAsync(async (req: AuthRequest, res: Response) 
   return successResponse(res, null, 'Alamat berhasil dihapus');
 });
 
+/**
+ * PATCH /api/v1/users/me/addresses/:id/set-default
+ */
+export const setDefaultAddress = catchAsync(async (req: AuthRequest, res: Response) => {
+  const data = await userService.setDefaultAddress(req.params.id, req.user!.id);
+  return successResponse(res, data, 'Alamat utama berhasil diperbarui');
+});
+
 // ─── Operating Hours ────────────────────────────────────
 
 /**
@@ -168,7 +173,14 @@ export const listSuppliers = catchAsync(async (req: AuthRequest, res: Response) 
     filters as Parameters<typeof userService.listSuppliers>[0],
     isAuthorized,
   );
-  return paginatedResponse(res, suppliers, total, page, limit, 'Daftar supplier berhasil diambil');
+  return paginatedResponse(
+    res,
+    suppliers.map((s) => attachUserMediaUrls(s)),
+    total,
+    page,
+    limit,
+    'Daftar supplier berhasil diambil',
+  );
 });
 
 /**
@@ -177,5 +189,67 @@ export const listSuppliers = catchAsync(async (req: AuthRequest, res: Response) 
 export const getSupplierDetail = catchAsync(async (req: AuthRequest, res: Response) => {
   const isAuthorized = !!req.user;
   const data = await userService.getSupplierDetail(req.params.id, isAuthorized);
-  return successResponse(res, data, 'Detail supplier berhasil diambil');
+  return successResponse(res, attachUserMediaUrls(data), 'Detail supplier berhasil diambil');
+});
+/**
+ * GET /api/v1/suppliers/:id/products
+ */
+export const getSupplierProducts = catchAsync(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params;
+  const page = Math.max(1, parseInt(req.query.page as string) || 1);
+  const limit = Math.max(1, Math.min(100, parseInt(req.query.limit as string) || 20));
+  const search = req.query.search as string | undefined;
+
+  const result = await productService.listProducts({
+    userId: id,
+    status: ProductStatus.ACTIVE,
+    search,
+    page,
+    limit,
+  });
+
+  return paginatedResponse(
+    res,
+    result.products,
+    result.total,
+    page,
+    limit,
+    'Katalog produk supplier berhasil diambil',
+  );
+});
+
+/**
+ * GET /api/v1/suppliers/:id/verification-status
+ */
+export const getSupplierVerification = catchAsync(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params;
+
+  const data = await prisma.user.findUnique({
+    where: { id },
+    select: {
+      fullName: true,
+      verification: {
+        select: {
+          verificationStatus: true,
+          isVerified: true,
+          reviewedAt: true,
+        },
+      },
+    },
+  });
+
+  if (!data) throw new AppError('Penyuplai tidak ditemukan', 404);
+
+  return successResponse(
+    res,
+    {
+      supplierId: id,
+      fullName: data.fullName,
+      isVerified: data.verification?.isVerified || false,
+      status: data.verification?.verificationStatus || 'UNVERIFIED',
+      verifiedAt: data.verification?.reviewedAt || null,
+      badge: data.verification?.isVerified ? '✅ Terverifikasi oleh BISA Platform' : null,
+    },
+    'Status verifikasi suplayer berhasil diambil',
+  );
 });

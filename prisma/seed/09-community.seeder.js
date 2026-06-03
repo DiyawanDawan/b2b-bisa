@@ -1,5 +1,6 @@
 import logger from '../../src/config/logger.js';
 import { faker } from '@faker-js/faker/locale/id_ID';
+import { loremFlickrDbPath } from '../../src/utils/loremFlickrMedia.util.ts';
 
 export async function seedCommunity(prisma, users) {
   logger.info('🌱 [09] Seeding Full Community Content (10+ Data)...');
@@ -21,7 +22,7 @@ export async function seedCommunity(prisma, users) {
       data: {
         title: faker.lorem.sentence(6),
         content: faker.lorem.paragraphs(3),
-        imageUrl: faker.image.urlLoremFlickr({ category: 'nature', width: 640, height: 480 }),
+        imageUrl: loremFlickrDbPath(['agriculture', 'farm'], { lock: i + 1 }),
         categoryId: articleCat?.id,
         authorId: admin.id,
         status: faker.helpers.arrayElement(['PUBLISHED', 'DRAFT', 'ARCHIVED']),

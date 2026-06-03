@@ -3,6 +3,7 @@ import AppError from '#utils/appError';
 import {
   Prisma,
   OrderStatus,
+  DisputeStatus,
   UserStatus,
   ProductStatus,
   VerificationStatus,
@@ -16,6 +17,7 @@ import {
   NotificationPriority,
   PayoutStatus,
 } from '#prisma';
+import { createNotification } from '#services/notification.service';
 
 interface ChartDataRow {
   x: Date | string | number;
@@ -129,6 +131,123 @@ export const getUserAnalytics = async () => {
       labels: statusDistribution.map((item) => item.status),
       series: statusDistribution.map((item) => item._count.id),
     },
+  };
+};
+
+type UserDailyRow = { x: Date | string; y: number | string | null };
+
+function fillUserDailySeries(raw: UserDailyRow[], days = 30): { x: string; y: number }[] {
+  const map = new Map<string, number>();
+  for (const row of raw) {
+    const key =
+      row.x instanceof Date ? row.x.toISOString().split('T')[0] : String(row.x).split('T')[0];
+    map.set(key, Number(row.y ?? 0));
+  }
+  const out: { x: string; y: number }[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() - i);
+    const key = d.toISOString().split('T')[0];
+    out.push({ x: key, y: map.get(key) ?? 0 });
+  }
+  return out;
+}
+
+/**
+ * Statistik lengkap untuk halaman admin pengguna (chart & KPI).
+ */
+export const getUserAnalyticsStats = async () => {
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const oneYearAgo = new Date();
+  oneYearAgo.setMonth(oneYearAgo.getMonth() - 12);
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+
+  const [
+    roleDistribution,
+    statusDistribution,
+    kycDistribution,
+    dailySignupRaw,
+    monthlySignupRaw,
+    totalUsers,
+    activeUsers,
+    blockedUsers,
+    suppliers,
+    buyers,
+    admins,
+    pendingKyc,
+    verifiedKyc,
+    rejectedKyc,
+    thisMonthUsers,
+    emailVerified,
+  ] = await Promise.all([
+    prisma.user.groupBy({ by: ['role'], _count: { id: true } }),
+    prisma.user.groupBy({ by: ['status'], _count: { id: true } }),
+    prisma.userVerification.groupBy({
+      by: ['verificationStatus'],
+      _count: { id: true },
+    }),
+    prisma.$queryRaw<UserDailyRow[]>`
+      SELECT DATE(created_at) as x, COUNT(*) as y
+      FROM users
+      WHERE created_at >= ${thirtyDaysAgo}
+      GROUP BY DATE(created_at)
+      ORDER BY x ASC
+    `,
+    prisma.$queryRaw<UserDailyRow[]>`
+      SELECT DATE_FORMAT(created_at, '%Y-%m') as x, COUNT(*) as y
+      FROM users
+      WHERE created_at >= ${oneYearAgo}
+      GROUP BY DATE_FORMAT(created_at, '%Y-%m')
+      ORDER BY x ASC
+    `,
+    prisma.user.count(),
+    prisma.user.count({ where: { status: UserStatus.ACTIVE } }),
+    prisma.user.count({ where: { status: UserStatus.BLOCKED } }),
+    prisma.user.count({ where: { role: UserRole.SUPPLIER } }),
+    prisma.user.count({ where: { role: UserRole.BUYER } }),
+    prisma.user.count({ where: { role: UserRole.ADMIN } }),
+    prisma.userVerification.count({
+      where: { verificationStatus: VerificationStatus.PENDING },
+    }),
+    prisma.userVerification.count({
+      where: { verificationStatus: VerificationStatus.VERIFIED },
+    }),
+    prisma.userVerification.count({
+      where: { verificationStatus: VerificationStatus.REJECTED },
+    }),
+    prisma.user.count({ where: { createdAt: { gte: monthStart } } }),
+    prisma.user.count({ where: { isEmailVerified: true } }),
+  ]);
+
+  return {
+    summary: {
+      totalUsers,
+      activeUsers,
+      blockedUsers,
+      suppliers,
+      buyers,
+      admins,
+      pendingKyc,
+      verifiedKyc,
+      rejectedKyc,
+      thisMonthUsers,
+      emailVerified,
+    },
+    roles: roleDistribution.map((r) => ({ role: r.role, count: r._count.id })),
+    statuses: statusDistribution.map((s) => ({ status: s.status, count: s._count.id })),
+    kyc: kycDistribution.map((k) => ({
+      status: k.verificationStatus,
+      count: k._count.id,
+    })),
+    dailySignups: fillUserDailySeries(dailySignupRaw),
+    monthlySignups: monthlySignupRaw.map((row) => ({
+      x: String(row.x),
+      y: Number(row.y ?? 0),
+    })),
   };
 };
 
@@ -381,10 +500,35 @@ export const listAllProducts = async (params: {
  * Verify / Certify a product
  */
 export const verifyProduct = async (productId: string, isCertified: boolean) => {
-  return prisma.product.update({
+  const existing = await prisma.product.findUnique({
+    where: { id: productId },
+    select: { id: true, isCertified: true, name: true },
+  });
+
+  if (!existing) {
+    throw new AppError('Produk tidak ditemukan', 404);
+  }
+
+  const include = {
+    user: { select: { fullName: true, email: true } },
+    category: { select: { name: true } },
+  } as const;
+
+  if (existing.isCertified === isCertified) {
+    const product = await prisma.product.findUniqueOrThrow({
+      where: { id: productId },
+      include,
+    });
+    return { product, previousIsCertified: existing.isCertified, changed: false };
+  }
+
+  const product = await prisma.product.update({
     where: { id: productId },
     data: { isCertified },
+    include,
   });
+
+  return { product, previousIsCertified: existing.isCertified, changed: true };
 };
 
 /**
@@ -395,13 +539,23 @@ export const listTransactions = async (params: {
   limit: number;
   type?: TransactionType;
   status?: TransactionStatus;
+  search?: string;
 }) => {
-  const { page, limit, type, status } = params;
+  const { page, limit, type, status, search } = params;
   const skip = (page - 1) * limit;
 
-  const where: Record<string, unknown> = {};
-  if (type) where.type = type;
-  if (status) where.status = status;
+  const where: Prisma.TransactionWhereInput = {
+    ...(type && { type }),
+    ...(status && { status }),
+    ...(search && {
+      OR: [
+        { externalId: { startsWith: search } },
+        { order: { orderNumber: { startsWith: search } } },
+        { user: { fullName: { startsWith: search } } },
+        { user: { email: { startsWith: search } } },
+      ],
+    }),
+  };
 
   const [transactions, total] = await Promise.all([
     prisma.transaction.findMany({
@@ -426,23 +580,40 @@ export const listTransactions = async (params: {
 /**
  * List all disputed orders with pagination
  */
-export const listDisputes = async (params: { page: number; limit: number }) => {
-  const { page, limit } = params;
+export const listDisputes = async (params: {
+  page: number;
+  limit: number;
+  search?: string;
+  statusFilter?: OrderStatus;
+}) => {
+  const { page, limit, search, statusFilter } = params;
   const skip = (page - 1) * limit;
+
+  const where: Prisma.OrderWhereInput = {
+    status: statusFilter || OrderStatus.DISPUTED,
+    ...(search && {
+      OR: [
+        { orderNumber: { startsWith: search } },
+        { buyer: { fullName: { startsWith: search } } },
+        { seller: { fullName: { startsWith: search } } },
+      ],
+    }),
+  };
 
   const [disputes, total] = await Promise.all([
     prisma.order.findMany({
-      where: { status: OrderStatus.DISPUTED },
+      where,
       include: {
         buyer: { select: { fullName: true } },
         seller: { select: { fullName: true } },
         negotiation: { select: { id: true } },
+        dispute: true,
       },
       orderBy: { updatedAt: 'desc' },
       skip,
       take: limit,
     }),
-    prisma.order.count({ where: { status: OrderStatus.DISPUTED } }),
+    prisma.order.count({ where }),
   ]);
 
   return {
@@ -460,7 +631,7 @@ export const resolveDispute = async (
   note: string,
   adminId: string,
 ) => {
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const order = await tx.order.findUnique({
       where: { id: orderId },
       include: { transaction: true },
@@ -474,7 +645,6 @@ export const resolveDispute = async (
     const newTrxStatus =
       resolution === 'RELEASE' ? TransactionStatus.RELEASED : TransactionStatus.REFUNDED;
 
-    // 1. Update Order Status
     const updatedOrder = await tx.order.update({
       where: { id: orderId },
       data: { status: newOrderStatus },
@@ -487,7 +657,17 @@ export const resolveDispute = async (
       });
     }
 
-    // 3. Create Audit Log
+    await tx.orderDispute.updateMany({
+      where: { orderId, status: { not: DisputeStatus.RESOLVED } },
+      data: {
+        status: DisputeStatus.RESOLVED,
+        resolution,
+        resolutionNote: note,
+        resolvedAt: new Date(),
+        resolvedById: adminId,
+      },
+    });
+
     await tx.auditLog.create({
       data: {
         userId: adminId,
@@ -498,8 +678,37 @@ export const resolveDispute = async (
       },
     });
 
-    return updatedOrder;
+    return {
+      updatedOrder,
+      buyerId: order.buyerId,
+      sellerId: order.sellerId,
+      orderNumber: order.orderNumber,
+    };
   });
+
+  const resolutionLabel =
+    resolution === 'RELEASE' ? 'dana dilepas ke supplier' : 'dana direfund ke pembeli';
+  const notifyBody = `Sengketa pesanan ${result.orderNumber} diselesaikan: ${resolutionLabel}.`;
+
+  void createNotification({
+    userId: result.buyerId,
+    title: 'Sengketa Diselesaikan',
+    body: notifyBody,
+    type: NotificationType.DISPUTE,
+    priority: NotificationPriority.HIGH,
+    refId: orderId,
+  }).catch(() => {});
+
+  void createNotification({
+    userId: result.sellerId,
+    title: 'Sengketa Diselesaikan',
+    body: notifyBody,
+    type: NotificationType.DISPUTE,
+    priority: NotificationPriority.HIGH,
+    refId: orderId,
+  }).catch(() => {});
+
+  return result.updatedOrder;
 };
 
 /**
@@ -515,6 +724,7 @@ export const getDisputeDetail = async (orderId: string) => {
       shipment: true,
       transaction: true,
       negotiation: true,
+      dispute: true,
     },
   });
 
@@ -564,14 +774,71 @@ export const getFinanceStats = async () => {
   };
 };
 
+const PRODUCT_STATUS_NOTIFY: Partial<
+  Record<ProductStatus, { title: string; priority: NotificationPriority }>
+> = {
+  [ProductStatus.BLOCKED]: {
+    title: 'Produk diblokir',
+    priority: NotificationPriority.HIGH,
+  },
+  [ProductStatus.INACTIVE]: {
+    title: 'Produk dinonaktifkan',
+    priority: NotificationPriority.MEDIUM,
+  },
+  [ProductStatus.DRAFT]: {
+    title: 'Produk dikembalikan ke draft',
+    priority: NotificationPriority.MEDIUM,
+  },
+  [ProductStatus.OUT_OF_STOCK]: {
+    title: 'Produk ditandai habis',
+    priority: NotificationPriority.LOW,
+  },
+  [ProductStatus.DELETED]: {
+    title: 'Produk dihapus dari listing',
+    priority: NotificationPriority.HIGH,
+  },
+};
+
 /**
- * Update product listing status (Unlist/Activate)
+ * Moderasi status listing produk (dengan alasan untuk status restriktif).
  */
-export const updateProductStatus = async (productId: string, status: ProductStatus) => {
-  return prisma.product.update({
+export const moderateProductStatus = async (
+  productId: string,
+  status: ProductStatus,
+  options: { reason?: string; adminUserId: string },
+) => {
+  const existing = await prisma.product.findUnique({
+    where: { id: productId },
+    select: { id: true, status: true, name: true, userId: true },
+  });
+
+  if (!existing) {
+    throw new AppError('Produk tidak ditemukan', 404);
+  }
+
+  const reason = options.reason?.trim();
+  const updated = await prisma.product.update({
     where: { id: productId },
     data: { status },
   });
+
+  const notifyMeta = PRODUCT_STATUS_NOTIFY[status];
+  if (notifyMeta && reason) {
+    void createNotification({
+      userId: existing.userId,
+      title: notifyMeta.title,
+      body: `Listing "${existing.name}" dimoderasi admin. Alasan: ${reason}`,
+      type: NotificationType.SYSTEM_ANNOUNCEMENT,
+      priority: notifyMeta.priority,
+      refId: productId,
+    });
+  }
+
+  return {
+    product: updated,
+    previousStatus: existing.status,
+    reason: reason ?? null,
+  };
 };
 
 /**
@@ -707,10 +974,106 @@ export const createBroadcast = async (
     userId: adminId,
     action: 'CREATE_BROADCAST',
     entity: 'NOTIFICATION',
-    newValue: { title, targetRole, userCount: users.length },
+    newValue: {
+      title,
+      message: message.length > 200 ? `${message.slice(0, 200)}…` : message,
+      priority,
+      targetRole: targetRole ?? null,
+      userCount: users.length,
+    },
   });
 
   return { success: true, count: users.length };
+};
+
+export const getNotificationAdminStats = async () => {
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+  const [
+    totalNotifications,
+    unreadNotifications,
+    systemAnnouncements7d,
+    activeUsers,
+    pushDevices,
+    broadcastCount,
+  ] = await Promise.all([
+    prisma.notification.count(),
+    prisma.notification.count({ where: { isRead: false } }),
+    prisma.notification.count({
+      where: {
+        type: NotificationType.SYSTEM_ANNOUNCEMENT,
+        createdAt: { gte: sevenDaysAgo },
+      },
+    }),
+    prisma.user.count({ where: { status: UserStatus.ACTIVE, role: { not: UserRole.ADMIN } } }),
+    prisma.userDevice.count({ where: { isActive: true } }),
+    prisma.auditLog.count({ where: { action: 'CREATE_BROADCAST' } }),
+  ]);
+
+  const byPriority = await prisma.notification.groupBy({
+    by: ['priority'],
+    _count: { id: true },
+    where: { createdAt: { gte: sevenDaysAgo } },
+  });
+
+  return {
+    totalNotifications,
+    unreadNotifications,
+    systemAnnouncements7d,
+    activeUsers,
+    pushDevices,
+    broadcastCount,
+    byPriority: byPriority.map((p) => ({
+      priority: p.priority,
+      count: p._count.id,
+    })),
+  };
+};
+
+export const listBroadcastHistory = async (params: { page: number; limit: number }) => {
+  const { page, limit } = params;
+  const skip = (page - 1) * limit;
+
+  const [logs, total] = await Promise.all([
+    prisma.auditLog.findMany({
+      where: { action: 'CREATE_BROADCAST', entity: 'NOTIFICATION' },
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: limit,
+      include: {
+        user: { select: { id: true, fullName: true, email: true } },
+      },
+    }),
+    prisma.auditLog.count({
+      where: { action: 'CREATE_BROADCAST', entity: 'NOTIFICATION' },
+    }),
+  ]);
+
+  const items = logs.map((log) => {
+    const val = log.newValue as {
+      title?: string;
+      message?: string;
+      priority?: string;
+      targetRole?: string | null;
+      userCount?: number;
+    } | null;
+    return {
+      id: log.id,
+      title: val?.title ?? '—',
+      messagePreview: val?.message ?? null,
+      priority: val?.priority ?? 'MEDIUM',
+      targetRole: val?.targetRole ?? null,
+      recipientCount: val?.userCount ?? 0,
+      sentAt: log.createdAt,
+      sentBy: log.user,
+    };
+  });
+
+  return {
+    items,
+    pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+  };
 };
 
 /**

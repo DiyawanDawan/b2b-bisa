@@ -15,15 +15,15 @@ export async function seedProducts(prisma, supplier) {
       grade: 'A',
       description:
         'Biochar kualitas ekspor dengan kadar karbon murni di atas 85%. Cocok untuk aktivasi tanah dan filter industri.',
-      pricePerKg: 15000,
+      pricePerUnit: 15000,
       stock: 50.5,
       unit: 'TON',
       minOrder: 1,
       isCertified: true,
       technicalSpec: {
         create: {
-          carbonContent: 88.5,
-          moisture: 5.2,
+          carbonPurity: 88.5,
+          moistureContent: 5.2,
           phLevel: 7.4,
           productionCapacity: 100,
           grossWeightPerSak: 50,
@@ -37,7 +37,7 @@ export async function seedProducts(prisma, supplier) {
       biomassaType: 'SEKAM_PADI',
       description:
         'Limbah penggilingan padi organik dari panen raya Jawa Timur. Kekeringan maksimal.',
-      pricePerKg: 1500,
+      pricePerUnit: 1500,
       stock: 200,
       unit: 'TON',
       minOrder: 5,

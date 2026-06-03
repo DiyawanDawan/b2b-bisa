@@ -28,7 +28,19 @@ export const submitVerification = async (
 export const getPendingVerifications = async () => {
   return prisma.userVerification.findMany({
     where: { verificationStatus: VerificationStatus.PENDING },
-    include: {
+    select: {
+      id: true,
+      userId: true,
+      ktpUrl: true,
+      nibUrl: true,
+      selfieUrl: true,
+      siupUrl: true,
+      businessName: true,
+      taxId: true,
+      businessAddress: true,
+      verificationStatus: true,
+      isVerified: true,
+      createdAt: true,
       user: {
         select: { id: true, fullName: true, email: true, role: true, phone: true },
       },
@@ -58,7 +70,12 @@ export const updateVerificationStatus = async (
 };
 
 export const sendVerificationCode = async (_userId: string, _type: string, _target?: string) => {
-  // Placeholder for phone OTP or email code sending
+  // TODO: Implement actual OTP sending via SMS gateway (e.g., Twilio, Vonage, SMSOTP)
+  // For now, throw clear error to prevent misuse
+  throw new AppError(
+    'Verifikasi nomor telepon belum tersedia. Gunakan verifikasi email atau hubungi admin.',
+    501,
+  );
 };
 
 export const verifyCode = async (
@@ -67,5 +84,9 @@ export const verifyCode = async (
   _code: string,
   _target?: string,
 ) => {
-  // Placeholder for OTP code verification
+  // TODO: Implement actual OTP verification
+  throw new AppError(
+    'Verifikasi nomor telepon belum tersedia. Gunakan verifikasi email atau hubungi admin.',
+    501,
+  );
 };

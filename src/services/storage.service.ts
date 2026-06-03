@@ -1,14 +1,75 @@
 import r2Client from '#config/storage';
+import AppError from '#utils/appError';
 import logger from '#config/logger';
 import crypto from 'crypto';
-import { GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { GetObjectCommand, DeleteObjectCommand, CopyObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { Readable } from 'stream';
-import { JWT_SECRET } from '#utils/env.util';
+import { JWT_SECRET, getMediaBaseUrl, buildStorageAssetUrl } from '#utils/env.util';
+import { isLoremFlickrDbPath, loremFlickrDbPathToUrl } from '#utils/loremFlickrMedia.util';
 import { withRetry } from '#utils/retry.util';
 
 const BUCKET_NAME = process.env.R2_BUCKET_NAME || '';
 const PUBLIC_URL = process.env.R2_PUBLIC_URL || '';
+
+/** Prefixes that may be served without signed URL (marketing / product media). */
+const PUBLIC_ASSET_PREFIXES = [
+  'store-banners/',
+  'avatars/',
+  'products/',
+  'general/',
+  'forum/',
+  'negotiations/',
+  'articles/',
+  'categories/',
+];
+
+const isPrivateR2Endpoint = (url: string) => url.includes('r2.cloudflarestorage.com');
+
+export const isPublicAssetPath = (path: string): boolean => {
+  const normalized = path.replace(/^\//, '');
+  return PUBLIC_ASSET_PREFIXES.some((prefix) => normalized.startsWith(prefix));
+};
+
+/**
+ * Normalize DB value to R2 object key or keep external http URL (picsum, CDN).
+ * Fixes legacy rows that stored full r2.cloudflarestorage.com URLs.
+ */
+export const normalizeStorageKey = (value: string | null | undefined): string | null => {
+  if (!value?.trim()) return null;
+
+  const trimmed = value.trim();
+  if (!trimmed.startsWith('http')) {
+    return trimmed.replace(/^\//, '');
+  }
+
+  try {
+    const url = new URL(trimmed);
+
+    if (url.hostname.includes('r2.cloudflarestorage.com')) {
+      const parts = url.pathname.split('/').filter(Boolean);
+      if (parts.length === 0) return null;
+      // Path-style: /bucket/key/... or /key/...
+      if (parts[0] === BUCKET_NAME && parts.length > 1) {
+        return parts.slice(1).join('/');
+      }
+      return parts.join('/');
+    }
+
+    // Proxy URL stored by mistake — extract key after /storage/assets/
+    const assetsIdx = url.pathname.indexOf('/storage/assets/');
+    if (assetsIdx !== -1) {
+      return decodeURIComponent(url.pathname.slice(assetsIdx + '/storage/assets/'.length));
+    }
+  } catch {
+    return trimmed;
+  }
+
+  return trimmed;
+};
+
+export const isExternalMediaUrl = (value: string): boolean =>
+  value.startsWith('http') && !value.includes('r2.cloudflarestorage.com');
 
 /**
  * Generate a short-lived signed URL for internal proxying
@@ -25,7 +86,7 @@ export const getSignedProxyUrl = (path: string | null, expiresIn = 3600): string
     .update(`${path}:${expires}`)
     .digest('hex');
 
-  const baseUrl = process.env.API_URL || 'http://localhost:3000';
+  const baseUrl = getMediaBaseUrl();
   return `${baseUrl}/api/v1/storage/secure/${path}?expires=${expires}&signature=${signature}`;
 };
 
@@ -47,7 +108,13 @@ export const getSecureFileStream = async (
     .update(`${path}:${expires}`)
     .digest('hex');
 
-  if (signature !== expectedSignature) {
+  const sigBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expectedSignature);
+
+  if (
+    sigBuffer.length !== expectedBuffer.length ||
+    !crypto.timingSafeEqual(sigBuffer, expectedBuffer)
+  ) {
     throw new Error('Tanda tangan tidak valid');
   }
 
@@ -71,14 +138,56 @@ export const getSecureFileStream = async (
 };
 
 /**
+ * Stream a file from R2 (used by public/signed proxy routes).
+ */
+export const getFileStream = async (
+  path: string,
+): Promise<{ stream: Readable; contentType: string } | null> => {
+  try {
+    const command = new GetObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: path.replace(/^\//, ''),
+    });
+
+    const response = await r2Client.send(command);
+    if (!response.Body) return null;
+
+    return {
+      stream: response.Body as Readable,
+      contentType: response.ContentType || 'application/octet-stream',
+    };
+  } catch (error) {
+    logger.error('Error fetching file from R2:', error);
+    return null;
+  }
+};
+
+/**
  * Get public URL for a given relative path (ONLY for non-sensitive files)
  */
 export const getPublicUrl = (path: string | null): string | null => {
-  if (!path) return null;
-  // If it's already a full URL (legacy), return it
-  if (path.startsWith('http')) return path;
+  const normalized = normalizeStorageKey(path);
+  if (!normalized) return null;
 
-  return `${PUBLIC_URL}/${path}`;
+  if (isLoremFlickrDbPath(normalized)) {
+    return loremFlickrDbPathToUrl(normalized);
+  }
+
+  // External CDN (picsum, legacy full URLs that aren't our R2 API)
+  if (isExternalMediaUrl(normalized)) {
+    return normalized;
+  }
+
+  const normalizedPath = normalized.replace(/^\//, '');
+
+  if (PUBLIC_URL && !isPrivateR2Endpoint(PUBLIC_URL)) {
+    const base = PUBLIC_URL.replace(/\/$/, '');
+    const bucketSuffix = `/${BUCKET_NAME}`;
+    const publicBase = base.endsWith(bucketSuffix) ? base.slice(0, -bucketSuffix.length) : base;
+    return `${publicBase}/${normalizedPath}`;
+  }
+
+  return buildStorageAssetUrl(normalizedPath);
 };
 
 /**
@@ -89,22 +198,47 @@ export const getPublicUrl = (path: string | null): string | null => {
  */
 export const uploadFile = async (file: Buffer | any, path: string, contentType: string) => {
   try {
-    const upload = new Upload({
-      client: r2Client,
-      params: {
-        Bucket: BUCKET_NAME,
-        Key: path,
-        Body: file,
-        ContentType: contentType,
-      },
+    await withRetry(async () => {
+      const upload = new Upload({
+        client: r2Client,
+        params: {
+          Bucket: BUCKET_NAME,
+          Key: path,
+          Body: file,
+          ContentType: contentType,
+        },
+      });
+      return upload.done();
     });
-
-    await withRetry(() => upload.done());
     logger.info(`File uploaded successfully to R2: ${path}`);
     return path;
-  } catch (error) {
+  } catch (error: unknown) {
     logger.error('Error uploading to R2:', error);
-    throw error;
+    throw new AppError('Gagal mengunggah file ke penyimpanan cloud.', 500);
+  }
+};
+
+export const copyFile = async (sourceKey: string, destKey: string): Promise<string> => {
+  const source = normalizeStorageKey(sourceKey);
+  if (!source) throw new AppError('File sumber tidak valid.', 400);
+
+  const destination = destKey.replace(/^\//, '');
+
+  try {
+    await withRetry(() =>
+      r2Client.send(
+        new CopyObjectCommand({
+          Bucket: BUCKET_NAME,
+          CopySource: `${BUCKET_NAME}/${source}`,
+          Key: destination,
+        }),
+      ),
+    );
+    logger.info(`File copied in R2: ${source} -> ${destination}`);
+    return destination;
+  } catch (error: unknown) {
+    logger.error('Error copying file in R2:', error);
+    throw new AppError('Gagal menyalin file media produk.', 500);
   }
 };
 
@@ -113,14 +247,13 @@ export const uploadFile = async (file: Buffer | any, path: string, contentType: 
  * @param path Relative path in the bucket
  */
 export const deleteFile = async (path: string | null) => {
-  if (!path) return;
-  // If it's a legacy URL, we can't delete it from R2 easily
-  if (path.startsWith('http')) return;
+  const key = normalizeStorageKey(path);
+  if (!key || isExternalMediaUrl(key)) return;
 
   try {
     const command = new DeleteObjectCommand({
       Bucket: BUCKET_NAME,
-      Key: path,
+      Key: key,
     });
 
     await withRetry(() => r2Client.send(command));

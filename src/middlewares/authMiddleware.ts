@@ -1,8 +1,7 @@
 import { Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import prisma from '#config/prisma';
-import { UserRole, AuthRequest, UserStatus, AuthUser } from '#types/index';
-export { AuthRequest, AuthUser };
+import { UserRole, UserStatus, AuthRequest } from '#types/index';
 import { errorResponse } from '#utils/response.util';
 import { JWT_SECRET } from '#utils/env.util';
 

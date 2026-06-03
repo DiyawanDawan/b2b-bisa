@@ -8,7 +8,7 @@ const required = (key: string): string => {
   return val;
 };
 
-const optional = (key: string, fallback = ''): string => process.env[key] || fallback;
+export const optional = (key: string, fallback = ''): string => process.env[key] || fallback;
 
 const buildDatabaseUrl = (): string => {
   const explicitUrl = process.env.DATABASE_URL;
@@ -40,33 +40,64 @@ export const JWT_EXPIRES_IN = optional('JWT_EXPIRES_IN', '7d');
 export const JWT_REFRESH_EXPIRES_IN = optional('JWT_REFRESH_EXPIRES_IN', '30d');
 
 // Email SMTP
-export const EMAIL_SMTP_HOST = optional('SMTP_HOST', 'smtp.gmail.com');
-export const EMAIL_SMTP_PORT = parseInt(optional('SMTP_PORT', '587'), 10);
-export const EMAIL_SMTP_SECURE = optional('SMTP_SECURE', 'false') === 'true';
-export const EMAIL_SMTP_USER = optional('SMTP_USER');
-export const EMAIL_SMTP_PASS = optional('SMTP_PASS');
+export const EMAIL_SMTP_HOST = optional('EMAIL_SMTP_HOST', 'smtp.gmail.com');
+export const EMAIL_SMTP_PORT = parseInt(optional('EMAIL_SMTP_PORT', '587'), 10);
+export const EMAIL_SMTP_SECURE = optional('EMAIL_SMTP_SECURE', 'false') === 'true';
+export const EMAIL_SMTP_USER = optional('EMAIL_SMTP_USER');
+export const EMAIL_SMTP_PASS = optional('EMAIL_SMTP_PASS');
 export const EMAIL_FROM = optional('EMAIL_FROM', 'noreply@bisa.id');
 export const EMAIL_SENDER_NAME = optional('EMAIL_SENDER_NAME', 'BISA Platform');
 
-// ZeptoMail (optional)
-export const ZEPTOMAIL_API_TOKEN = optional('ZEPTOMAIL_API_TOKEN');
-export const ZEPTOMAIL_API_HOST = optional('ZEPTOMAIL_API_HOST', 'https://api.zeptomail.in');
-
-// AWS S3 / Cloudflare R2
-export const AWS_ACCESS_KEY_ID = optional('AWS_ACCESS_KEY_ID');
-export const AWS_SECRET_ACCESS_KEY = optional('AWS_SECRET_ACCESS_KEY');
-export const AWS_REGION = optional('AWS_REGION', 'auto');
-export const AWS_S3_BUCKET = optional('AWS_S3_BUCKET', 'bisa-uploads');
-export const R2_ENDPOINT = optional('R2_ENDPOINT');
+// Cloudflare R2
+export const R2_ACCOUNT_ID = optional('R2_ACCOUNT_ID');
+export const R2_ACCESS_KEY_ID = optional('R2_ACCESS_KEY_ID');
+export const R2_SECRET_ACCESS_KEY = optional('R2_SECRET_ACCESS_KEY');
+export const R2_BUCKET_NAME = optional('R2_BUCKET_NAME', 'bisa');
 export const R2_PUBLIC_URL = optional('R2_PUBLIC_URL');
+
+/** Host publik API (tanpa /api/v1) — dipakai untuk URL gambar via proxy storage. */
+export const API_PUBLIC_URL = optional('API_PUBLIC_URL');
+export const MEDIA_BASE_URL = optional('MEDIA_BASE_URL');
+export const API_URL = optional('API_URL');
+
+/** Origin untuk URL media: MEDIA_BASE_URL > API_PUBLIC_URL > API_URL > localhost */
+export const getMediaBaseUrl = (): string => {
+  const raw =
+    MEDIA_BASE_URL ||
+    API_PUBLIC_URL ||
+    API_URL ||
+    optional('NGROK_URL') ||
+    `http://localhost:${PORT}`;
+  return raw.replace(/\/$/, '').replace(/\/api\/v1$/i, '');
+};
+
+/** URL publik file R2 via proxy backend */
+export const buildStorageAssetUrl = (relativePath: string): string => {
+  const normalized = relativePath.replace(/^\//, '');
+  return `${getMediaBaseUrl()}/api/v1/storage/assets/${normalized}`;
+};
 
 // Platform settings
 // AI
 export const GOOGLE_GEMINI_API_KEY = optional('GOOGLE_GEMINI_API_KEY');
 
-// Xendit
-export const XENDIT_API_KEY = optional('XENDIT_API_KEY');
-export const XENDIT_WEBHOOK_TOKEN = optional('XENDIT_WEBHOOK_TOKEN');
+// Xendit — payment vs payout may use separate API keys in Xendit Dashboard
+export const XENDIT_PAYMENT_SECRET_KEY = optional('XENDIT_PAYMENT_SECRET_KEY');
+export const XENDIT_PAYOUT_SECRET_KEY = optional('XENDIT_PAYOUT_SECRET_KEY');
+/** @deprecated use XENDIT_PAYMENT_SECRET_KEY / XENDIT_PAYOUT_SECRET_KEY */
+export const XENDIT_SECRET_KEY = optional('XENDIT_SECRET_KEY');
+
+export const resolveXenditPaymentSecretKey = (): string | undefined =>
+  XENDIT_PAYMENT_SECRET_KEY || XENDIT_SECRET_KEY;
+
+export const resolveXenditPayoutSecretKey = (): string | undefined =>
+  XENDIT_PAYOUT_SECRET_KEY || XENDIT_SECRET_KEY;
+
+// Pusher
+export const PUSHER_APP_ID = optional('PUSHER_APP_ID');
+export const PUSHER_KEY = optional('PUSHER_KEY');
+export const PUSHER_SECRET = optional('PUSHER_SECRET');
+export const PUSHER_CLUSTER = optional('PUSHER_CLUSTER');
 
 // TODO: Business & Operational Limits (Eliminating Hardcode)
 export const SUBSCRIPTION_DURATION_DAYS = parseInt(

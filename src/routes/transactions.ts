@@ -5,16 +5,23 @@ import { requireAuth, requireRole } from '#middlewares/authMiddleware';
 const router = Router();
 
 // Public Webhook
-router.post('/webhook', transactionController.handleXenditWebhook);
+// Public Webhook removed (moved to payments.ts)
 
 // Protected routes
 router.use(requireAuth);
+
+// [BUYER] Get Transaction Details
+router.get(
+  '/:id',
+  requireRole('BUYER', 'SUPPLIER', 'ADMIN'),
+  transactionController.getTransactionById,
+);
 
 router.post('/:id/pay', requireRole('BUYER', 'ADMIN'), transactionController.createPaymentRequest);
 router.post('/:id/release', requireRole('ADMIN'), transactionController.releaseEscrow);
 router.post('/:id/refund', requireRole('ADMIN'), transactionController.refundTransaction);
 
 // Export Transactions (CSV)
-router.get('/export', transactionController.exportTransactions);
+router.get('/export', requireRole('SUPPLIER', 'ADMIN'), transactionController.exportTransactions);
 
 export default router;

@@ -1,6 +1,7 @@
 import logger from '../../src/config/logger.js';
 import bcrypt from 'bcrypt';
 import { faker } from '@faker-js/faker/locale/id_ID';
+import { avatarSeedPath } from '../../src/utils/loremFlickrMedia.util.ts';
 
 export async function seedUsers(prisma) {
   logger.info('🌱 [04] Seeding BISA Elite Users (PRO Tiers)...');
@@ -12,7 +13,9 @@ export async function seedUsers(prisma) {
 
   if (!country) throw new Error('Need at least 1 Country from taxonomies seeder.');
 
-  // Helper to create Elite Address & Partner
+  const proExpiresAt = new Date();
+  proExpiresAt.setFullYear(proExpiresAt.getFullYear() + 1);
+  const proSubscription = { tier: 'PRO', subscriptionExpiresAt: proExpiresAt };
   const createEliteAddress = async (fullAddress) => {
     const addr = await prisma.address.create({
       data: {
@@ -32,13 +35,14 @@ export async function seedUsers(prisma) {
   // 1. ADMIN
   await prisma.user.upsert({
     where: { email: 'admin@bisaes.com' },
-    update: {},
+    update: { avatarUrl: avatarSeedPath(101) },
     create: {
       email: 'admin@bisaes.com',
       fullName: 'Super Admin',
       password: passwordHash,
       role: 'ADMIN',
       isEmailVerified: true,
+      avatarUrl: avatarSeedPath(101),
     },
   });
 
@@ -46,14 +50,16 @@ export async function seedUsers(prisma) {
   const HendraAddr = await createEliteAddress('Surabaya Industrial Hub, Central Block A-12');
   const hendra = await prisma.user.upsert({
     where: { email: 'h.wijaya@surabayaindustrial.com' },
-    update: { tier: 'PRO' },
+    update: { ...proSubscription, avatarUrl: avatarSeedPath(102) },
     create: {
       email: 'h.wijaya@surabayaindustrial.com',
       fullName: 'Hendra Wijaya',
+      avatarUrl: avatarSeedPath(102),
       phone: '+6281234567890',
       password: passwordHash,
       role: 'BUYER',
-      tier: 'PRO', // <--- Elite Tier
+      tier: 'PRO',
+      subscriptionExpiresAt: proExpiresAt,
       jobTitle: 'Procurement Manager',
       preferredLanguage: 'Bahasa Indonesia',
       isEmailVerified: true,
@@ -73,14 +79,16 @@ export async function seedUsers(prisma) {
   const sitiAddr = await createEliteAddress('Taman Tekno Industrial Park, Blok B-5, Serpong');
   const siti = await prisma.user.upsert({
     where: { email: 'siti.aminah@agritech.com' },
-    update: { tier: 'PRO' },
+    update: { ...proSubscription, avatarUrl: avatarSeedPath(103) },
     create: {
       email: 'siti.aminah@agritech.com',
       fullName: 'Siti Aminah',
+      avatarUrl: avatarSeedPath(103),
       phone: '+628998877665',
       password: passwordHash,
       role: 'SUPPLIER',
-      tier: 'PRO', // <--- Elite Tier
+      tier: 'PRO',
+      subscriptionExpiresAt: proExpiresAt,
       jobTitle: 'Hardware Engineer',
       isEmailVerified: true,
       addressId: sitiAddr.id,
@@ -98,14 +106,16 @@ export async function seedUsers(prisma) {
   const greenAddr = await createEliteAddress('Green Green Business Park, Jakarta');
   const green = await prisma.user.upsert({
     where: { email: 'hello@greenearth.co' },
-    update: { tier: 'PRO' },
+    update: { ...proSubscription, avatarUrl: avatarSeedPath(104) },
     create: {
       email: 'hello@greenearth.co',
       fullName: 'Green Earth Co.',
+      avatarUrl: avatarSeedPath(104),
       phone: '+628111222333',
       password: passwordHash,
       role: 'SUPPLIER',
       tier: 'PRO',
+      subscriptionExpiresAt: proExpiresAt,
       isEmailVerified: true,
       addressId: greenAddr.id,
       profile: {
@@ -129,8 +139,25 @@ export async function seedUsers(prisma) {
         role: i % 2 === 0 ? 'BUYER' : 'SUPPLIER',
         tier: 'FREE',
         addressId: dummyAddr.id,
+        avatarUrl: avatarSeedPath(200 + i),
       },
     });
+  }
+
+  // 5b. Avatar untuk semua user lain (supplier/buyer bulk dari seeder lain)
+  let avatarLock = 500;
+  const usersWithoutAvatar = await prisma.user.findMany({
+    where: { OR: [{ avatarUrl: null }, { avatarUrl: '' }] },
+    select: { id: true },
+  });
+  for (const u of usersWithoutAvatar) {
+    await prisma.user.update({
+      where: { id: u.id },
+      data: { avatarUrl: avatarSeedPath(avatarLock++) },
+    });
+  }
+  if (usersWithoutAvatar.length > 0) {
+    logger.info(`✅ [04] Avatar seed: ${usersWithoutAvatar.length} user(s).`);
   }
 
   // 6. SEED USER RELATIONS (OperatingHours, PayoutAccounts, Documents, Tokens)
@@ -224,6 +251,76 @@ export async function seedUsers(prisma) {
   const admin = await prisma.user.findFirst({ where: { role: 'ADMIN' } });
   const allSuppliers = await prisma.user.findMany({ where: { role: 'SUPPLIER' } });
   const allBuyers = await prisma.user.findMany({ where: { role: 'BUYER' } });
+
+  // Pastikan semua akun PRO punya tanggal langganan aktif (wajib untuk IoT & fitur premium)
+  const proUsersPatched = await prisma.user.updateMany({
+    where: {
+      tier: 'PRO',
+      OR: [{ subscriptionExpiresAt: null }, { subscriptionExpiresAt: { lt: new Date() } }],
+    },
+    data: proSubscription,
+  });
+  if (proUsersPatched.count > 0) {
+    logger.info(
+      `✅ [04] ${proUsersPatched.count} akun PRO diperbarui dengan subscriptionExpiresAt (+1 tahun).`,
+    );
+  }
+
+  // Dompet demo supplier — saldo siap tarik untuk uji payout
+  const demoWalletBalance = 25_000_000;
+  const demoSuppliers = [
+    { user: siti, accountNo: '1234567890', accountName: 'Siti Aminah' },
+    { user: green, accountNo: '9876543210', accountName: 'Green Earth Co.' },
+  ].filter((entry) => entry.user);
+
+  const bcaPayout = await prisma.payoutBank.findFirst({ where: { code: 'ID_BCA' } });
+
+  for (const { user, accountNo, accountName } of demoSuppliers) {
+    await prisma.wallet.upsert({
+      where: { userId: user.id },
+      update: {
+        balance: demoWalletBalance,
+        totalEarned: demoWalletBalance,
+        totalWithdrawn: 0,
+      },
+      create: {
+        userId: user.id,
+        balance: demoWalletBalance,
+        totalEarned: demoWalletBalance,
+        totalWithdrawn: 0,
+      },
+    });
+
+    if (bcaPayout) {
+      await prisma.userPayoutAccount.updateMany({
+        where: { userId: user.id },
+        data: { isMain: false },
+      });
+      await prisma.userPayoutAccount.upsert({
+        where: {
+          userId_accountNumber_bankId: {
+            userId: user.id,
+            accountNumber: accountNo,
+            bankId: bcaPayout.id,
+          },
+        },
+        update: { accountName, isMain: true },
+        create: {
+          userId: user.id,
+          bankId: bcaPayout.id,
+          accountNumber: accountNo,
+          accountName,
+          isMain: true,
+        },
+      });
+    }
+  }
+
+  if (demoSuppliers.length > 0) {
+    logger.info(
+      `✅ [04] Dompet demo supplier: saldo Rp ${demoWalletBalance.toLocaleString('id-ID')} (siti & green).`,
+    );
+  }
 
   logger.info('✅ [04] Elite Users (PRO & FREE) with Full Profiles & Ops seeded.');
   return { admin, hendra, siti, green, allSuppliers, allBuyers };

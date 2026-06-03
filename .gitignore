@@ -12,6 +12,12 @@ docsumentation/
 .env.test.local
 .env.production.local
 
+# Firebase service accounts (NEVER commit; load via FIREBASE_SERVICE_ACCOUNT env)
+# SEC-BE-001
+*-firebase-adminsdk-*.json
+*service-account*.json
+firebase-service-account*.json
+
 # IDEs and Editors
 .idea/
 .vscode/
@@ -37,3 +43,12 @@ coverage/
 
 # Qodo / AI tools
 .qodo/
+
+# Cursor workspace (skills, rules, agent context)
+.cursor/
+
+# Planning / integration docs (audit, task, planing folders)
+planning/
+**/Palning*/
+**/planing/
+**/Palning Interasi/

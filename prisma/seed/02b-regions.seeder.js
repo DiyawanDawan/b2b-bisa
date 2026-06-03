@@ -1,7 +1,7 @@
 import logger from '../../src/config/logger.js';
 
 /**
- * Seed Regions (Country, Province, Regency)
+ * Seed Regions (Country, Province, Regency, District, Village)
  * Deep enough for Phase 2 Geolocation features
  */
 export async function seedRegions(prisma) {
@@ -55,7 +55,7 @@ export async function seedRegions(prisma) {
       ];
 
       for (const reg of regencies) {
-        await prisma.regency.upsert({
+        const regency = await prisma.regency.upsert({
           where: {
             name_provinceId: {
               name: reg.name,
@@ -69,6 +69,63 @@ export async function seedRegions(prisma) {
             provinceId: province.id,
           },
         });
+
+        // 4. Create Sample Districts for Semarang
+        if (reg.name === 'Semarang') {
+          const districts = [
+            { name: 'Semarang Tengah', code: '337401' },
+            { name: 'Semarang Utara', code: '337402' },
+            { name: 'Semarang Timur', code: '337403' },
+            { name: 'Semarang Selatan', code: '337404' },
+            { name: 'Semarang Barat', code: '337405' },
+          ];
+
+          for (const dist of districts) {
+            const district = await prisma.district.upsert({
+              where: {
+                name_regencyId: {
+                  name: dist.name,
+                  regencyId: regency.id,
+                },
+              },
+              update: {},
+              create: {
+                name: dist.name,
+                code: dist.code,
+                regencyId: regency.id,
+              },
+            });
+
+            // 5. Create Sample Villages for Semarang Tengah
+            if (dist.name === 'Semarang Tengah') {
+              const villages = [
+                { name: 'Pendrikan Kidul', code: '33740101', type: 'KELURAHAN' },
+                { name: 'Pendrikan Lor', code: '33740102', type: 'KELURAHAN' },
+                { name: 'Sekayu', code: '33740103', type: 'KELURAHAN' },
+                { name: 'Kembangsari', code: '33740104', type: 'KELURAHAN' },
+                { name: 'Gabahan', code: '33740105', type: 'KELURAHAN' },
+              ];
+
+              for (const vil of villages) {
+                await prisma.village.upsert({
+                  where: {
+                    name_districtId: {
+                      name: vil.name,
+                      districtId: district.id,
+                    },
+                  },
+                  update: {},
+                  create: {
+                    name: vil.name,
+                    code: vil.code,
+                    type: vil.type,
+                    districtId: district.id,
+                  },
+                });
+              }
+            }
+          }
+        }
       }
     }
   }

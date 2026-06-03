@@ -1,0 +1,134 @@
+﻿Channel code,Channel type,Channel name,Country,Currencies,Min amount,Max amount,Flight time
+ID_ACEH,Bank,Bank Pembangunan Daerah Aceh,Indonesia,IDR,1,250000000,15 minutes
+ID_ACEH_UUS,Bank,Bank Pembangunan Daerah Aceh Syariah (UUS),Indonesia,IDR,1,250000000,15 minutes
+ID_AGRONIAGA,Bank,Bank Raya Indonesia (formerly called Bank BRI Agroniaga),Indonesia,IDR,1,250000000,15 minutes
+ID_ALADIN,Bank,Bank Aladin Syariah (formerly Bank Maybank Syariah Indonesia),Indonesia,IDR,1,250000000,15 minutes
+ID_ALLO,Bank,Allo Bank Indonesia (formerly Bank Harda Internasional),Indonesia,IDR,1,250000000,15 minutes
+ID_AMAR,Bank,Bank Amar Indonesia (formerly called Anglomas International Bank),Indonesia,IDR,1,250000000,15 minutes
+ID_ANZ,Bank,Bank ANZ Indonesia,Indonesia,IDR,1,250000000,15 minutes
+ID_ARTHA,Bank,Bank Artha Graha International,Indonesia,IDR,1,250000000,15 minutes
+ID_BALI,Bank,Bank Pembangunan Daerah Bali,Indonesia,IDR,1,250000000,15 minutes
+ID_BAML,Bank,Bank of America Merill-Lynch,Indonesia,IDR,1,250000000,15 minutes
+ID_BANTEN,Bank,Bank Pembangunan Daerah Banten (formerly called Bank Pundi Indonesia),Indonesia,IDR,1,250000000,15 minutes
+ID_BCA,Bank,Bank Central Asia (BCA),Indonesia,IDR,1,999999999999,15 minutes
+ID_BCA_DIGITAL,Bank,Bank Central Asia Digital (BluBCA),Indonesia,IDR,1,250000000,15 minutes
+ID_BCA_SYR,Bank,Bank Central Asia (BCA) Syariah,Indonesia,IDR,1,250000000,15 minutes
+ID_BENGKULU,Bank,Bank Pembangunan Daerah Bengkulu,Indonesia,IDR,1,250000000,15 minutes
+ID_BISNIS_INTERNASIONAL,Bank,Bank Bisnis Internasional,Indonesia,IDR,1,250000000,15 minutes
+ID_BJB,Bank,Bank BJB,Indonesia,IDR,1,250000000,15 minutes
+ID_BJB_SYR,Bank,Bank BJB Syariah,Indonesia,IDR,1,250000000,15 minutes
+ID_BNC,Bank,Bank Neo Commerce (formerly Bank Yudha Bhakti),Indonesia,IDR,1,250000000,15 minutes
+ID_BNI,Bank,Bank Negara Indonesia (BNI),Indonesia,IDR,1,999999999999,15 minutes
+ID_BNP_PARIBAS,Bank,Bank BNP Paribas,Indonesia,IDR,1,250000000,15 minutes
+ID_BOC,Bank,Bank of China (BOC),Indonesia,IDR,1,250000000,15 minutes
+ID_BRI,Bank,Bank Rakyat Indonesia (BRI),Indonesia,IDR,1,999999999999,15 minutes
+ID_BSI,Bank,Bank Syariah Indonesia (BSI),Indonesia,IDR,1,250000000,15 minutes
+ID_BTN,Bank,Bank Tabungan Negara (BTN),Indonesia,IDR,1,250000000,15 minutes
+ID_BTN_UUS,Bank,Bank Tabungan Negara Syariah (BTN UUS),Indonesia,IDR,1,250000000,15 minutes
+ID_BTPN_SYARIAH,Bank,BTPN Syariah (formerly called BTPN UUS and Bank Sahabat Purba Danarta),Indonesia,IDR,1,250000000,15 minutes
+ID_BUKOPIN,Bank,Bank Bukopin,Indonesia,IDR,1,250000000,15 minutes
+ID_BUKOPIN_SYR,Bank,Bank Syariah Bukopin,Indonesia,IDR,1,250000000,15 minutes
+ID_BUMI_ARTA,Bank,Bank Bumi Arta,Indonesia,IDR,1,250000000,15 minutes
+ID_CAPITAL,Bank,Bank Capital Indonesia,Indonesia,IDR,1,250000000,15 minutes
+ID_CCB,Bank,China Construction Bank Indonesia (formerly called Bank Antar Daerah and Bank Windu Kentjana International),Indonesia,IDR,1,250000000,15 minutes
+ID_CHINATRUST,Bank,Bank Chinatrust Indonesia,Indonesia,IDR,1,250000000,15 minutes
+ID_CIMB,Bank,Bank CIMB Niaga,Indonesia,IDR,1,999999999999,15 minutes
+ID_CIMB_UUS,Bank,Bank CIMB Niaga Syariah (UUS),Indonesia,IDR,1,999999999999,15 minutes
+ID_CITIBANK,Bank,Citibank,Indonesia,IDR,1,250000000,15 minutes
+ID_COMMONWEALTH,Bank,Bank Commonwealth,Indonesia,IDR,1,250000000,15 minutes
+ID_DAERAH_ISTIMEWA,Bank,Bank Pembangunan Daerah Daerah Istimewa Yogyakarta (DIY),Indonesia,IDR,1,250000000,15 minutes
+ID_DAERAH_ISTIMEWA_UUS,Bank,Bank Pembangunan Daerah Daerah Istimewa Yogyakarta Syariah (DIY UUS),Indonesia,IDR,1,250000000,15 minutes
+ID_DANAMON,Bank,Bank Danamon,Indonesia,IDR,1,250000000,15 minutes
+ID_DANAMON_UUS,Bank,Bank Danamon Syariah (UUS),Indonesia,IDR,1,250000000,15 minutes
+ID_DBS,Bank,Bank DBS Indonesia,Indonesia,IDR,1,250000000,15 minutes
+ID_DEUTSCHE,Bank,Deutsche Bank,Indonesia,IDR,1,250000000,15 minutes
+ID_DINAR_INDONESIA,Bank,Bank Dinar Indonesia,Indonesia,IDR,1,250000000,15 minutes
+ID_DKI,Bank,Bank DKI,Indonesia,IDR,1,250000000,15 minutes
+ID_DKI_UUS,Bank,Bank DKI Syariah (UUS),Indonesia,IDR,1,250000000,15 minutes
+ID_FAMA,Bank,Bank Fama International,Indonesia,IDR,1,250000000,15 minutes
+ID_GANESHA,Bank,Bank Ganesha,Indonesia,IDR,1,250000000,15 minutes
+ID_HANA,Bank,Bank Hana,Indonesia,IDR,1,250000000,15 minutes
+ID_HSBC,Bank,HSBC Indonesia (formerly called Bank Ekonomi Raharja),Indonesia,IDR,1,250000000,15 minutes
+ID_HSBC_UUS,Bank,Hongkong and Shanghai Bank Corporation Syariah (HSBC UUS),Indonesia,IDR,1,250000000,15 minutes
+ID_IBK,Bank,Bank IBK Indonesia (formerly Bank Agris),Indonesia,IDR,1,250000000,15 minutes
+ID_ICBC,Bank,Bank ICBC Indonesia,Indonesia,IDR,1,250000000,15 minutes
+ID_INA_PERDANA,Bank,Bank Ina Perdania,Indonesia,IDR,1,250000000,15 minutes
+ID_INDEX_SELINDO,Bank,Bank Index Selindo,Indonesia,IDR,1,250000000,15 minutes
+ID_INDIA,Bank,Bank of India Indonesia,Indonesia,IDR,1,250000000,15 minutes
+ID_JAGO,Bank,Bank Jago (formerly Bank Artos Indonesia),Indonesia,IDR,1,250000000,15 minutes
+ID_JAMBI,Bank,Bank Pembangunan Daerah Jambi,Indonesia,IDR,1,250000000,15 minutes
+ID_JAMBI_UUS,Bank,Bank Pembangunan Daerah Jambi Syariah (UUS),Indonesia,IDR,1,250000000,15 minutes
+ID_JASA_JAKARTA,Bank,Bank Jasa Jakarta,Indonesia,IDR,1,250000000,15 minutes
+ID_JAWA_TENGAH,Bank,Bank Pembangunan Daerah Jawa Tengah,Indonesia,IDR,1,250000000,15 minutes
+ID_JAWA_TENGAH_UUS,Bank,Bank Pembangunan Daerah Jawa Tengah Syariah (UUS),Indonesia,IDR,1,250000000,15 minutes
+ID_JAWA_TIMUR,Bank,Bank Pembangunan Daerah Jawa Timur,Indonesia,IDR,1,250000000,15 minutes
+ID_JAWA_TIMUR_UUS,Bank,Bank Pembangunan Daerah Jawa Timur Syariah (UUS),Indonesia,IDR,1,250000000,15 minutes
+ID_JPMORGAN,Bank,JP Morgan Chase Bank,Indonesia,IDR,1,250000000,15 minutes
+ID_JTRUST,Bank,Bank JTrust Indonesia (formerly called Bank Mutiara),Indonesia,IDR,1,250000000,15 minutes
+ID_KALIMANTAN_BARAT,Bank,Bank Pembangunan Daerah Kalimantan Barat,Indonesia,IDR,1,250000000,15 minutes
+ID_KALIMANTAN_BARAT_UUS,Bank,Bank Pembangunan Daerah Kalimantan Barat Syariah (UUS),Indonesia,IDR,1,250000000,15 minutes
+ID_KALIMANTAN_SELATAN,Bank,Bank Pembangunan Daerah Kalimantan Selatan,Indonesia,IDR,1,250000000,15 minutes
+ID_KALIMANTAN_SELATAN_UUS,Bank,Bank Pembangunan Daerah Kalimantan Selatan Syariah (UUS),Indonesia,IDR,1,250000000,15 minutes
+ID_KALIMANTAN_TENGAH,Bank,Bank Pembangunan Daerah Kalimantan Tengah,Indonesia,IDR,1,250000000,15 minutes
+ID_KALIMANTAN_TIMUR,Bank,Bank Pembangunan Daerah Kalimantan Timur,Indonesia,IDR,1,250000000,15 minutes
+ID_KALIMANTAN_TIMUR_UUS,Bank,Bank Pembangunan Daerah Kalimantan Timur Syariah (UUS),Indonesia,IDR,1,250000000,15 minutes
+ID_LAMPUNG,Bank,Bank Pembangunan Daerah Lampung,Indonesia,IDR,1,250000000,15 minutes
+ID_MALUKU,Bank,Bank Pembangunan Daerah Maluku,Indonesia,IDR,1,250000000,15 minutes
+ID_MANDIRI,Bank,Bank Mandiri,Indonesia,IDR,1,999999999999,15 minutes
+ID_MANDIRI_TASPEN,Bank,Mandiri Taspen Pos (formerly called Bank Sinar Harapan Bali),Indonesia,IDR,1,250000000,15 minutes
+ID_MASPION,Bank,Bank Maspion Indonesia,Indonesia,IDR,1,250000000,15 minutes
+ID_MAYAPADA,Bank,Bank Mayapada International,Indonesia,IDR,1,250000000,15 minutes
+ID_MAYBANK,Bank,Bank Maybank,Indonesia,IDR,1,250000000,15 minutes
+ID_MAYORA,Bank,Bank Mayora,Indonesia,IDR,1,250000000,15 minutes
+ID_MEGA,Bank,Bank Mega,Indonesia,IDR,1,250000000,15 minutes
+ID_MEGA_SYR,Bank,Bank Syariah Mega,Indonesia,IDR,1,250000000,15 minutes
+ID_MESTIKA_DHARMA,Bank,Bank Mestika Dharma,Indonesia,IDR,1,250000000,15 minutes
+ID_MIZUHO,Bank,Bank Mizuho Indonesia,Indonesia,IDR,1,250000000,15 minutes
+ID_MNC_INTERNASIONAL,Bank,Bank MNC Internasional,Indonesia,IDR,1,250000000,15 minutes
+ID_MUAMALAT,Bank,Bank Muamalat Indonesia,Indonesia,IDR,1,250000000,15 minutes
+ID_MULTI_ARTA_SENTOSA,Bank,Bank Multi Arta Sentosa,Indonesia,IDR,1,250000000,15 minutes
+ID_NATIONALNOBU,Bank,Bank Nationalnobu,Indonesia,IDR,1,250000000,15 minutes
+ID_NUSA_TENGGARA_BARAT,Bank,Bank Pembangunan Daerah Nusa Tenggara Barat,Indonesia,IDR,1,250000000,15 minutes
+ID_NUSA_TENGGARA_TIMUR,Bank,Bank Pembangunan Daerah Nusa Tenggara Timur,Indonesia,IDR,1,250000000,15 minutes
+ID_OCBC,Bank,Bank OCBC NISP,Indonesia,IDR,1,250000000,15 minutes
+ID_OCBC_UUS,Bank,Bank OCBC NISP Syariah (UUS),Indonesia,IDR,1,250000000,15 minutes
+ID_OKE,Bank,Bank Oke Indonesia (formerly called Bank Andara),Indonesia,IDR,1,250000000,15 minutes
+ID_PANIN,Bank,Bank Panin,Indonesia,IDR,1,250000000,15 minutes
+ID_PANIN_SYR,Bank,Bank Panin Syariah,Indonesia,IDR,1,250000000,15 minutes
+ID_PAPUA,Bank,Bank Pembangunan Daerah Papua,Indonesia,IDR,1,250000000,15 minutes
+ID_PERMATA,Bank,Bank Permata,Indonesia,IDR,1,999999999999,15 minutes
+ID_PERMATA_UUS,Bank,Bank Permata Syariah (UUS),Indonesia,IDR,1,250000000,15 minutes
+ID_PRIMA_MASTER,Bank,Prima Master Bank,Indonesia,IDR,1,250000000,15 minutes
+ID_QNB_INDONESIA,Bank,Bank QNB Indonesia (formerly called Bank QNB Kesawan),Indonesia,IDR,1,250000000,15 minutes
+ID_RABOBANK,Bank,Bank Rabobank International Indonesia,Indonesia,IDR,1,250000000,15 minutes
+ID_RESONA,Bank,Bank Resona Perdania,Indonesia,IDR,1,250000000,15 minutes
+ID_RIAU_DAN_KEPRI,Bank,Bank Pembangunan Daerah Riau Dan Kepri,Indonesia,IDR,1,250000000,15 minutes
+ID_SAHABAT_SAMPOERNA,Bank,Bank Sahabat Sampoerna,Indonesia,IDR,1,999999999999,15 minutes
+ID_SBI_INDONESIA,Bank,Bank SBI Indonesia,Indonesia,IDR,1,250000000,15 minutes
+ID_SEABANK,Bank,Bank Seabank Indonesia (formerly Bank Kesejahteraan Ekonomi),Indonesia,IDR,1,250000000,15 minutes
+ID_SHINHAN,Bank,Bank Shinhan Indonesia (formerly called Bank Metro Express),Indonesia,IDR,1,250000000,15 minutes
+ID_SINARMAS,Bank,Bank Sinarmas,Indonesia,IDR,1,250000000,15 minutes
+ID_SINARMAS_UUS,Bank,Bank Sinarmas Syariah (UUS),Indonesia,IDR,1,250000000,15 minutes
+ID_STANDARD_CHARTERED,Bank,Standard Charted Bank,Indonesia,IDR,1,250000000,15 minutes
+ID_SULAWESI,Bank,Bank Pembangunan Daerah Sulawesi Tengah,Indonesia,IDR,1,250000000,15 minutes
+ID_SULAWESI_TENGGARA,Bank,Bank Pembangunan Daerah Sulawesi Tenggara,Indonesia,IDR,1,250000000,15 minutes
+ID_SULSELBAR,Bank,Bank Pembangunan Daerah Sulselbar,Indonesia,IDR,1,250000000,15 minutes
+ID_SULSELBAR_UUS,Bank,Bank Pembangunan Daerah Sulselbar Syariah (UUS),Indonesia,IDR,1,250000000,15 minutes
+ID_SULUT,Bank,Bank Pembangunan Daerah Sulut,Indonesia,IDR,1,250000000,15 minutes
+ID_SUMATERA_BARAT,Bank,Bank Pembangunan Daerah Sumatera Barat,Indonesia,IDR,1,250000000,15 minutes
+ID_SUMATERA_BARAT_UUS,Bank,Bank Pembangunan Daerah Sumatera Barat Syariah (UUS),Indonesia,IDR,1,250000000,15 minutes
+ID_SUMSEL_DAN_BABEL,Bank,Bank Pembangunan Daerah Sumsel Dan Babel,Indonesia,IDR,1,250000000,15 minutes
+ID_SUMSEL_DAN_BABEL_UUS,Bank,Bank Pembangunan Daerah Sumsel Dan Babel Syariah (UUS),Indonesia,IDR,1,250000000,15 minutes
+ID_SUMUT,Bank,Bank Pembangunan Daerah Sumut,Indonesia,IDR,1,250000000,15 minutes
+ID_SUMUT_UUS,Bank,Bank Pembangunan Daerah Sumut Syariah (UUS),Indonesia,IDR,1,250000000,15 minutes
+ID_TABUNGAN_PENSIUNAN_NASIONAL,Bank,Bank Tabungan Pensiunan Nasional (BTPN),Indonesia,IDR,1,250000000,15 minutes
+ID_TOKYO,Bank,Bank of Tokyo Mitsubishi UFJ (MUFJ),Indonesia,IDR,1,250000000,15 minutes
+ID_UOB,Bank,Bank UOB Indonesia,Indonesia,IDR,1,250000000,15 minutes
+ID_VICTORIA_INTERNASIONAL,Bank,Bank Victoria Internasional,Indonesia,IDR,1,250000000,15 minutes
+ID_VICTORIA_SYR,Bank,Bank Victoria Syariah,Indonesia,IDR,1,250000000,15 minutes
+ID_WOORI,Bank,Bank Woori Indonesia,Indonesia,IDR,1,250000000,15 minutes
+ID_DANA,E-Wallet,DANA,Indonesia,IDR,1,20000000,15 minutes
+ID_GOPAY,E-Wallet,GoPay,Indonesia,IDR,1,20000000,15 minutes
+ID_LINKAJA,E-Wallet,LinkAja,Indonesia,IDR,1,10000000,15 minutes
+ID_OVO,E-Wallet,OVO,Indonesia,IDR,1,20000000,15 minutes
+ID_SHOPEEPAY,E-Wallet,ShopeePay,Indonesia,IDR,1,20000000,15 minutes

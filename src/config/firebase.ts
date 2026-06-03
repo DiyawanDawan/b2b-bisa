@@ -1,32 +1,61 @@
-import { initializeApp, cert, getApps, type App } from 'firebase-admin/app';
-import { getMessaging, type Messaging } from 'firebase-admin/messaging';
+import admin from 'firebase-admin';
+import { type ServiceAccount } from 'firebase-admin/app';
+import { type Messaging } from 'firebase-admin/messaging';
+import fs from 'fs';
+import path from 'path';
+import logger from '#config/logger';
 
-const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
-const projectId = process.env.FIREBASE_PROJECT_ID;
-const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+let serviceAccount: ServiceAccount | undefined;
+let _messaging: Messaging | null = null;
 
-let app: App | undefined;
+/**
+ * Firebase Admin credential resolver
+ *
+ * Priority order:
+ *   1. FIREBASE_SERVICE_ACCOUNT — JSON string langsung di env (RECOMMENDED untuk semua env)
+ *   2. FIREBASE_SERVICE_ACCOUNT_PATH — path file .json (dev convenience)
+ *
+ * SEC-BE-001: file JSON hardcoded sudah dihapus dari repo. Jangan commit JSON
+ *             service account ke source tree (sudah di .gitignore).
+ */
+const serviceAccountPathEnv = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
+const serviceAccountPath = serviceAccountPathEnv
+  ? path.isAbsolute(serviceAccountPathEnv)
+    ? serviceAccountPathEnv
+    : path.join(process.cwd(), serviceAccountPathEnv)
+  : undefined;
 
-if (getApps().length === 0) {
-  if (!projectId || !clientEmail || !privateKey) {
-    console.warn('Firebase details missing in .env. Push notifications will not work.');
+try {
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    logger.info('Firebase Admin: Loading credentials from ENV (FIREBASE_SERVICE_ACCOUNT)');
+  } else if (serviceAccountPath && fs.existsSync(serviceAccountPath)) {
+    serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
+    logger.info(
+      `Firebase Admin: Loading credentials from FILE ${path.basename(serviceAccountPath)} (dev only)`,
+    );
+  }
+
+  if (serviceAccount) {
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+    });
+    _messaging = admin.messaging();
+    logger.info('Firebase Admin SDK initialized successfully');
   } else {
-    try {
-      app = initializeApp({
-        credential: cert({
-          projectId,
-          clientEmail,
-          privateKey,
-        }),
-      });
-      console.log('Firebase Admin SDK initialized');
-    } catch (error) {
-      console.error('Firebase Admin init error:', error);
+    const msg =
+      'Firebase Service Account not found. Set FIREBASE_SERVICE_ACCOUNT env (JSON string) or FIREBASE_SERVICE_ACCOUNT_PATH. FCM features disabled.';
+    if (process.env.NODE_ENV === 'production') {
+      // Production wajib punya kredensial; tetapi jangan crash agar API tetap up.
+      logger.error(msg);
+    } else {
+      logger.warn(msg);
     }
   }
-} else {
-  [app] = getApps();
+} catch (error: unknown) {
+  const msg = error instanceof Error ? error.message : String(error);
+  logger.error('Error initializing Firebase Admin SDK:', msg);
 }
 
-export const messaging: Messaging | null = app ? getMessaging(app) : null;
-export default { messaging };
+export const messaging = _messaging;
+export default admin;

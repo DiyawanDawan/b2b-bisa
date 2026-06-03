@@ -98,5 +98,5 @@ export const seedMarket = async (prisma) => {
     }
   }
 
-  logger.log('✅ Market Trends seed completed!');
+  logger.info('✅ Market Trends seed completed!');
 };

@@ -8,9 +8,25 @@ export const createReview = async (
   buyerId: string,
   data: { orderId: string; rating: number; comment: string },
 ) => {
+  // Validate rating range (CRIT-006)
+  if (!Number.isInteger(data.rating) || data.rating < 1 || data.rating > 5) {
+    throw new AppError('Rating harus bilangan bulat antara 1 sampai 5.', 400);
+  }
+
   const order = await prisma.order.findUnique({
     where: { id: data.orderId },
-    include: { items: true, review: true },
+    select: {
+      id: true,
+      buyerId: true,
+      status: true,
+      review: { select: { id: true } },
+      items: {
+        select: {
+          productId: true,
+        },
+        take: 1,
+      },
+    },
   });
 
   if (!order) throw new AppError('Kontrak Pesanan tidak ditemukan.', 404);
@@ -23,7 +39,11 @@ export const createReview = async (
   if (order.review) throw new AppError('Anda sudah memberikan penilaian untuk pesanan ini.', 409);
 
   // Asumsi 1 Order memiliki 1 primary item (karena kita merombak checkout menjadi per-negotiation)
-  const productId = order.items[0].productId;
+  const firstItem = order.items[0];
+  if (!firstItem) {
+    throw new AppError('Pesanan tidak memiliki item produk untuk direview.', 400);
+  }
+  const productId = firstItem.productId;
 
   return prisma.$transaction(async (tx) => {
     // 1. Buat Review
@@ -37,9 +57,74 @@ export const createReview = async (
       },
     });
 
-    // Skema V3 tidak menyimpan averageRating pada Produk secara manual, dihitung agregat secara langsung jika diperlukan
+    // 2. Recalculate & sync cache fields on Product (averageRating, totalReviews)
+    //    Using aggregate inside the same tx ensures consistency.
+    const agg = await tx.review.aggregate({
+      where: { productId },
+      _avg: { rating: true },
+      _count: { id: true },
+    });
+
+    const newAverage = agg._avg.rating ?? 0;
+    const newTotal = agg._count.id;
+
+    await tx.product.update({
+      where: { id: productId },
+      data: {
+        averageRating: Math.round(newAverage * 10) / 10,
+        totalReviews: newTotal,
+      },
+    });
 
     return newReview;
+  });
+};
+
+/**
+ * 1b. Update a Review (Buyer Only)
+ */
+export const updateReview = async (
+  buyerId: string,
+  reviewId: string,
+  data: { rating: number; comment: string },
+) => {
+  if (!Number.isInteger(data.rating) || data.rating < 1 || data.rating > 5) {
+    throw new AppError('Rating harus bilangan bulat antara 1 sampai 5.', 400);
+  }
+
+  const review = await prisma.review.findUnique({
+    where: { id: reviewId },
+    select: { id: true, buyerId: true, productId: true },
+  });
+
+  if (!review) throw new AppError('Ulasan tidak ditemukan.', 404);
+  if (review.buyerId !== buyerId) throw new AppError('Anda tidak memiliki akses.', 403);
+
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.review.update({
+      where: { id: reviewId },
+      data: {
+        rating: data.rating,
+        comment: data.comment,
+      },
+    });
+
+    // Recalculate Product Rating
+    const agg = await tx.review.aggregate({
+      where: { productId: review.productId },
+      _avg: { rating: true },
+      _count: { id: true },
+    });
+
+    await tx.product.update({
+      where: { id: review.productId },
+      data: {
+        averageRating: Math.round((agg._avg.rating ?? 0) * 10) / 10,
+        totalReviews: agg._count.id,
+      },
+    });
+
+    return updated;
   });
 };
 
@@ -56,7 +141,14 @@ export const getProductReviews = async (
   const [reviews, total] = await Promise.all([
     prisma.review.findMany({
       where: { productId },
-      include: {
+      select: {
+        id: true,
+        orderId: true,
+        productId: true,
+        buyerId: true,
+        rating: true,
+        comment: true,
+        createdAt: true,
         buyer: { select: { fullName: true, avatarUrl: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -78,7 +170,14 @@ export const getBuyerReviews = async (buyerId: string, limit: number = 10, page:
   const [reviews, total] = await Promise.all([
     prisma.review.findMany({
       where: { buyerId },
-      include: {
+      select: {
+        id: true,
+        orderId: true,
+        productId: true,
+        buyerId: true,
+        rating: true,
+        comment: true,
+        createdAt: true,
         product: { select: { name: true, thumbnailUrl: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -89,4 +188,36 @@ export const getBuyerReviews = async (buyerId: string, limit: number = 10, page:
   ]);
 
   return { data: reviews, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+};
+
+/**
+ * 4. Get Review Summary for a Product (Public)
+ * Returns average rating, total count, and rating distribution
+ */
+export const getReviewSummary = async (productId: string) => {
+  const reviews = await prisma.review.groupBy({
+    by: ['rating'],
+    where: { productId },
+    _count: { id: true },
+  });
+
+  const distribution: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  let totalRating = 0;
+  let totalCount = 0;
+
+  reviews.forEach((group) => {
+    const rating = group.rating as number;
+    distribution[rating] = group._count.id;
+    totalRating += rating * group._count.id;
+    totalCount += group._count.id;
+  });
+
+  const average = totalCount > 0 ? totalRating / totalCount : 0;
+
+  return {
+    productId,
+    averageRating: Math.round(average * 10) / 10, // 1 decimal place
+    totalReviews: totalCount,
+    ratingDistribution: distribution,
+  };
 };

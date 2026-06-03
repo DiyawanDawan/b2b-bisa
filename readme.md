@@ -16,18 +16,23 @@
    JWT_SECRET="rahasia_anda"
    ```
 
-3. **Generate Prisma Client (Wajib Update)**
-   Jika ada perubahan di file `schema.prisma`, eksekusi perintah berikut untuk memperbarui TypeScript Client:
+3. **Generate Prisma Client (Wajib setelah ubah `schema.prisma`)**
 
    ```bash
-   npx prisma generate
-
-   npx prisma db push
-
-   npx tsc --noEmi
+   npm run generate
+   # atau: npx prisma generate
    ```
 
-   _Catatan: Pastikan perintah ini sukses agar IDE tidak error mengenai tipe relasi atau enums (`UserRole`, `SUPPLIER`, dll)._
+   Tanpa langkah ini, backend bisa crash saat start, misalnya:
+   `The requested module '#prisma' does not provide an export named 'DisputeStatus'`.
+
+   Lalu apply migration jika ada tabel baru:
+
+   ```bash
+   npx prisma migrate deploy
+   ```
+
+   _Catatan: Pastikan perintah ini sukses agar IDE tidak error mengenai tipe relasi atau enums (`UserRole`, `DisputeStatus`, dll)._
 
 ---
 
@@ -84,10 +89,30 @@ npx prisma studio
 Untuk menghidupkan backend Express.js server:
 
 ```bash
+npm run dev
+```
+
+Atau tanpa watch mode:
+
+```bash
 npm run start
 ```
 
 _(Lihat `package.json` untuk alias script lain seperti `npm run lint` untuk pemeriksaan kode)._
+
+**Setelah pull migration baru** (contoh: chat message edit/delete, notification `DISPUTE`):
+
+```bash
+npx prisma migrate deploy
+npm run fromat
+npx prisma migrate dev
+npm run generate
+npx prisma migrate reset
+npm run seed
+npm run dev
+```
+
+Restart proses backend agar Prisma Client terbaru dimuat.
 
 ---
 

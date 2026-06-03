@@ -3,6 +3,7 @@ import { addMinutes } from 'date-fns';
 import crypto from 'crypto';
 import { TokenType, UserStatus, UserRole, Prisma } from '#prisma';
 import prisma from '#config/prisma';
+import admin from '#config/firebase';
 import AppError from '#utils/appError';
 import * as tokenService from '#services/token.service';
 
@@ -87,8 +88,12 @@ export const loginUser = async (email: string, password: string) => {
       fullName: user.fullName,
       email: user.email,
       role: user.role,
+      tier: user.tier,
+      subscriptionExpiresAt: user.subscriptionExpiresAt,
       avatarUrl: user.avatarUrl,
       province: user.province,
+      isEmailVerified: user.isEmailVerified,
+      createdAt: user.createdAt,
     },
   };
 };
@@ -99,10 +104,68 @@ export const loginWithSocial = async (
   idToken: string,
   role?: UserRole,
 ) => {
-  void provider;
-  void idToken;
-  void role;
-  throw new AppError(`Login dengan ${provider} belum diimplementasikan.`, 501);
+  if (provider !== 'google') {
+    throw new AppError(`Login dengan ${provider} belum diimplementasikan.`, 501);
+  }
+
+  try {
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    const { email, name, picture } = decodedToken;
+
+    if (!email) {
+      throw new AppError('Google login tidak menyediakan email.', 400);
+    }
+
+    // Find user by email
+    let user = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (!user) {
+      // Create a new user if not exists
+      user = await prisma.user.create({
+        data: {
+          email,
+          fullName: name || 'User',
+          avatarUrl: picture || null,
+          role: role || UserRole.BUYER,
+          isEmailVerified: true,
+          status: UserStatus.ACTIVE,
+        },
+      });
+    } else {
+      // If user exists but email is not verified, verify it
+      if (!user.isEmailVerified) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { isEmailVerified: true },
+        });
+      }
+      if (user.status !== UserStatus.ACTIVE) {
+        throw new AppError('Akun Anda telah dinonaktifkan atau diblokir. Hubungi admin.', 403);
+      }
+    }
+
+    const accessToken = tokenService.generateAccessToken(user.id, user.role);
+    const refreshTokenValue = await tokenService.generateRefreshToken(user.id);
+
+    return {
+      token: { accessToken, refreshToken: refreshTokenValue },
+      user: {
+        id: user.id,
+        fullName: user.fullName,
+        email: user.email,
+        role: user.role,
+        avatarUrl: user.avatarUrl,
+        province: user.province,
+        isEmailVerified: user.isEmailVerified,
+        createdAt: user.createdAt,
+      },
+    };
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    throw new AppError(`Verifikasi token Google gagal: ${(error as Error).message}`, 401);
+  }
 };
 
 // ─── Logout ──────────────────────────────────────────────
@@ -140,11 +203,21 @@ export const forgotPassword = async (email: string) => {
   await emailService.sendPasswordResetEmail(user.email, user.fullName, otp);
 };
 
+/**
+ * SEC-BE-013: hindari user enumeration. Sebelumnya 404 ('User tidak ditemukan')
+ * vs 400 ('Kode OTP tidak valid') membedakan email valid vs invalid.
+ *
+ * Sekarang: pesan generik "Kode OTP tidak valid atau sudah expired" untuk semua
+ * kasus gagal, sehingga attacker tidak bisa membedakan email terdaftar vs tidak.
+ */
 export const verifyResetCode = async (email: string, code: string) => {
   const user = await prisma.user.findUnique({ where: { email } });
-  if (!user) throw new AppError('User tidak ditemukan.', 404);
+  const generic = new AppError('Kode OTP tidak valid atau sudah expired.', 400);
+
+  if (!user) throw generic;
+
   const valid = await tokenService.verifyOtp(user.id, code, TokenType.RESET_PASSWORD);
-  if (!valid) throw new AppError('Kode OTP tidak valid atau sudah expired.', 400);
+  if (!valid) throw generic;
 
   // Buat token reset yang pendek (30 menit) dengan type RESET_PASSWORD, bukan REFRESH
   const resetToken = crypto.randomBytes(32).toString('hex');
@@ -181,9 +254,20 @@ export const resetPassword = async (userId: string, password: string) => {
   await prisma.user.update({ where: { id: userId }, data: { password: hashed } });
 };
 
+// ─── Utilities ───────────────────────────────────────────
+const maskNPWP = (npwp?: string | null): string => {
+  if (!npwp) return '';
+  // Format target: ••.•••.•••.•-•••.xxx
+  if (npwp.length >= 15) {
+    const last3 = npwp.slice(-3);
+    return `••.•••.•••.•-•••.${last3}`;
+  }
+  return '••.•••.•••.•-•••.xxx';
+};
+
 // ─── Profile ─────────────────────────────────────────────
 export const getMe = async (userId: string) => {
-  return prisma.user.findUnique({
+  const user = await prisma.user.findUnique({
     where: { id: userId },
     select: {
       id: true,
@@ -191,6 +275,7 @@ export const getMe = async (userId: string) => {
       email: true,
       role: true,
       tier: true,
+      subscriptionExpiresAt: true,
       phone: true,
       avatarUrl: true,
       province: true,
@@ -206,6 +291,8 @@ export const getMe = async (userId: string) => {
           companyName: true,
           npwp: true,
           businessType: true,
+          rajaongkirOriginId: true,
+          rajaongkirOriginLabel: true,
         },
       },
       // Verification: hanya status, bukan seluruh dokumen URL
@@ -213,6 +300,12 @@ export const getMe = async (userId: string) => {
       createdAt: true,
     },
   });
+
+  if (user?.profile?.npwp) {
+    user.profile.npwp = maskNPWP(user.profile.npwp);
+  }
+
+  return user;
 };
 
 export interface UpdateProfileInput {
@@ -225,11 +318,24 @@ export interface UpdateProfileInput {
   companyName?: string;
   npwp?: string;
   businessType?: string;
+  rajaongkirOriginId?: number;
+  rajaongkirOriginLabel?: string;
 }
 
 export const updateProfile = async (userId: string, data: UpdateProfileInput) => {
-  const { fullName, phone, avatarUrl, province, regency, bio, companyName, npwp, businessType } =
-    data;
+  const {
+    fullName,
+    phone,
+    avatarUrl,
+    province,
+    regency,
+    bio,
+    companyName,
+    npwp,
+    businessType,
+    rajaongkirOriginId,
+    rajaongkirOriginLabel,
+  } = data;
 
   const userUpdate: Record<string, unknown> = {};
   if (fullName) userUpdate.fullName = fullName;
@@ -244,8 +350,12 @@ export const updateProfile = async (userId: string, data: UpdateProfileInput) =>
   if (companyName !== undefined) profileData.companyName = companyName;
   if (npwp !== undefined) profileData.npwp = npwp;
   if (businessType !== undefined) profileData.businessType = businessType;
+  if (rajaongkirOriginId !== undefined) profileData.rajaongkirOriginId = rajaongkirOriginId;
+  if (rajaongkirOriginLabel !== undefined) {
+    profileData.rajaongkirOriginLabel = rajaongkirOriginLabel;
+  }
 
-  return prisma.user.update({
+  await prisma.user.update({
     where: { id: userId },
     data: {
       ...userUpdate,
@@ -253,43 +363,26 @@ export const updateProfile = async (userId: string, data: UpdateProfileInput) =>
         profile: {
           upsert: {
             create: {
-              bio: (profileData.bio as string) || '',
-              companyName: (profileData.companyName as string) || '',
-              npwp: (profileData.npwp as string) || '',
-              businessType: (profileData.businessType as string) || '',
+              bio: '',
+              companyName: '',
+              npwp: '',
+              businessType: '',
+              ...profileData,
             },
             update: profileData,
           },
         },
       }),
     },
-    select: {
-      id: true,
-      fullName: true,
-      email: true,
-      role: true,
-      phone: true,
-      avatarUrl: true,
-      province: true,
-      regency: true,
-      profile: {
-        select: {
-          bio: true,
-          website: true,
-          companyName: true,
-          npwp: true,
-          businessType: true,
-        },
-      },
-    },
   });
+
+  const user = await getMe(userId);
+  if (!user) throw new AppError('User tidak ditemukan.', 404);
+  return user;
 };
 
 // ─── Resend OTP ──────────────────────────────────────────
-export const resendOTP = async (
-  email: string,
-  type: ResendOtpType,
-) => {
+export const resendOTP = async (email: string, type: ResendOtpType) => {
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) return;
   const otp = await tokenService.generateOtp(user.id, type);
@@ -298,4 +391,10 @@ export const resendOTP = async (
   } else {
     await emailService.sendPasswordResetEmail(user.email, user.fullName, otp);
   }
+};
+
+// ─── Email Availability Check ────────────────────────────
+export const isEmailAvailable = async (email: string): Promise<boolean> => {
+  const existingUser = await prisma.user.findUnique({ where: { email } });
+  return !existingUser;
 };

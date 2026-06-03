@@ -3,14 +3,19 @@
   "version": "1.0.0",
   "description": "Prisma v7 ESM setup",
   "type": "module",
-  "main": "script.ts",
+  "main": "src/index.ts",
   "scripts": {
-    "start": "tsx script.ts",
+    "start": "tsx src/index.ts",
     "lint": "eslint .",
     "format": "prettier --write .",
     "generate": "prisma generate",
     "seed": "prisma db seed",
-    "dev": "tsx watch src/index.ts"
+    "dev": "tsx watch src/index.ts",
+    "test": "NODE_ENV=test jest",
+    "test:unit": "NODE_ENV=test jest tests/unit",
+    "test:integration": "NODE_ENV=test jest tests/integration",
+    "test:watch": "NODE_ENV=test jest --watch",
+    "test:coverage": "NODE_ENV=test jest --coverage"
   },
   "prisma": {
     "seed": "tsx prisma/seed/index.js"
@@ -45,6 +50,7 @@
     "express-rate-limit": "^7.1.5",
     "firebase-admin": "^13.7.0",
     "helmet": "^8.1.0",
+    "jest-mock-extended": "^4.0.0",
     "json2csv": "^6.0.0-alpha.2",
     "jsonwebtoken": "^9.0.3",
     "mariadb": "^3.5.2",
@@ -53,6 +59,8 @@
     "node-fetch": "^2.7.0",
     "nodemailer": "^6.9.1",
     "prisma": "^7.5.0",
+    "pusher": "^5.2.0",
+    "slugify": "^1.6.9",
     "socket.io": "^4.8.3",
     "winston": "^3.11.0",
     "xendit-node": "^7.0.0",

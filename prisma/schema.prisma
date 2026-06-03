@@ -51,6 +51,12 @@ enum OrderStatus {
   DISPUTED
 }
 
+enum DisputeStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+}
+
 enum TransactionStatus {
   PENDING
   ESCROW_HELD
@@ -94,6 +100,7 @@ enum NotificationType {
   PAYMENT_RECEIVED
   IOT_ALERT
   SYSTEM_ANNOUNCEMENT
+  DISPUTE
 }
 
 enum NotificationPriority {
@@ -149,19 +156,6 @@ enum TrendCategory {
   BIOMASSA
 }
 
-enum SectionType {
-  HERO
-  GRID
-  METRICS
-  TEAM
-  FAQ
-  POLICY
-  MAP
-  FORUM_HEADER
-  SUB_NAV
-}
-
-
 enum BiomassaType {
   BIOCHAR
   SEKAM_PADI
@@ -169,6 +163,11 @@ enum BiomassaType {
   TEMPURUNG_KELAPA
   WOOD_CHIP
   OTHER
+}
+
+enum ProductMode {
+  BIOMASS_MATERIAL
+  ORGANIC_PRODUCE
 }
 
 enum BiocharGrade {
@@ -224,6 +223,12 @@ enum NegotiationStatus {
     CANCELLED
   }
 
+/// Chat tanya produk vs negosiasi harga (ruang terpisah per buyer–produk).
+enum NegotiationRoomType {
+  INQUIRY
+  NEGOTIATION
+}
+
 enum TaxStatus {
   INCLUDED
   EXCLUDED
@@ -255,17 +260,17 @@ model User {
   avatarUrl          String?    @map("avatar_url") @db.Text
   province           String?    @map("province") // Lokasi user untuk GIS matching
   regency            String?    @map("regency")            // Kabupaten
-  
+
   // Enterprise Profile (from Account Settings UI)
   jobTitle           String?    @map("job_title")            // e.g. "Procurement Manager"
   region             String?    @map("region")            // e.g. "East Java, Indonesia"
   preferredLanguage  String?    @map("preferred_language") @default("Bahasa Indonesia")
-  
+
   // Settings & Security
   enableNotifications Boolean    @map("enable_notifications") @default(true)
   enable2FA           Boolean    @map("enable_2fa") @default(false)
   isPublicInMarketplace Boolean    @map("is_public_in_marketplace") @default(true)
-  
+
   // Impact Stats (Cached)
   esgScore           Decimal    @map("esg_score") @db.Decimal(15, 2) @default(0)
   greenRank          String?    @map("green_rank") @default("Seedling")
@@ -305,6 +310,13 @@ model User {
   auditLogs          AuditLog[]
   buyerNegotiations  Negotiation[]      @relation("BuyerNegotiations")
   sellerNegotiations Negotiation[]      @relation("SellerNegotiations")
+  devices           UserDevice[]
+  cartItems         CartItem[]
+  productLikes      ProductLike[]
+  followingSent     UserFollow[] @relation("FollowingSent")
+  followingReceived UserFollow[] @relation("FollowingReceived")
+  storeBanners      StoreBanner[]
+  disputesRaised    OrderDispute[]     @relation("DisputesRaised")
 
   @@index([role])
   @@index([status])
@@ -325,11 +337,31 @@ model UserProfile {
   npwp         String?
   businessType String? @map("business_type")   // e.g. "Pengepul", "Distributor", "Industri Biochar"
 
+  /// RajaOngkir subdistrict ID asal pengiriman (supplier)
+  rajaongkirOriginId    Int?    @map("rajaongkir_origin_id")
+  rajaongkirOriginLabel String? @db.Text @map("rajaongkir_origin_label")
+
   addressId    String? @map("address_id") @unique
   address      Address?  @relation(fields: [addressId], references: [id], onDelete: SetNull)
   user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_profiles")
+}
+
+model StoreBanner {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  imageUrl  String   @db.Text @map("image_url")
+  title     String?  @map("title")
+  sortOrder Int      @default(0) @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, sortOrder])
+  @@map("store_banners")
 }
 
 model Token {
@@ -367,6 +399,8 @@ model UserVerification {
 
   user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([verificationStatus])
+  @@index([createdAt])
   @@map("user_verifications")
 }
 
@@ -402,12 +436,17 @@ model Category {
   description String?   @db.Text
   createdAt   DateTime  @default(now()) @map("created_at")
   categoryType CATEGORY_TYPE @map("category_type")
-  
+  productMode  ProductMode?  @map("product_mode") // Separates Biomass vs Organic categories
+  biomassaType BiomassaType? @map("biomassa_type") // Required filter for BIOMASS_MATERIAL shelf
+
   products    Product[]
   articles    Article[]
   forumPosts  ForumPost[]
 
+  @@index([name])
   @@index([categoryType])
+  @@index([productMode])
+  @@index([productMode, biomassaType])
   @@map("categories")
 }
 
@@ -434,11 +473,17 @@ model Product {
   grade         BiocharGrade?              @map("grade")  // Only for BIOCHAR type
   description   String?      @db.Text
   pricePerUnit  Decimal      @db.Decimal(15, 2) @map("price_per_unit")
+  originalPrice Decimal?     @db.Decimal(15, 2) @map("original_price") // Harga sebelum diskon (nullable)
   stock         Decimal      @db.Decimal(15, 2) @map("stock") // Changed from Int to support decimal weights (e.g. 1.5 Ton)
   unit          UnitStatus                   @map("unit") // Unit of stock (KG/TON)
   minOrder      Decimal      @db.Decimal(15, 2) @default(100) @map("min_order") // Changed from Int
-  
-  
+
+  // Organic Produce Mode fields
+  productMode    ProductMode @default(BIOMASS_MATERIAL) @map("product_mode")
+  fertilizerType String?     @map("fertilizer_type")
+  isChemicalFree Boolean     @default(false) @map("is_chemical_free")
+  cropType       String?     @map("crop_type")
+
   province      String?                      @map("province") // Location for GIS matching
   regency       String?                      @map("regency")
   thumbnailUrl  String?      @db.Text @map("thumbnail_url")
@@ -446,7 +491,13 @@ model Product {
   isCertified   Boolean       @default(false)  @map("is_certified") // Verified quality product
   isIotMonitored Boolean     @default(false) @map("is_iot_monitored")
   isEscrowProtected Boolean  @default(true) @map("is_escrow_protected")
-  
+
+  // Cache fields for performance
+  averageRating Decimal      @db.Decimal(3, 2) @default(0) @map("average_rating")
+  totalReviews  Int          @default(0) @map("total_reviews")
+  totalSold     Int          @default(0) @map("total_sold")
+  viewCount     Int          @default(0) @map("view_count")
+
   createdAt     DateTime     @default(now()) @map("created_at")
   updatedAt     DateTime     @updatedAt @map("updated_at")
 
@@ -457,21 +508,28 @@ model Product {
   negotiations  Negotiation[]
   reviews       Review[]
   images        ProductImage[]
+  collections   ProductCollectionItem[]
+  cartItems     CartItem[]
+  productLikes  ProductLike[]
+  specs         ProductSpec[]
 
   @@index([userId])
   @@index([categoryId])
   @@index([biomassaType])
   @@index([status])
+  @@index([totalSold])  
   @@index([createdAt])
   @@index([province, regency])
   @@index([name])
+  @@index([productMode])
+  @@index([cropType])
   @@map("products")
 }
 
 model ProductTechnicalSpec {
   id            String   @id @default(uuid())
   productId     String   @unique @map("product_id")
-  
+
   // Technical Specs
   carbonPurity        Decimal? @db.Decimal(5, 2) @map("carbon_purity") // % Carbon Purity
   moistureContent     Decimal? @db.Decimal(5, 2) @map("moisture_content") // % Moisture
@@ -492,7 +550,24 @@ model ProductTechnicalSpec {
 
   product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
+  @@index([productId])
   @@map("product_technical_specs")
+}
+
+model ProductSpec {
+  id        String   @id @default(uuid())
+  productId String   @map("product_id")
+  label     String
+  value     String   @db.Text
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([productId, sortOrder])
+  @@map("product_specs")
 }
 
 model ProductImage {
@@ -505,6 +580,9 @@ model ProductImage {
 
   product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
+  @@index([productId])
+  @@index([productId, isPrimary])
+  @@index([productId, order])
   @@map("product_images")
 }
 
@@ -514,11 +592,11 @@ model ProductImage {
 
 model Order {
   id            String      @id @default(uuid())
-  orderNumber   String      @unique // e.g. #BISA-99283-TRX 
-  buyerId       String      @map("buyer_id")                          
-  sellerId      String      @map("seller_id")                          
+  orderNumber   String      @unique // e.g. #BISA-99283-TRX
+  buyerId       String      @map("buyer_id")
+  sellerId      String      @map("seller_id")
   status        OrderStatus @default(PENDING) @map("status")
-  
+
   // Financial Breakdowns (from Invoice UI)
   subtotal      Decimal     @db.Decimal(15, 2) @map("subtotal")
   platformFee   Decimal     @db.Decimal(15, 2) @map("platform_fee") // e.g. 0.5%
@@ -529,11 +607,16 @@ model Order {
   totalQuantity Decimal     @db.Decimal(15, 2) @map("total_quantity") // Changed from Int to support decimal weights
   specifications String?    @db.Text @map("specifications") // Agreed final specs (PPM, Moisture, etc.)
   creditsApplied Decimal    @db.Decimal(15, 2) @default(0) @map("credits_applied")
-  
+
   shippingAddressId String? @map("shipping_address_id")
   shippingAddress Address? @relation("ShippingAddress", fields: [shippingAddressId], references: [id], onDelete: Restrict)
   shippingAddressSnapshot Json? @map("shipping_address_snapshot") // Untuk menyimpan data alamat lengkap saat order dibuat (Snapshot)
-  
+
+  /// Satu checkout (multi-supplier) → satu pembayaran gabungan.
+  checkoutBatchId String? @map("checkout_batch_id")
+  /// Nomor pesanan yang ditampilkan ke buyer (satu per checkout, berbeda dari tracking per supplier).
+  checkoutBatchNumber String? @map("checkout_batch_number")
+
   // Status Badges
   isInsured     Boolean     @default(true) @map("is_insured")
   isDigitalSigned Boolean   @default(true) @map("is_digital_signed")
@@ -544,16 +627,48 @@ model Order {
   buyer         User        @relation("BuyerOrders", fields: [buyerId], references: [id], onDelete: Restrict)
   seller        User        @relation("SellerOrders", fields: [sellerId], references: [id], onDelete: Restrict)
   shipment      ShipmentTracking?
+  orderShipping OrderShipping?
   items         OrderItem[]
   transaction   Transaction?
   negotiation   Negotiation?
   review        Review?
+  dispute       OrderDispute?
 
   @@index([buyerId])
   @@index([sellerId])
   @@index([status])
   @@index([createdAt])
+  @@index([status, createdAt])
+  @@index([buyerId, status])
+  @@index([sellerId, status])
+  @@index([checkoutBatchId])
   @@map("orders")
+}
+
+model OrderDispute {
+  id                 String        @id @default(uuid())
+  orderId            String        @unique @map("order_id")
+  raisedById         String        @map("raised_by_id")
+  reason             String        @db.Text
+  description        String?       @db.Text
+  evidenceUrls       Json          @default("[]") @map("evidence_urls")
+  sellerResponse     String?       @db.Text @map("seller_response")
+  sellerEvidenceUrls Json          @default("[]") @map("seller_evidence_urls")
+  sellerRespondedAt  DateTime?     @map("seller_responded_at")
+  status             DisputeStatus @default(OPEN)
+  resolution         String?       @map("resolution")
+  resolutionNote     String?       @db.Text @map("resolution_note")
+  resolvedAt         DateTime?     @map("resolved_at")
+  resolvedById       String?       @map("resolved_by_id")
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
+
+  order              Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  raisedBy           User          @relation("DisputesRaised", fields: [raisedById], references: [id], onDelete: Restrict)
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("order_disputes")
 }
 
 model ShipmentTracking {
@@ -566,13 +681,21 @@ model ShipmentTracking {
   vesselType    VesselType? @default(TRUCK_CARGO) @map("vessel_type")
   originHub     String?                    @map("origin_hub") // e.g. "Semarang Hub"
   destinationHub String?                   @map("destination_hub") // e.g. "Surabaya Industrial Hub"
-  
+
+  // RajaOngkir — resi & lacak ([Tracking AWB](https://rajaongkir.com/docs/shipping-cost/tracking))
+  awbNumber            String?   @map("awb_number")
+  courierCode          String?   @map("courier_code")
+  recipientPhoneLast5  String?   @map("recipient_phone_last5")
+  deliveryStatus       String?   @map("delivery_status")
+  trackingSnapshot     Json?     @map("tracking_snapshot")
+  lastTrackedAt        DateTime? @map("last_tracked_at")
+
   // Real-time Telemetry
   currentLat    Decimal?    @db.Decimal(10, 8) @map("current_lat")
   currentLng    Decimal?    @db.Decimal(11, 8) @map("current_lng")
   estimatedSpeed String?                   @map("estimated_speed") // e.g. "14.2 Knots"
   aiInsight     String?     @db.Text       @map("ai_insight") // Weather/ETA insights
-  
+
   // Packaging & Identification
   batchId       String?                    @map("batch_id") // e.g. #BIO-INA-2023-042
   packagingType PackagingType? @default(JUMBO_BAG) @map("packaging_type")
@@ -582,7 +705,35 @@ model ShipmentTracking {
 
   order         Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
+  @@index([awbNumber])
+  @@index([courierCode])
   @@map("shipment_tracking")
+}
+
+/// Ongkir RajaOngkir yang dipakai saat checkout (1:1 dengan Order)
+model OrderShipping {
+  id                       String   @id @default(uuid())
+  orderId                  String   @unique @map("order_id")
+  originDestinationId      Int      @map("origin_destination_id")
+  destinationDestinationId Int      @map("destination_destination_id")
+  originLabel              String?  @db.Text @map("origin_label")
+  destinationLabel         String?  @db.Text @map("destination_label")
+  weightGrams              Int      @map("weight_grams")
+  courierCode              String   @map("courier_code")
+  courierName              String?  @map("courier_name")
+  serviceCode              String?  @map("service_code")
+  serviceName              String   @map("service_name")
+  serviceDescription       String?  @db.Text @map("service_description")
+  shippingCost             Decimal  @db.Decimal(15, 2) @map("shipping_cost")
+  etd                      String?  @map("etd")
+  verifiedAt               DateTime @default(now()) @map("verified_at")
+  createdAt                DateTime @default(now()) @map("created_at")
+  updatedAt                DateTime @updatedAt @map("updated_at")
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([courierCode])
+  @@map("order_shipping")
 }
 
 model OrderItem {
@@ -607,18 +758,21 @@ model Negotiation {
   orderId       String?   @unique @map("order_id")
   buyerId       String    @map("buyer_id")
   sellerId      String    @map("seller_id")
-  
+
   // Quote Details (from Mitra Chat UI)
   quantity      Decimal   @db.Decimal(15, 2) @default(0) @map("quantity") // Changed from Int
   pricePerUnit  Decimal   @db.Decimal(15, 2) @map("price_per_unit")
   moistureLevel Decimal?  @db.Decimal(5, 2) @map("moisture_level") // % Moisture, changed from String for AI
   specifications String?   @db.Text @map("specifications") // Agreed final specs from chat
+  roomType      NegotiationRoomType @default(NEGOTIATION) @map("room_type")
   taxStatus     TaxStatus @default(INCLUDED) @map("tax_status")
   totalEstimate Decimal   @db.Decimal(15, 2) @map("total_estimate")
-  
+
   status        NegotiationStatus @default(OPEN_NEGOTIATION) @map("status") // OPEN, ACCEPTED, REJECTED, LOCKED
   isLocked      Boolean   @default(false) @map("is_locked")
-  
+  rejectionReason String? @db.Text @map("rejection_reason")
+  closedBy        String? @map("closed_by") // SUPPLIER | BUYER | SYSTEM
+
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
@@ -633,6 +787,8 @@ model Negotiation {
   @@index([sellerId])
   @@index([status])
   @@index([createdAt])
+  @@index([status, updatedAt])
+  @@index([buyerId, productId, roomType, status])
   @@map("negotiations")
 }
 
@@ -643,7 +799,11 @@ model ChatMessage {
   content         String   @db.Text @map("content")
   attachmentUrl   String?  @db.Text @map("attachment_url")
   isSystemMessage Boolean  @default(false) @map("is_system_message")
+  isRead          Boolean  @default(false) @map("is_read")
+  isDeleted       Boolean  @default(false) @map("is_deleted")
+  editedAt        DateTime? @map("edited_at")
   createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   negotiation     Negotiation @relation(fields: [negotiationId], references: [id], onDelete: Cascade)
   sender          User        @relation(fields: [senderId], references: [id], onDelete: Restrict)
@@ -665,11 +825,11 @@ model Transaction {
   type            TransactionType   @default(SALES)
   paymentMethod   PaymentMethod?
   paymentStatus   PaymentStatus?    @default(PENDING)
-  
+
   // Financial Links
   paymentChannelId String? @map("payment_channel_id")
   payoutAccountId  String? @map("payout_account_id")
-  
+
   // Payment Provider Details (External)
   externalId       String?          @unique @map("external_id")
   paymentRequestId String? @map("payment_request_id")
@@ -696,6 +856,10 @@ model Transaction {
   @@index([paymentChannelId])
   @@index([payoutAccountId])
   @@index([createdAt])
+  @@index([externalId])
+  @@index([paymentRequestId])
+  @@index([status, type])
+  @@index([userId, createdAt])
   @@map("transactions")
 }
 
@@ -775,6 +939,7 @@ model IotAlert {
 
   @@index([deviceId, createdAt])
   @@index([isRead])
+  @@index([deviceId, isRead, createdAt])
   @@map("iot_alerts")
 }
 
@@ -810,6 +975,15 @@ model ForumPost {
   userId    String         @map("user_id")
   title     String         @map("title")
   content   String         @db.Text @map("content")
+  mediaUrls Json?          @map("media_urls")
+  // Hashtag (#xxx) yang di-extract dari content saat create/update,
+  // di-merge dengan tags eksplisit yang dikirim user. Dipakai untuk
+  // filter "trending tag" & search by tag.
+  tags Json? @map("tags")
+  // Snapshot produk yang di-mention (@produk) saat post dibuat, isi
+  // `{id, name, slug}` — dipakai mobile untuk render chip clickable
+  // tanpa harus query produk lagi.
+  productMentions Json? @map("product_mentions")
   categoryId String?        @map("category_id")
   status    PostStatus     @default(PUBLISHED) @map("status")
   viewCount Int            @default(0) @map("view_count")
@@ -828,6 +1002,8 @@ model ForumPost {
   @@index([status])
   @@index([createdAt])
   @@index([updatedAt])
+  @@index([status, categoryId])
+  @@index([status, createdAt])
   @@map("forum_posts")
 }
 
@@ -835,17 +1011,22 @@ model ForumComment {
   id        String    @id @default(uuid())
   postId    String    @map("post_id")
   userId    String    @map("user_id")
+  parentId  String?   @map("parent_id")
   content   String    @db.Text @map("content")
+  mediaUrls Json?     @map("media_urls")
   upvotes   Int       @default(0) @map("upvotes")
   downvotes Int       @default(0) @map("downvotes")
   createdAt DateTime  @default(now()) @map("created_at")
 
-  post      ForumPost @relation(fields: [postId], references: [id], onDelete: Cascade)
-  user      User      @relation(fields: [userId], references: [id], onDelete: Restrict)
-  votes     ForumVote[] @relation("CommentVotes")
+  post      ForumPost       @relation(fields: [postId], references: [id], onDelete: Cascade)
+  parent    ForumComment?   @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies   ForumComment[]  @relation("CommentReplies")
+  user      User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  votes     ForumVote[]     @relation("CommentVotes")
 
   @@index([postId])
   @@index([userId])
+  @@index([parentId])
   @@index([createdAt])
   @@map("forum_comments")
 }
@@ -878,7 +1059,7 @@ model Article {
   publishedAt   DateTime?       @map("published_at")
   createdAt     DateTime        @default(now()) @map("created_at")
   updatedAt     DateTime        @updatedAt @map("updated_at")
-  
+
   author        User?           @relation(fields: [authorId], references: [id], onDelete: SetNull)
   category      Category?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
@@ -886,6 +1067,8 @@ model Article {
   @@index([status])
   @@index([publishedAt])
   @@index([updatedAt])
+  @@index([status, categoryId])
+  @@index([status, publishedAt])
   @@map("articles")
 }
 
@@ -909,7 +1092,24 @@ model Notification {
   @@index([userId])
   @@index([createdAt])
   @@index([isRead])
+  @@index([userId, isRead])
+  @@index([userId, isRead, createdAt])
   @@map("notifications")
+}
+
+model UserDevice {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  fcmToken  String   @unique @map("fcm_token")
+  platform  DevicePlatform @default(WEB)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_devices")
 }
 model AuditLog {
   id        String   @id @default(uuid())
@@ -931,155 +1131,63 @@ model AuditLog {
 }
 
 // =========================================================
-// ELITE CMS & NAVIGATION SYSTEM (Dynamic sections & Page Meta)
+// CONTENT (Blog = Article) & PLATFORM CONFIG
 // =========================================================
 
-model CmsPage {
-  id              String         @id @default(uuid())
-  slug            String         @unique // e.g. "home", "marketplace", "dashboard"
-  title           String
-  metaTitle       String?        @map("meta_title")
-  metaDescription String?        @db.Text @map("meta_description")
-  isActive        Boolean        @default(true) @map("is_active")
-  createdAt       DateTime       @default(now()) @map("created_at")
-  updatedAt       DateTime       @updatedAt @map("updated_at")
+model Faq {
+  id        String   @id @default(uuid())
+  question  String   @db.Text @map("question")
+  answer    String   @db.Text @map("answer")
+  order     Int      @default(0) @map("order")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  sections        CmsSection[]
-  
-  @@map("cms_pages")
-}
-
-model CmsSection {
-  id        String         @id @default(uuid())
-  pageId    String?        @map("page_id")
-  name      String         // e.g. "Hero Section", "Impact Metrics"
-  type      SectionType    // Typed as Enum for strict security
-  order     Int            @default(0)
-  platform  DevicePlatform @default(WEB)
-  isActive  Boolean        @default(true) @map("is_active")
-
-  page      CmsPage?       @relation(fields: [pageId], references: [id], onDelete: Cascade)
-  settings  PlatformSetting[]
-  team      TeamMember[]
-  cards     ContentCard[]
-  faqs      Faq[]
-  metrics   ImpactMetric[]
-  policies  Policy[]
-
-  @@index([pageId])
-  @@index([type])
   @@index([isActive])
-  @@map("cms_sections")
-}
-
-model CmsMenu {
-  id        String         @id @default(uuid())
-  name      String         // e.g. "Main Navigation", "Dashboard Menu"
-  platform  DevicePlatform @default(WEB)
-  isActive  Boolean        @default(true) @map("is_active")
-  
-  items     CmsMenuItem[]
-
-  @@map("cms_menus")
-}
-
-model CmsMenuItem {
-  id        String         @id @default(uuid())
-  menuId    String         @map("menu_id")
-  parentId  String?        @map("parent_id")
-  label     String
-  link      String
-  icon      String?
-  order     Int            @default(0)
-  isActive  Boolean        @default(true) @map("is_active")
-
-  menu      CmsMenu        @relation(fields: [menuId], references: [id], onDelete: Cascade)
-  parent    CmsMenuItem?   @relation("MenuHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
-  children  CmsMenuItem[]  @relation("MenuHierarchy")
-
-  @@index([menuId])
-  @@index([parentId])
-  @@index([isActive])
-  @@map("cms_menu_items")
+  @@index([order])
+  @@map("faqs")
 }
 
 model PlatformSetting {
-  id        String       @id @default(uuid())
-  sectionId String?      @map("section_id")
-  key       String       @unique
-  value     String       @db.Text
-  imageUrl  String?      @db.Text @map("image_url")
-  updatedAt DateTime     @updatedAt @map("updated_at")
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  section   CmsSection?  @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  /// - XENDIT_INVOICE_DURATION_SECONDS
+  /// - XENDIT_DEFAULT_INVOICE_CATEGORY
 
-  @@index([sectionId])
   @@map("platform_settings")
 }
 
-model TeamMember {
-  id        String       @id @default(uuid())
-  sectionId String?      @map("section_id")
-  name      String
-  role      String
-  location  String?
-  imageUrl  String?      @db.Text @map("image_url")
-  order     Int          @default(0)
-  createdAt DateTime     @default(now()) @map("created_at")
+model ShippingPickupVehicle {
+  id                  String   @id @default(uuid())
+  code                String   @unique @map("code")
+  label               String   @map("label")
+  minTotalWeight      Decimal  @db.Decimal(15, 2) @default(0) @map("min_total_weight")
+  maxPerOrderWeight   Decimal? @db.Decimal(15, 2) @map("max_per_order_weight")
+  weightUnit          UnitStatus @default(KG) @map("weight_unit")
+  notes               String?  @db.Text @map("notes")
+  isActive            Boolean  @default(true) @map("is_active")
+  sortOrder           Int      @default(0) @map("sort_order")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
 
-  section   CmsSection?  @relation(fields: [sectionId], references: [id], onDelete: SetNull)
-
-  @@index([sectionId])
-  @@map("team_members")
+  @@index([isActive, sortOrder])
+  @@map("shipping_pickup_vehicles")
 }
 
-model ContentCard {
-  id          String       @id @default(uuid())
-  sectionId   String?      @map("section_id")
-  title       String
-  description String?      @db.Text
-  icon        String?
-  image       String?      @db.Text
-  order       Int          @default(0)
+model ShippingCourier {
+  id        String   @id @default(uuid())
+  code      String   @unique @map("code")
+  label     String?  @map("label")
+  isActive  Boolean  @default(true) @map("is_active")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  section     CmsSection?  @relation(fields: [sectionId], references: [id], onDelete: SetNull)
-
-  @@index([sectionId])
-  @@map("content_cards")
-}
-
-model ImpactMetric {
-  id        String       @id @default(uuid())
-  sectionId String?      @map("section_id")
-  label     String
-  value     String
-  sublabel  String?
-  unit      String?
-  change    String?
-  isPrimary Boolean      @default(false) @map("is_primary")
-
-  section   CmsSection?  @relation(fields: [sectionId], references: [id], onDelete: SetNull)
-
-  @@index([sectionId])
-  @@map("impact_metrics")
-}
-
-
-model Faq {
-  id        String       @id @default(uuid())
-  sectionId String?      @map("section_id")
-  question  String       @db.Text @map("question")
-  answer    String       @db.Text @map("answer")
-  order     Int          @default(0) @map("order")
-  isActive  Boolean      @default(true) @map("is_active")
-  createdAt DateTime     @default(now()) @map("created_at")
-  updatedAt DateTime     @updatedAt @map("updated_at")
-
-  section   CmsSection?  @relation(fields: [sectionId], references: [id], onDelete: SetNull)
-
-  @@index([sectionId])
-  @@index([isActive])
-  @@map("faqs")
+  @@index([isActive, sortOrder])
+  @@map("shipping_couriers")
 }
 
 
@@ -1105,18 +1213,14 @@ model Review {
 }
 
 model Policy {
-  id        String       @id @default(uuid())
-  sectionId String?      @map("section_id")
-  title     String       @unique @map("title") // e.g. "Privacy Policy"
-  content   String       @db.Text @map("content")
-  version   String       @default("1.0.0") @map("version")
-  isActive  Boolean      @default(true) @map("is_active")
-  createdAt DateTime     @default(now()) @map("created_at")
-  updatedAt DateTime     @updatedAt @map("updated_at")
+  id        String   @id @default(uuid())
+  title     String   @unique @map("title")
+  content   String   @db.Text @map("content")
+  version   String   @default("1.0.0") @map("version")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  section   CmsSection?  @relation(fields: [sectionId], references: [id], onDelete: SetNull)
-
-  @@index([sectionId])
   @@map("policies")
 }
 
@@ -1157,7 +1261,7 @@ model Country {
 model Province {
   id         String    @id @default(uuid())
   sequenceId Int       @unique @default(autoincrement()) @map("sequence_id")
-  countryId  String    @map("country_id") 
+  countryId  String    @map("country_id")
   name       String    @map("name")
   createdAt  DateTime  @default(now()) @map("created_at")
   updatedAt  DateTime  @updatedAt @map("updated_at")
@@ -1244,6 +1348,7 @@ model Address {
   villageId   String? @map("village_id")
   fullAddress String  @map("full_address") @db.Text
   zipCode     String  @map("zip_code")
+  phoneNumber String? @map("phone_number")
   latitude    Decimal @db.Decimal(9, 6)
   longitude   Decimal @db.Decimal(10, 6)
 
@@ -1255,7 +1360,7 @@ model Address {
   regency           Regency?           @relation("RegencyAddress", fields: [regencyId], references: [id])
   district          District?          @relation("DistrictAddress", fields: [districtId], references: [id])
   village           Village?           @relation("VillageAddress", fields: [villageId], references: [id])
-  
+
   // Relations to other business models
   users             User[]
   userProfile       UserProfile?
@@ -1275,7 +1380,12 @@ model CustomerAddress {
   addressId String  @map("address_id")
   userId    String  @map("user_id")
   label     String  @map("label") // e.g. "Kantor Cabang", "Gudang Utama"
-  
+
+  /// RajaOngkir subdistrict ID tujuan (pembeli)
+  rajaongkirDestinationId    Int?    @map("rajaongkir_destination_id")
+  rajaongkirDestinationLabel String? @db.Text @map("rajaongkir_destination_label")
+
+  isPrimary Boolean @default(false) @map("is_primary")
   address   Address @relation(fields: [addressId], references: [id])
   user      User    @relation(fields: [userId], references: [id])
 
@@ -1313,7 +1423,7 @@ model ShippingCenter {
 
 model PlatformFeeSetting {
   id           String             @id @default(uuid())
-  name         PlatformFeeType    @unique 
+  name         PlatformFeeType    @unique
   description  String?            @db.Text @map("description")
   type         FeeCalculationType @default(PERCENTAGE) @map("type")
   amount       Decimal            @db.Decimal(15, 2) @map("amount") // Nominal konstan (5000) atau persentase (2.5)
@@ -1328,26 +1438,40 @@ model PlatformFeeSetting {
 model PaymentChannel {
   id               String            @id @default(uuid())
   name             String            @unique // e.g. "Mandiri Virtual Account"
-  code             String            @unique // e.g. "MANDIRI", "OVO", "QRIS"
+  code             String            @unique // Xendit channel code e.g. "MANDIRI", "OVO", "QRIS"
   group            PaymentMethod?    @map("group") // e.g. BANK_TRANSFER, E_WALLET, QRIS
+  country          String?           @default("ID") @map("country")
+  currency         String?           @default("IDR") @map("currency")
+  minAmount        Decimal?          @db.Decimal(15, 2) @map("min_amount")
+  maxAmount        Decimal?          @db.Decimal(15, 2) @map("max_amount")
+  settlementTime   String?           @map("settlement_time")
+  xenditType       String?           @map("xendit_type") // Raw type from Xendit CSV
   logoUrl          String?           @db.Text @map("logo_url")
   isActive         Boolean           @default(true) @map("is_active")
-  
+
   platformAccounts PlatformBankAccount[]
   transactions     Transaction[]
 
+  @@index([country, isActive])
   @@map("payment_channels")
 }
 
 model PayoutBank {
   id               String            @id @default(uuid())
   name             String            @unique // e.g. "Bank Mandiri"
-  code             String            @unique // e.g. "008" (LBU Code for Disbursement)
+  code             String            @unique // Xendit payout channel code e.g. "ID_MANDIRI"
+  channelType      String?           @map("channel_type") // Bank | E-Wallet
+  country          String?           @default("ID") @map("country")
+  currency         String?           @default("IDR") @map("currency")
+  minAmount        Decimal?          @db.Decimal(15, 2) @map("min_amount")
+  maxAmount        Decimal?          @db.Decimal(15, 2) @map("max_amount")
+  flightTime       String?           @map("flight_time")
   logoUrl          String?           @db.Text @map("logo_url")
   isActive         Boolean           @default(true) @map("is_active")
-  
+
   userPayoutAccounts UserPayoutAccount[]
 
+  @@index([country, isActive])
   @@map("payout_banks")
 }
 
@@ -1391,7 +1515,7 @@ model Wallet {
   totalEarned    Decimal       @default(0) @db.Decimal(15, 2) @map("total_earned") // Historical total earnings
   totalWithdrawn Decimal       @default(0) @db.Decimal(15, 2) @map("total_withdrawn") // Historical total withdrawals
   updatedAt      DateTime      @updatedAt @map("updated_at")
-  
+
   user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("wallets")
@@ -1404,9 +1528,84 @@ model OperatingHour {
   openTime     String       @map("open_time")               // Opening hour (HH:mm)
   closeTime    String       @map("close_time")              // Closing hour (HH:mm)
   isClosed     Boolean      @default(false) @map("is_closed")
-  
+
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, dayOfWeek])
   @@map("operating_hours")
+}
+
+model ProductCollection {
+  id           String                  @id @default(uuid())
+  name         String                  @unique
+  slug         String                  @unique
+  description  String?                 @db.Text
+  thumbnailUrl String?                 @db.Text @map("thumbnail_url")
+  isActive     Boolean                 @default(true) @map("is_active")
+  createdAt    DateTime                @default(now()) @map("created_at")
+  updatedAt    DateTime                @updatedAt @map("updated_at")
+  products     ProductCollectionItem[]
+
+  @@index([isActive])
+  @@index([name])
+  @@map("product_collections")
+}
+
+model ProductCollectionItem {
+  id           String            @id @default(uuid())
+  collectionId String            @map("collection_id")
+  productId    String            @map("product_id")
+  order        Int               @default(0)
+  collection   ProductCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  product      Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([collectionId, productId])
+  @@index([collectionId])
+  @@index([productId])
+  @@map("product_collection_items")
+}
+
+model CartItem {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  productId String   @map("product_id")
+  quantity  Decimal  @db.Decimal(15, 2) @map("quantity")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@index([userId])
+  @@map("cart_items")
+}
+
+model ProductLike {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  productId String   @map("product_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@index([userId])
+  @@map("product_likes")
+}
+
+model UserFollow {
+  id          String   @id @default(uuid())
+  followerId  String   @map("follower_id")
+  followingId String   @map("following_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  follower  User @relation("FollowingSent", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("FollowingReceived", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+  @@index([followerId])
+  @@index([followingId])
+  @@map("user_follows")
 }

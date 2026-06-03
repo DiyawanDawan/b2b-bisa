@@ -4,6 +4,7 @@ import { requireAuth, requireRole, requireTierPro } from '#middlewares/authMiddl
 import { UserRole } from '#prisma';
 import validate from '#middlewares/validate';
 import * as deviceValidation from '#validations/device.validation';
+import { iotIngestLimiter } from '#middlewares/rateLimiter';
 
 const router = Router();
 
@@ -63,7 +64,43 @@ router.delete(
 router.get(
   '/dashboard/:deviceId',
   requireRole(UserRole.SUPPLIER, UserRole.ADMIN),
+  validate(deviceValidation.iotDashboardQuerySchema, 'all'),
   iotController.getDeviceDashboard,
+);
+
+router.get(
+  '/analytics/fleet',
+  requireRole(UserRole.SUPPLIER, UserRole.ADMIN),
+  validate(deviceValidation.iotFleetQuerySchema, 'all'),
+  iotController.getFleetAnalytics,
+);
+
+router.get(
+  '/devices/:deviceId/alerts',
+  requireRole(UserRole.SUPPLIER, UserRole.ADMIN),
+  validate(deviceValidation.iotDeviceAlertsQuerySchema, 'all'),
+  iotController.getDeviceAlerts,
+);
+
+router.get(
+  '/devices/:deviceId/latest',
+  requireRole(UserRole.SUPPLIER, UserRole.ADMIN),
+  validate(deviceValidation.iotDeviceIdParamsSchema, 'all'),
+  iotController.getDeviceLatest,
+);
+
+router.get(
+  '/devices/:deviceId/readings/export',
+  requireRole(UserRole.SUPPLIER, UserRole.ADMIN),
+  validate(deviceValidation.iotDashboardQuerySchema, 'all'),
+  iotController.exportDeviceReadings,
+);
+
+router.get(
+  '/devices/:deviceId/stream',
+  requireRole(UserRole.SUPPLIER, UserRole.ADMIN),
+  validate(deviceValidation.iotDeviceIdParamsSchema, 'all'),
+  iotController.streamDeviceTelemetry,
 );
 
 // Telemetry & History
@@ -88,6 +125,7 @@ router.patch(
  */
 router.post(
   '/data',
+  iotIngestLimiter,
   requireRole(UserRole.SUPPLIER, UserRole.ADMIN),
   validate(deviceValidation.logReadingSchema, 'all'),
   iotController.logReading,

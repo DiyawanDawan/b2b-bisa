@@ -14,6 +14,14 @@ router.get('/', optionalAuth, userController.listSuppliers);
 /**
  * @route   GET /api/v1/suppliers/:id
  */
-router.get('/:id', optionalAuth, userController.getSupplierDetail);
+/**
+ * @route   GET /api/v1/suppliers/:id/products
+ */
+router.get('/:id/products', optionalAuth, userController.getSupplierProducts);
+
+/**
+ * @route   GET /api/v1/suppliers/:id/verification-status
+ */
+router.get('/:id/verification-status', optionalAuth, userController.getSupplierVerification);
 
 export default router;

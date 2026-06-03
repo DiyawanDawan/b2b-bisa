@@ -17,8 +17,10 @@ const validate =
         if (result.query) req.query = result.query;
         if (result.params) req.params = result.params;
       } else {
-        // Validate specific source and sync back transformed results (important for coercion)
-        req[source] = schema.parse(req[source]);
+        // Strip unknown keys to prevent mass assignment, then parse
+        const safeSchema =
+          'strip' in schema && typeof schema.strip === 'function' ? schema.strip() : schema;
+        req[source] = safeSchema.parse(req[source]);
       }
       next();
     } catch (err) {

@@ -2,7 +2,7 @@ import { Response } from 'express';
 import catchAsync from '#utils/catchAsync';
 import { successResponse } from '#utils/response.util';
 import * as marketService from '#services/market.service';
-import { AuthRequest } from '#middlewares/authMiddleware';
+import { AuthRequest } from '#types/index';
 import { TrendCategory } from '#prisma';
 
 /**

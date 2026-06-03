@@ -1,10 +1,12 @@
 import { Router } from 'express';
+import { successResponse } from '#utils/response.util';
+import { requireAuth } from '#middlewares/authMiddleware';
 
 const router = Router();
 
 // /api/chatbot
-router.post('/', (req, res) => {
-  res.json({ message: 'Chatbot AI untuk konsultasi' });
+router.post('/', requireAuth, (req, res) => {
+  return successResponse(res, null, 'Chatbot AI untuk konsultasi');
 });
 
 export default router;

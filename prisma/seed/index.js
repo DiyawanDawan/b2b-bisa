@@ -1,7 +1,6 @@
 import prisma from '#db';
 import logger from '../../src/config/logger.js';
 import { seedTaxonomies } from './01-taxonomies.seeder.js';
-import { seedCMS } from './02-cms.seeder.js';
 import { seedRegions } from './02b-regions.seeder.js';
 import { seedFinancial } from './03-financial.seeder.js';
 import { seedUsers } from './04-users.seeder.js';
@@ -12,6 +11,14 @@ import { seedTransactions } from './08-transactions.seeder.js';
 import { seedCommunity } from './09-community.seeder.js';
 import { seedOperations } from './10-operations.seeder.js';
 import { seedMarket } from './11-market.seeder.js';
+import { seedVerifications } from './12-verifications.seeder.js';
+import { seedCollections } from './13-collections.seeder.js';
+import { seedPolicies } from './14-policies.seeder.js';
+import { seedOrdersAndNegotiations } from './15-orders-negotiations.seeder.js';
+import { seedFaqs } from './16-faqs.seeder.js';
+import { seedStoreBanners } from './17-store-banners.seeder.js';
+import { seedSummary } from './18-seed-summary.seeder.js';
+import { seedPickupVehicles } from './19-pickup-vehicles.seeder.js';
 
 async function main() {
   logger.info('🚀 Memulai proses FULL Seeding Database BISA B2B...');
@@ -19,27 +26,34 @@ async function main() {
   try {
     // Phase 1: Absolute Dependencies (No foreign keys)
     await seedTaxonomies(prisma);
-    await seedCMS(prisma);
     await seedRegions(prisma);
     await seedFinancial(prisma);
 
     // Phase 2: Core Entities (Depends on Taxonomies & Finance)
     const users = await seedUsers(prisma);
+    await seedVerifications(prisma);
 
     // Phase 3: Business Logic (Depends on Users)
     if (users && users.allSuppliers && users.allSuppliers.length > 0) {
       await seedProducts(prisma, users);
+      await seedStoreBanners(prisma, users);
       await seedIoT(prisma, users);
     } else {
-      logger.warn('Seeding Produk & IoT dilewati karena Supplier tidak ditemukan.');
+      logger.warn('Seeding Produk, Banner & IoT dilewati karena Supplier tidak ditemukan.');
     }
 
     // Phase 4: Complex Flows (Depends on Everything)
     await seedAnalytics(prisma);
     await seedTransactions(prisma, users);
+    await seedOrdersAndNegotiations(prisma, users);
     await seedCommunity(prisma, users);
     await seedOperations(prisma, users);
     await seedMarket(prisma);
+    await seedCollections(prisma);
+    await seedPolicies(prisma);
+    await seedFaqs(prisma);
+    await seedPickupVehicles(prisma);
+    await seedSummary(prisma);
 
     logger.info('SELURUH MODUL SEEDER BERHASIL DIJALANKAN (100% COMPLETE) 🎉');
   } catch (error) {

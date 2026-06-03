@@ -2,7 +2,7 @@ import { Response } from 'express';
 import catchAsync from '#utils/catchAsync';
 import { successResponse } from '#utils/response.util';
 import * as aiService from '#services/ai.service';
-import { AuthRequest } from '#middlewares/authMiddleware';
+import { AuthRequest } from '#types/index';
 
 /**
  * Predict biochar quality based on input parameters (Pyrolysis)

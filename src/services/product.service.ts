@@ -1,6 +1,112 @@
+import {
+  applyKnownFieldsFromSpecs,
+  buildSpecsCreateInput,
+  parseSpecsInput,
+  productSpecsSelect,
+  type ProductSpecInput,
+} from '#utils/productSpec.util';
 import prisma from '#config/prisma';
 import AppError from '#utils/appError';
-import { Prisma, BiomassaType, BiocharGrade, ProductStatus, OrderStatus } from '#prisma';
+import * as storageService from '#services/storage.service';
+import {
+  Prisma,
+  BiomassaType,
+  BiocharGrade,
+  ProductStatus,
+  ProductMode,
+  OrderStatus,
+} from '#prisma';
+
+/** Hapus file R2 produk yang tidak lagi dipakai setelah update/hapus. */
+const deleteOrphanProductMedia = async (
+  oldUrls: (string | null | undefined)[],
+  keepUrls: string[],
+) => {
+  const keep = new Set(
+    keepUrls
+      .map((url) => storageService.normalizeStorageKey(url) ?? url)
+      .filter((key): key is string => Boolean(key)),
+  );
+
+  for (const url of oldUrls) {
+    const key = storageService.normalizeStorageKey(url ?? null);
+    if (!key || storageService.isExternalMediaUrl(key)) continue;
+    if (!keep.has(key)) {
+      await storageService.deleteFile(key);
+    }
+  }
+};
+
+const productImagesSelect = {
+  select: {
+    id: true,
+    url: true,
+    isPrimary: true,
+    order: true,
+  },
+  orderBy: { order: 'asc' as const },
+};
+
+const resolveProductLocation = async (
+  userId: string,
+  province?: string | null,
+  regency?: string | null,
+) => {
+  if (province?.trim()) {
+    return {
+      province: province.trim(),
+      regency: regency?.trim() || null,
+    };
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { province: true, regency: true },
+  });
+
+  return {
+    province: user?.province?.trim() || null,
+    regency: regency?.trim() || user?.regency?.trim() || null,
+  };
+};
+
+const copyProductMediaKey = async (
+  sourceUrl: string | null | undefined,
+  userId: string,
+  label: string,
+): Promise<string | null> => {
+  const key = storageService.normalizeStorageKey(sourceUrl ?? null);
+  if (!key || storageService.isExternalMediaUrl(key)) {
+    return sourceUrl ?? null;
+  }
+
+  const ext = key.split('.').pop() || 'jpg';
+  const dest = `products/${userId}/${Date.now()}_${label}.${ext}`;
+  return storageService.copyFile(key, dest);
+};
+
+const publicProductUserSelect = {
+  id: true,
+  fullName: true,
+  avatarUrl: true,
+  province: true,
+  regency: true,
+  profile: {
+    select: {
+      companyName: true,
+      businessType: true,
+      rajaongkirOriginId: true,
+      rajaongkirOriginLabel: true,
+    },
+  },
+  verification: {
+    select: {
+      isVerified: true,
+      verificationStatus: true,
+      reviewedAt: true,
+    },
+  },
+} satisfies Prisma.UserSelect;
 
 type CreateProductInput = {
   name: string;
@@ -8,6 +114,7 @@ type CreateProductInput = {
   grade?: BiocharGrade;
   description?: string;
   pricePerUnit: number;
+  originalPrice?: number;
   stock: number;
   minOrder?: number;
   unit: 'KG' | 'TON';
@@ -15,6 +122,12 @@ type CreateProductInput = {
   categoryId?: string;
   province?: string;
   regency?: string;
+  // Organic Produce Mode
+  productMode?: ProductMode;
+  fertilizerType?: string;
+  isChemicalFree?: boolean;
+  cropType?: string;
+  specs?: ProductSpecInput[];
   // Tech Specs
   moistureContent?: number;
   carbonPurity?: number;
@@ -38,6 +151,13 @@ export const createProduct = async (
     throw new AppError('Grade wajib diisi untuk produk Biochar (A, B, atau C).', 400);
   }
 
+  const status = data.status ?? ProductStatus.ACTIVE;
+  if (status === ProductStatus.ACTIVE && imageUrls.length === 0) {
+    throw new AppError('Produk ACTIVE wajib memiliki minimal satu foto.', 400);
+  }
+
+  const location = await resolveProductLocation(userId, data.province, data.regency);
+
   const {
     moistureContent,
     carbonPurity,
@@ -50,35 +170,91 @@ export const createProduct = async (
     netWeightPerSak,
     bagDimension,
     pricePerUnit,
+    originalPrice,
     stock,
     minOrder,
+    isChemicalFree,
+    specs: specsInput,
+    imageOrder: _imageOrder,
+    syncImages: _syncImages,
     ...productData
-  } = data;
+  } = data as CreateProductInput & { imageOrder?: string; syncImages?: boolean };
+
+  const parsedSpecs = parseSpecsInput(specsInput);
+  const mappedFromSpecs = applyKnownFieldsFromSpecs(
+    productData.productMode,
+    parsedSpecs,
+  ) as Partial<CreateProductInput>;
+
+  const merged = {
+    ...productData,
+    ...mappedFromSpecs,
+    moistureContent: mappedFromSpecs.moistureContent ?? moistureContent,
+    carbonPurity: mappedFromSpecs.carbonPurity ?? carbonPurity,
+    productionCapacity: mappedFromSpecs.productionCapacity ?? productionCapacity,
+    surfaceArea: mappedFromSpecs.surfaceArea ?? surfaceArea,
+    phLevel: mappedFromSpecs.phLevel ?? phLevel,
+    density: mappedFromSpecs.density ?? density,
+    carbonOffsetPerTon: mappedFromSpecs.carbonOffsetPerTon ?? carbonOffsetPerTon,
+    grossWeightPerSak: mappedFromSpecs.grossWeightPerSak ?? grossWeightPerSak,
+    netWeightPerSak: mappedFromSpecs.netWeightPerSak ?? netWeightPerSak,
+    bagDimension: mappedFromSpecs.bagDimension ?? bagDimension,
+    cropType: mappedFromSpecs.cropType ?? productData.cropType,
+    fertilizerType: mappedFromSpecs.fertilizerType ?? productData.fertilizerType,
+    isChemicalFree:
+      mappedFromSpecs.isChemicalFree !== undefined
+        ? mappedFromSpecs.isChemicalFree
+        : isChemicalFree,
+  };
+
+  const isChemicalFreeVal =
+    merged.isChemicalFree === true || (merged.isChemicalFree as any) === 'true';
 
   const thumbnailUrl = imageUrls.length > 0 ? imageUrls[0] : null;
 
   return prisma.product.create({
     data: {
       ...productData,
+      cropType: merged.cropType as string | undefined,
+      fertilizerType: merged.fertilizerType as string | undefined,
+      isChemicalFree: isChemicalFreeVal,
       pricePerUnit: new Prisma.Decimal(pricePerUnit),
+      ...(originalPrice !== undefined && { originalPrice: new Prisma.Decimal(originalPrice) }),
       stock: new Prisma.Decimal(stock),
       minOrder: minOrder ? new Prisma.Decimal(minOrder) : new Prisma.Decimal(100),
       thumbnailUrl,
       userId,
+      province: location.province,
+      regency: location.regency,
       technicalSpec: {
         create: {
-          moistureContent: moistureContent ? new Prisma.Decimal(moistureContent) : null,
-          carbonPurity: carbonPurity ? new Prisma.Decimal(carbonPurity) : null,
-          productionCapacity: productionCapacity ? new Prisma.Decimal(productionCapacity) : null,
-          surfaceArea: surfaceArea ? new Prisma.Decimal(surfaceArea) : null,
-          phLevel: phLevel ? new Prisma.Decimal(phLevel) : null,
-          density,
-          carbonOffsetPerTon: carbonOffsetPerTon ? new Prisma.Decimal(carbonOffsetPerTon) : null,
-          grossWeightPerSak: grossWeightPerSak ? new Prisma.Decimal(grossWeightPerSak) : null,
-          netWeightPerSak: netWeightPerSak ? new Prisma.Decimal(netWeightPerSak) : null,
-          bagDimension,
+          moistureContent: merged.moistureContent
+            ? new Prisma.Decimal(merged.moistureContent as number)
+            : null,
+          carbonPurity: merged.carbonPurity
+            ? new Prisma.Decimal(merged.carbonPurity as number)
+            : null,
+          productionCapacity: merged.productionCapacity
+            ? new Prisma.Decimal(merged.productionCapacity as number)
+            : null,
+          surfaceArea: merged.surfaceArea ? new Prisma.Decimal(merged.surfaceArea as number) : null,
+          phLevel: merged.phLevel ? new Prisma.Decimal(merged.phLevel as number) : null,
+          density: merged.density as string | undefined,
+          carbonOffsetPerTon: merged.carbonOffsetPerTon
+            ? new Prisma.Decimal(merged.carbonOffsetPerTon as number)
+            : null,
+          grossWeightPerSak: merged.grossWeightPerSak
+            ? new Prisma.Decimal(merged.grossWeightPerSak as number)
+            : null,
+          netWeightPerSak: merged.netWeightPerSak
+            ? new Prisma.Decimal(merged.netWeightPerSak as number)
+            : null,
+          bagDimension: merged.bagDimension as string | undefined,
         },
       },
+      ...(parsedSpecs.length > 0 && {
+        specs: { create: buildSpecsCreateInput(parsedSpecs) },
+      }),
       images: {
         create: imageUrls.map((url, index) => ({
           url,
@@ -87,11 +263,55 @@ export const createProduct = async (
         })),
       },
     },
-    include: {
-      category: true,
-      technicalSpec: true,
-      images: true,
-      user: { select: { id: true, fullName: true, province: true, regency: true } },
+    select: {
+      id: true,
+      userId: true,
+      categoryId: true,
+      name: true,
+      biomassaType: true,
+      grade: true,
+      description: true,
+      pricePerUnit: true,
+      originalPrice: true,
+      stock: true,
+      minOrder: true,
+      unit: true,
+      status: true,
+      productMode: true,
+      fertilizerType: true,
+      isChemicalFree: true,
+      cropType: true,
+      specs: productSpecsSelect,
+      thumbnailUrl: true,
+      averageRating: true,
+      totalReviews: true,
+      province: true,
+      regency: true,
+      createdAt: true,
+      updatedAt: true,
+      category: {
+        select: {
+          id: true,
+          name: true,
+          categoryType: true,
+        },
+      },
+      technicalSpec: {
+        select: {
+          moistureContent: true,
+          carbonPurity: true,
+          productionCapacity: true,
+          surfaceArea: true,
+          phLevel: true,
+          density: true,
+          carbonOffsetPerTon: true,
+          grossWeightPerSak: true,
+          netWeightPerSak: true,
+          bagDimension: true,
+        },
+      },
+      images: productImagesSelect,
+      user: { select: publicProductUserSelect },
     },
   });
 };
@@ -103,13 +323,20 @@ export const listProducts = async (filters: {
   biomassaType?: BiomassaType;
   grade?: BiocharGrade;
   province?: string;
+  categoryId?: string;
   minPrice?: number;
   maxPrice?: number;
   minStock?: number;
+  minRating?: number;
+  minCarbonPurity?: number;
+  maxMoistureContent?: number;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
   page?: number;
   limit?: number;
+  productMode?: ProductMode;
+  cropType?: string;
+  isChemicalFree?: boolean;
 }) => {
   const {
     search,
@@ -118,20 +345,28 @@ export const listProducts = async (filters: {
     biomassaType,
     grade,
     province,
+    categoryId,
     minPrice,
     maxPrice,
     minStock,
+    minRating,
+    minCarbonPurity,
+    maxMoistureContent,
     sortBy = 'createdAt',
     sortOrder = 'desc',
     page = 1,
     limit = 10,
+    productMode,
+    cropType,
+    isChemicalFree,
   } = filters;
 
   const where: Prisma.ProductWhereInput = {
     ...(userId && { userId }),
+    ...(categoryId && { categoryId }),
     status: status || (userId ? { not: ProductStatus.DELETED } : ProductStatus.ACTIVE),
     ...(search && {
-      OR: [{ name: { startsWith: search } }, { description: { startsWith: search } }],
+      OR: [{ name: { contains: search } }, { description: { contains: search } }],
     }),
     ...(biomassaType && { biomassaType }),
     ...(grade && { grade }),
@@ -145,6 +380,22 @@ export const listProducts = async (filters: {
           },
         }
       : {}),
+    ...(minRating !== undefined && { averageRating: { gte: minRating } }),
+    // Organic Produce Mode filters
+    ...(productMode && { productMode }),
+    ...(cropType && { cropType }),
+    ...(isChemicalFree !== undefined && { isChemicalFree }),
+    // Advanced Technical Filters
+    ...(minCarbonPurity !== undefined || maxMoistureContent !== undefined
+      ? {
+          technicalSpec: {
+            ...(minCarbonPurity !== undefined && { carbonPurity: { gte: minCarbonPurity } }),
+            ...(maxMoistureContent !== undefined && {
+              moistureContent: { lte: maxMoistureContent },
+            }),
+          },
+        }
+      : {}),
   };
 
   const [total, products] = await Promise.all([
@@ -154,41 +405,353 @@ export const listProducts = async (filters: {
       skip: (page - 1) * limit,
       take: limit,
       orderBy: { [sortBy]: sortOrder },
-      include: {
-        category: true,
-        technicalSpec: true,
-        images: true,
+      select: {
+        id: true,
+        userId: true,
+        categoryId: true,
+        name: true,
+        biomassaType: true,
+        grade: true,
+        description: true,
+        pricePerUnit: true,
+        originalPrice: true,
+        stock: true,
+        minOrder: true,
+        unit: true,
+        status: true,
+        productMode: true,
+        fertilizerType: true,
+        isChemicalFree: true,
+        cropType: true,
+        specs: productSpecsSelect,
+        isCertified: true,
+        isIotMonitored: true,
+        isEscrowProtected: true,
+        thumbnailUrl: true,
+        averageRating: true,
+        totalReviews: true,
+        province: true,
+        regency: true,
+        createdAt: true,
+        updatedAt: true,
+        category: {
+          select: {
+            id: true,
+            name: true,
+            categoryType: true,
+          },
+        },
+        // Hanya ambil 2 "signal spec" untuk ditampilkan di ProductCard grid.
+        // Field lengkap (10+) hanya diambil di getProductById untuk halaman detail.
+        // Ini mengurangi JOIN overhead secara signifikan saat list 20+ produk sekaligus.
+        technicalSpec: {
+          select: {
+            carbonPurity: true, // Ditampilkan di kartu sebagai badge "C: XX%"
+            moistureContent: true, // Ditampilkan di kartu sebagai badge "Moisture: XX%"
+            netWeightPerSak: true,
+            density: true,
+          },
+        },
+        images: productImagesSelect,
         user: {
-          select: { id: true, fullName: true, avatarUrl: true, province: true, regency: true },
+          select: publicProductUserSelect,
         },
       },
     }),
   ]);
-  return { total, page, limit, products };
+  // averageRating & totalReviews are kept in-sync by the review service cache writer.
+  // No need to re-compute from a join — just map the user verification flags.
+  const mappedProducts = products.map((p) => ({
+    ...p,
+    user: {
+      ...p.user,
+      isVerified: p.user?.verification?.isVerified || false,
+      verificationStatus: p.user?.verification?.verificationStatus || 'PENDING',
+    },
+  }));
+
+  return { total, page, limit, products: mappedProducts };
 };
 
-export const getProductById = async (id: string) => {
+export const getProductById = async (id: string, requestUserId?: string) => {
   const product = await prisma.product.findUnique({
     where: { id },
-    include: {
-      category: true,
-      technicalSpec: true,
-      images: true,
-      user: {
+    select: {
+      id: true,
+      userId: true,
+      categoryId: true,
+      name: true,
+      biomassaType: true,
+      grade: true,
+      description: true,
+      pricePerUnit: true,
+      originalPrice: true,
+      stock: true,
+      minOrder: true,
+      unit: true,
+      status: true,
+      productMode: true,
+      fertilizerType: true,
+      isChemicalFree: true,
+      cropType: true,
+      specs: productSpecsSelect,
+      isCertified: true,
+      isIotMonitored: true,
+      isEscrowProtected: true,
+      thumbnailUrl: true,
+      averageRating: true,
+      totalReviews: true,
+      totalSold: true,
+      viewCount: true,
+      province: true,
+      regency: true,
+      createdAt: true,
+      updatedAt: true,
+      category: {
         select: {
           id: true,
-          fullName: true,
-          email: true,
-          phone: true,
-          province: true,
-          regency: true,
+          name: true,
+          categoryType: true,
         },
+      },
+      technicalSpec: {
+        select: {
+          moistureContent: true,
+          carbonPurity: true,
+          productionCapacity: true,
+          surfaceArea: true,
+          phLevel: true,
+          density: true,
+          carbonOffsetPerTon: true,
+          grossWeightPerSak: true,
+          netWeightPerSak: true,
+          bagDimension: true,
+          heavyMetals: true,
+        },
+      },
+      images: productImagesSelect,
+      user: {
+        select: publicProductUserSelect,
       },
     },
   });
-  if (!product || product.status !== ProductStatus.ACTIVE)
+  if (!product) throw new AppError('Produk tidak ditemukan.', 404);
+
+  const isOwner = !!requestUserId && product.userId === requestUserId;
+  if (product.status !== ProductStatus.ACTIVE && !isOwner) {
     throw new AppError('Produk tidak ditemukan.', 404);
-  return product;
+  }
+
+  if (!isOwner && product.status === ProductStatus.ACTIVE) {
+    await prisma.product.update({
+      where: { id },
+      data: { viewCount: { increment: 1 } },
+    });
+    product.viewCount += 1;
+  }
+
+  // averageRating & totalReviews are kept in-sync by the review service cache writer.
+  return {
+    ...product,
+    user: {
+      ...product.user,
+      isVerified: product.user?.verification?.isVerified || false,
+      verificationStatus: product.user?.verification?.verificationStatus || 'PENDING',
+    },
+  };
+};
+
+export const getProductStats = async (id: string, userId: string) => {
+  const product = await prisma.product.findUnique({
+    where: { id },
+    select: {
+      userId: true,
+      viewCount: true,
+      totalSold: true,
+      totalReviews: true,
+      averageRating: true,
+    },
+  });
+  if (!product) throw new AppError('Produk tidak ditemukan.', 404);
+  if (product.userId !== userId)
+    throw new AppError('Anda tidak memiliki akses ke statistik produk ini.', 403);
+
+  const activeNegotiations = await prisma.negotiation.count({
+    where: { productId: id, status: 'OPEN_NEGOTIATION' },
+  });
+
+  const engagement = await prisma.product.findUnique({
+    where: { id },
+    select: {
+      _count: { select: { productLikes: true, cartItems: true } },
+    },
+  });
+
+  return {
+    viewCount: product.viewCount,
+    totalSold: product.totalSold,
+    activeNegotiations,
+    totalReviews: product.totalReviews,
+    averageRating: Number(product.averageRating),
+    likeCount: engagement?._count.productLikes ?? 0,
+    cartCount: engagement?._count.cartItems ?? 0,
+  };
+};
+
+export const duplicateProduct = async (id: string, userId: string) => {
+  const source = await prisma.product.findUnique({
+    where: { id },
+    include: {
+      technicalSpec: true,
+      images: { orderBy: { order: 'asc' } },
+      specs: { orderBy: { sortOrder: 'asc' } },
+    },
+  });
+  if (!source) throw new AppError('Produk tidak ditemukan.', 404);
+  if (source.userId !== userId)
+    throw new AppError('Anda tidak memiliki akses untuk menduplikasi produk ini.', 403);
+
+  const { technicalSpec, images, specs, ...base } = source;
+
+  const copiedImages = await Promise.all(
+    images.map(async (img, index) => {
+      const copiedUrl = await copyProductMediaKey(img.url, userId, `dup_${index}`);
+      return {
+        url: copiedUrl ?? img.url,
+        isPrimary: img.isPrimary,
+        order: img.order,
+      };
+    }),
+  );
+
+  const copiedThumbnail = base.thumbnailUrl
+    ? await copyProductMediaKey(base.thumbnailUrl, userId, 'dup_thumb')
+    : (copiedImages.find((img) => img.isPrimary)?.url ?? copiedImages[0]?.url ?? null);
+
+  const created = await prisma.product.create({
+    data: {
+      userId,
+      categoryId: base.categoryId,
+      name: `${base.name} (Copy)`,
+      biomassaType: base.biomassaType,
+      grade: base.grade,
+      description: base.description,
+      pricePerUnit: base.pricePerUnit,
+      originalPrice: base.originalPrice,
+      stock: base.stock,
+      minOrder: base.minOrder,
+      unit: base.unit,
+      status: ProductStatus.DRAFT,
+      productMode: base.productMode,
+      fertilizerType: base.fertilizerType,
+      isChemicalFree: base.isChemicalFree,
+      cropType: base.cropType,
+      province: base.province,
+      regency: base.regency,
+      thumbnailUrl: copiedThumbnail,
+      isCertified: false,
+      isIotMonitored: base.isIotMonitored,
+      isEscrowProtected: base.isEscrowProtected,
+      averageRating: 0,
+      totalReviews: 0,
+      totalSold: 0,
+      viewCount: 0,
+      technicalSpec: technicalSpec
+        ? {
+            create: {
+              moistureContent: technicalSpec.moistureContent,
+              carbonPurity: technicalSpec.carbonPurity,
+              productionCapacity: technicalSpec.productionCapacity,
+              surfaceArea: technicalSpec.surfaceArea,
+              phLevel: technicalSpec.phLevel,
+              density: technicalSpec.density,
+              carbonOffsetPerTon: technicalSpec.carbonOffsetPerTon,
+              grossWeightPerSak: technicalSpec.grossWeightPerSak,
+              netWeightPerSak: technicalSpec.netWeightPerSak,
+              bagDimension: technicalSpec.bagDimension,
+              heavyMetals: technicalSpec.heavyMetals ?? undefined,
+            },
+          }
+        : undefined,
+      ...(specs.length > 0 && {
+        specs: {
+          create: specs.map(({ label, value, sortOrder }) => ({
+            label,
+            value,
+            sortOrder,
+          })),
+        },
+      }),
+      images: {
+        create: copiedImages.map((img) => ({
+          url: img.url,
+          isPrimary: img.isPrimary,
+          order: img.order,
+        })),
+      },
+    },
+    select: {
+      id: true,
+      userId: true,
+      categoryId: true,
+      name: true,
+      biomassaType: true,
+      grade: true,
+      description: true,
+      pricePerUnit: true,
+      originalPrice: true,
+      stock: true,
+      minOrder: true,
+      unit: true,
+      status: true,
+      productMode: true,
+      fertilizerType: true,
+      isChemicalFree: true,
+      cropType: true,
+      specs: productSpecsSelect,
+      isCertified: true,
+      isIotMonitored: true,
+      isEscrowProtected: true,
+      thumbnailUrl: true,
+      averageRating: true,
+      totalReviews: true,
+      totalSold: true,
+      viewCount: true,
+      province: true,
+      regency: true,
+      createdAt: true,
+      updatedAt: true,
+      category: {
+        select: { id: true, name: true, categoryType: true },
+      },
+      technicalSpec: {
+        select: {
+          moistureContent: true,
+          carbonPurity: true,
+          productionCapacity: true,
+          surfaceArea: true,
+          phLevel: true,
+          density: true,
+          carbonOffsetPerTon: true,
+          grossWeightPerSak: true,
+          netWeightPerSak: true,
+          bagDimension: true,
+          heavyMetals: true,
+        },
+      },
+      images: productImagesSelect,
+      user: { select: publicProductUserSelect },
+    },
+  });
+
+  return {
+    ...created,
+    user: {
+      ...created.user,
+      isVerified: created.user?.verification?.isVerified || false,
+      verificationStatus: created.user?.verification?.verificationStatus || 'PENDING',
+    },
+  };
 };
 
 export const updateProduct = async (
@@ -196,11 +759,22 @@ export const updateProduct = async (
   userId: string,
   data: Partial<CreateProductInput>,
   imageUrls: string[] = [],
+  syncImages = false,
 ) => {
   const product = await prisma.product.findUnique({ where: { id } });
   if (!product) throw new AppError('Produk tidak ditemukan.', 404);
   if (product.userId !== userId)
     throw new AppError('Anda tidak memiliki akses untuk mengubah produk ini.', 403);
+
+  const nextBiomassaType = (data.biomassaType ?? product.biomassaType) as BiomassaType;
+  const nextGrade = data.grade ?? product.grade;
+  if (nextBiomassaType === BiomassaType.BIOCHAR && !nextGrade) {
+    throw new AppError('Grade wajib diisi untuk produk Biochar (A, B, atau C).', 400);
+  }
+
+  if (syncImages && imageUrls.length === 0) {
+    throw new AppError('Sinkronisasi foto gagal: daftar foto kosong.', 400);
+  }
 
   const {
     moistureContent,
@@ -216,79 +790,244 @@ export const updateProduct = async (
     pricePerUnit,
     stock,
     minOrder,
+    originalPrice,
+    isChemicalFree,
+    specs: specsInput,
+    syncImages: _syncImages,
+    imageOrder: _imageOrder,
     ...productUpdateData
-  } = data;
+  } = data as Partial<CreateProductInput> & {
+    syncImages?: boolean;
+    imageOrder?: string;
+  };
 
-  const thumbnailUrl = imageUrls.length > 0 ? imageUrls[0] : undefined;
+  const parsedSpecs = parseSpecsInput(specsInput);
+  const hasSpecsPayload = specsInput !== undefined;
+  const mappedFromSpecs = hasSpecsPayload
+    ? (applyKnownFieldsFromSpecs(product.productMode, parsedSpecs) as Partial<CreateProductInput>)
+    : {};
 
-  return prisma.product.update({
-    where: { id },
-    data: {
-      ...productUpdateData,
-      ...(thumbnailUrl && { thumbnailUrl }),
-      ...(pricePerUnit !== undefined && { pricePerUnit: new Prisma.Decimal(pricePerUnit) }),
-      ...(stock !== undefined && { stock: new Prisma.Decimal(stock) }),
-      ...(minOrder !== undefined && { minOrder: new Prisma.Decimal(minOrder) }),
-      technicalSpec: {
-        upsert: {
-          create: {
-            moistureContent: moistureContent ? new Prisma.Decimal(moistureContent) : null,
-            carbonPurity: carbonPurity ? new Prisma.Decimal(carbonPurity) : null,
-            productionCapacity: productionCapacity ? new Prisma.Decimal(productionCapacity) : null,
-            surfaceArea: surfaceArea ? new Prisma.Decimal(surfaceArea) : null,
-            phLevel: phLevel ? new Prisma.Decimal(phLevel) : null,
-            density,
-            carbonOffsetPerTon: carbonOffsetPerTon ? new Prisma.Decimal(carbonOffsetPerTon) : null,
-            grossWeightPerSak: grossWeightPerSak ? new Prisma.Decimal(grossWeightPerSak) : null,
-            netWeightPerSak: netWeightPerSak ? new Prisma.Decimal(netWeightPerSak) : null,
-            bagDimension,
-          },
-          update: {
-            ...(moistureContent !== undefined && {
-              moistureContent: new Prisma.Decimal(moistureContent),
-            }),
-            ...(carbonPurity !== undefined && { carbonPurity: new Prisma.Decimal(carbonPurity) }),
-            ...(productionCapacity !== undefined && {
-              productionCapacity: new Prisma.Decimal(productionCapacity),
-            }),
-            ...(surfaceArea !== undefined && { surfaceArea: new Prisma.Decimal(surfaceArea) }),
-            ...(phLevel !== undefined && { phLevel: new Prisma.Decimal(phLevel) }),
-            ...(density !== undefined && { density }),
-            ...(carbonOffsetPerTon !== undefined && {
-              carbonOffsetPerTon: new Prisma.Decimal(carbonOffsetPerTon),
-            }),
-            ...(grossWeightPerSak !== undefined && {
-              grossWeightPerSak: new Prisma.Decimal(grossWeightPerSak),
-            }),
-            ...(netWeightPerSak !== undefined && {
-              netWeightPerSak: new Prisma.Decimal(netWeightPerSak),
-            }),
-            ...(bagDimension !== undefined && { bagDimension }),
-          },
+  const resolvedMoisture = mappedFromSpecs.moistureContent ?? moistureContent;
+  const resolvedCarbon = mappedFromSpecs.carbonPurity ?? carbonPurity;
+  const resolvedCapacity = mappedFromSpecs.productionCapacity ?? productionCapacity;
+  const resolvedSurface = mappedFromSpecs.surfaceArea ?? surfaceArea;
+  const resolvedPh = mappedFromSpecs.phLevel ?? phLevel;
+  const resolvedDensity = mappedFromSpecs.density ?? density;
+  const resolvedOffset = mappedFromSpecs.carbonOffsetPerTon ?? carbonOffsetPerTon;
+  const resolvedGross = mappedFromSpecs.grossWeightPerSak ?? grossWeightPerSak;
+  const resolvedNet = mappedFromSpecs.netWeightPerSak ?? netWeightPerSak;
+  const resolvedBag = mappedFromSpecs.bagDimension ?? bagDimension;
+
+  const isChemicalFreeVal =
+    mappedFromSpecs.isChemicalFree !== undefined
+      ? mappedFromSpecs.isChemicalFree === true ||
+        (mappedFromSpecs.isChemicalFree as any) === 'true'
+      : isChemicalFree !== undefined
+        ? isChemicalFree === true || (isChemicalFree as any) === 'true'
+        : undefined;
+
+  // Runtime: multipart form data bisa kirim originalPrice sebagai number, null,
+  // string kosong, atau literal "null". TS hanya tahu signature `number?`, jadi
+  // cast ke `unknown` agar perbandingan string tidak di-reject (TS2367).
+  const originalPriceRaw = originalPrice as unknown;
+  const originalPriceVal =
+    originalPriceRaw === undefined
+      ? undefined
+      : originalPriceRaw === null || originalPriceRaw === '' || originalPriceRaw === 'null'
+        ? null
+        : new Prisma.Decimal(Number(originalPriceRaw));
+
+  const location =
+    productUpdateData.province !== undefined ||
+    productUpdateData.regency !== undefined ||
+    !product.province
+      ? await resolveProductLocation(
+          userId,
+          productUpdateData.province ?? product.province,
+          productUpdateData.regency ?? product.regency,
+        )
+      : null;
+
+  const thumbnailUrl = syncImages
+    ? imageUrls.length > 0
+      ? imageUrls[0]
+      : null
+    : imageUrls.length > 0
+      ? imageUrls[0]
+      : undefined;
+
+  const willReplaceImages = syncImages || imageUrls.length > 0;
+  const existingMedia = willReplaceImages
+    ? await prisma.product.findUnique({
+        where: { id },
+        select: {
+          thumbnailUrl: true,
+          images: { select: { url: true } },
         },
-      },
-      ...(imageUrls.length > 0 && {
-        images: {
-          deleteMany: {},
-          create: imageUrls.map((url, index) => ({
-            url,
-            isPrimary: index === 0,
-            order: index,
+      })
+    : null;
+
+  const updated = await prisma.$transaction(async (tx) => {
+    if (hasSpecsPayload) {
+      await tx.productSpec.deleteMany({ where: { productId: id } });
+      if (parsedSpecs.length > 0) {
+        await tx.productSpec.createMany({
+          data: buildSpecsCreateInput(parsedSpecs).map((row) => ({
+            ...row,
+            productId: id,
           })),
+        });
+      }
+    }
+
+    return tx.product.update({
+      where: { id },
+      data: {
+        ...productUpdateData,
+        ...(location && {
+          province: location.province,
+          regency: location.regency,
+        }),
+        ...(mappedFromSpecs.cropType !== undefined && {
+          cropType: mappedFromSpecs.cropType as string,
+        }),
+        ...(mappedFromSpecs.fertilizerType !== undefined && {
+          fertilizerType: mappedFromSpecs.fertilizerType as string,
+        }),
+        ...(isChemicalFreeVal !== undefined && { isChemicalFree: isChemicalFreeVal }),
+        ...(pricePerUnit !== undefined && { pricePerUnit: new Prisma.Decimal(pricePerUnit) }),
+        ...(originalPriceVal !== undefined && { originalPrice: originalPriceVal }),
+        ...(stock !== undefined && { stock: new Prisma.Decimal(stock) }),
+        ...(minOrder !== undefined && { minOrder: new Prisma.Decimal(minOrder) }),
+        technicalSpec: {
+          upsert: {
+            create: {
+              moistureContent: resolvedMoisture ? new Prisma.Decimal(resolvedMoisture) : null,
+              carbonPurity: resolvedCarbon ? new Prisma.Decimal(resolvedCarbon) : null,
+              productionCapacity: resolvedCapacity ? new Prisma.Decimal(resolvedCapacity) : null,
+              surfaceArea: resolvedSurface ? new Prisma.Decimal(resolvedSurface) : null,
+              phLevel: resolvedPh ? new Prisma.Decimal(resolvedPh) : null,
+              density: resolvedDensity,
+              carbonOffsetPerTon: resolvedOffset ? new Prisma.Decimal(resolvedOffset) : null,
+              grossWeightPerSak: resolvedGross ? new Prisma.Decimal(resolvedGross) : null,
+              netWeightPerSak: resolvedNet ? new Prisma.Decimal(resolvedNet) : null,
+              bagDimension: resolvedBag,
+            },
+            update: {
+              ...(resolvedMoisture !== undefined && {
+                moistureContent: new Prisma.Decimal(resolvedMoisture),
+              }),
+              ...(resolvedCarbon !== undefined && {
+                carbonPurity: new Prisma.Decimal(resolvedCarbon),
+              }),
+              ...(resolvedCapacity !== undefined && {
+                productionCapacity: new Prisma.Decimal(resolvedCapacity),
+              }),
+              ...(resolvedSurface !== undefined && {
+                surfaceArea: new Prisma.Decimal(resolvedSurface),
+              }),
+              ...(resolvedPh !== undefined && { phLevel: new Prisma.Decimal(resolvedPh) }),
+              ...(resolvedDensity !== undefined && { density: resolvedDensity }),
+              ...(resolvedOffset !== undefined && {
+                carbonOffsetPerTon: new Prisma.Decimal(resolvedOffset),
+              }),
+              ...(resolvedGross !== undefined && {
+                grossWeightPerSak: new Prisma.Decimal(resolvedGross),
+              }),
+              ...(resolvedNet !== undefined && {
+                netWeightPerSak: new Prisma.Decimal(resolvedNet),
+              }),
+              ...(resolvedBag !== undefined && { bagDimension: resolvedBag }),
+            },
+          },
         },
-      }),
-    },
-    include: {
-      technicalSpec: true,
-      images: true,
-    },
+        ...(syncImages && {
+          thumbnailUrl,
+          images: {
+            deleteMany: {},
+            create: imageUrls.map((url, index) => ({
+              url,
+              isPrimary: index === 0,
+              order: index,
+            })),
+          },
+        }),
+        ...(!syncImages &&
+          imageUrls.length > 0 && {
+            thumbnailUrl,
+            images: {
+              deleteMany: {},
+              create: imageUrls.map((url, index) => ({
+                url,
+                isPrimary: index === 0,
+                order: index,
+              })),
+            },
+          }),
+      },
+      select: {
+        id: true,
+        userId: true,
+        categoryId: true,
+        name: true,
+        biomassaType: true,
+        grade: true,
+        description: true,
+        pricePerUnit: true,
+        originalPrice: true,
+        stock: true,
+        minOrder: true,
+        unit: true,
+        status: true,
+        productMode: true,
+        fertilizerType: true,
+        isChemicalFree: true,
+        cropType: true,
+        specs: productSpecsSelect,
+        thumbnailUrl: true,
+        averageRating: true,
+        totalReviews: true,
+        province: true,
+        regency: true,
+        createdAt: true,
+        updatedAt: true,
+        technicalSpec: {
+          select: {
+            moistureContent: true,
+            carbonPurity: true,
+            productionCapacity: true,
+            surfaceArea: true,
+            phLevel: true,
+            density: true,
+            carbonOffsetPerTon: true,
+            grossWeightPerSak: true,
+            netWeightPerSak: true,
+            bagDimension: true,
+          },
+        },
+        images: productImagesSelect,
+      },
+    });
   });
+
+  if (willReplaceImages && existingMedia) {
+    await deleteOrphanProductMedia(
+      [existingMedia.thumbnailUrl, ...existingMedia.images.map((img) => img.url)],
+      imageUrls,
+    );
+  }
+
+  return updated;
 };
 
 export const deleteProduct = async (id: string, userId: string) => {
   const product = await prisma.product.findUnique({
     where: { id },
-    include: {
+    select: {
+      id: true,
+      userId: true,
+      thumbnailUrl: true,
+      images: { select: { url: true } },
       _count: {
         select: { orderItems: true },
       },
@@ -324,6 +1063,10 @@ export const deleteProduct = async (id: string, userId: string) => {
   // 2. Decision Logic: Hard Delete vs Soft Delete
   if (product._count.orderItems === 0) {
     await prisma.product.delete({ where: { id } });
+    await deleteOrphanProductMedia(
+      [product.thumbnailUrl, ...product.images.map((img) => img.url)],
+      [],
+    );
     return { message: 'Produk berhasil dihapus secara permanen.' };
   } else {
     await prisma.product.update({
@@ -332,4 +1075,182 @@ export const deleteProduct = async (id: string, userId: string) => {
     });
     return { message: 'Produk berhasil dihapus (Riwayat transaksi diarsipkan).' };
   }
+};
+
+/**
+ * Get Featured Products (Certified & Active)
+ */
+export const getFeaturedProducts = async (limit: number = 6) => {
+  return prisma.product.findMany({
+    where: {
+      status: ProductStatus.ACTIVE,
+      isCertified: true,
+    },
+    take: limit,
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      name: true,
+      pricePerUnit: true,
+      originalPrice: true,
+      unit: true,
+      thumbnailUrl: true,
+      biomassaType: true,
+      grade: true,
+      province: true,
+      regency: true,
+      averageRating: true,
+      totalReviews: true,
+      isCertified: true,
+      user: {
+        select: {
+          fullName: true,
+        },
+      },
+    },
+  });
+};
+
+/**
+ * Get Products by Collection Slug
+ */
+export const getProductsByCollection = async (
+  slug: string,
+  page: number = 1,
+  limit: number = 10,
+) => {
+  // Step 1: Find the collection
+  const collection = await prisma.productCollection.findUnique({
+    where: { slug, isActive: true },
+    select: { id: true },
+  });
+
+  if (!collection) return [];
+
+  // Step 2: Fetch paginated items with full product data
+  const items = await prisma.productCollectionItem.findMany({
+    where: { collectionId: collection.id },
+    skip: (page - 1) * limit,
+    take: limit,
+    orderBy: { order: 'asc' },
+    include: {
+      product: {
+        select: {
+          id: true,
+          name: true,
+          pricePerUnit: true,
+          originalPrice: true,
+          unit: true,
+          thumbnailUrl: true,
+          biomassaType: true,
+          grade: true,
+          province: true,
+          regency: true,
+          averageRating: true,
+          totalReviews: true,
+          isCertified: true,
+          stock: true,
+          minOrder: true,
+          createdAt: true,
+          user: {
+            select: {
+              id: true,
+              fullName: true,
+              avatarUrl: true,
+              verification: {
+                select: {
+                  isVerified: true,
+                },
+              },
+              profile: {
+                select: {
+                  companyName: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  return items.map((item) => {
+    const p = item.product as any;
+    if (p.user) {
+      p.user.isVerified = p.user.verification?.isVerified || false;
+      delete p.user.verification;
+    }
+    return p;
+  });
+};
+
+/**
+ * List all active collections
+ */
+export const listCollections = async () => {
+  return prisma.productCollection.findMany({
+    where: { isActive: true },
+    orderBy: { createdAt: 'desc' },
+  });
+};
+
+/**
+ * Supplier: like & cart engagement across all own products
+ */
+export const getSupplierProductEngagement = async (sellerId: string) => {
+  const products = await prisma.product.findMany({
+    where: {
+      userId: sellerId,
+      status: { not: 'DELETED' },
+    },
+    select: {
+      id: true,
+      name: true,
+      thumbnailUrl: true,
+      pricePerUnit: true,
+      unit: true,
+      totalSold: true,
+      status: true,
+      _count: {
+        select: {
+          productLikes: true,
+          cartItems: true,
+        },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  const items = products.map((p) => ({
+    productId: p.id,
+    name: p.name,
+    thumbnailUrl: storageService.getPublicUrl(p.thumbnailUrl) ?? p.thumbnailUrl,
+    pricePerUnit: p.pricePerUnit,
+    unit: p.unit,
+    totalSold: p.totalSold,
+    status: p.status,
+    likeCount: p._count.productLikes,
+    cartCount: p._count.cartItems,
+  }));
+
+  const totalLikes = items.reduce((sum, p) => sum + p.likeCount, 0);
+  const totalInCart = items.reduce((sum, p) => sum + p.cartCount, 0);
+
+  const topLiked = [...items]
+    .filter((p) => p.likeCount > 0)
+    .sort((a, b) => b.likeCount - a.likeCount);
+  const topInCart = [...items]
+    .filter((p) => p.cartCount > 0)
+    .sort((a, b) => b.cartCount - a.cartCount);
+
+  return {
+    summary: {
+      totalLikes,
+      totalInCart,
+      productCount: items.length,
+    },
+    products: items,
+    topLiked,
+    topInCart,
+  };
 };

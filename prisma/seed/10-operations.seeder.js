@@ -1,66 +1,26 @@
 import logger from '../../src/config/logger.js';
 import { faker } from '@faker-js/faker/locale/id_ID';
+import { loremFlickrDbPath } from '../../src/utils/loremFlickrMedia.util.ts';
 
 export async function seedOperations(prisma, users) {
   logger.info('🌱 [10] Seeding Complex Operations (Negotiations, Reviews, Logs)...');
 
-  await prisma.negotiation.deleteMany({});
-  await prisma.notification.deleteMany({});
-  await prisma.auditLog.deleteMany({});
   await prisma.review.deleteMany({});
   await prisma.shipmentTracking.deleteMany({});
+  await prisma.notification.deleteMany({});
+  await prisma.auditLog.deleteMany({});
 
-  const { allSuppliers, allBuyers } = users;
-  const products = await prisma.product.findMany();
-  const orders = await prisma.order.findMany();
+  const { hendra, siti } = users;
+  const orders = await prisma.order.findMany({
+    include: { buyer: { select: { fullName: true } }, seller: { select: { fullName: true } } },
+  });
 
-  if (!allSuppliers.length || !allBuyers.length || !products.length) {
-    logger.warn('⚠️ Missing dependencies for operations seeding.');
+  if (!orders.length) {
+    logger.warn('⚠️ Tidak ada order — jalankan seeder [15] terlebih dahulu.');
     return;
   }
 
-  // 1. SEED NEGOTIATIONS & CHAT
-  for (let i = 0; i < 5; i++) {
-    const buyer = faker.helpers.arrayElement(allBuyers);
-    const product = faker.helpers.arrayElement(products);
-    const amount = faker.number.float({ min: 1000000, max: 10000000, fractionDigits: 2 });
-
-    const negotiation = await prisma.negotiation.create({
-      data: {
-        productId: product.id,
-        buyerId: buyer.id,
-        sellerId: product.userId,
-        quantityKg: faker.number.float({ min: 100, max: 1000, fractionDigits: 2 }),
-        pricePerKg: amount / 1000,
-        totalEstimate: amount,
-        status: 'OPEN_NEGOTIATION',
-      },
-    });
-
-    // Seed Chat Messages for this negotiation
-    await prisma.chatMessage.createMany({
-      data: [
-        {
-          negotiationId: negotiation.id,
-          senderId: buyer.id,
-          content: 'Halo, apakah stok Biochar ini masih tersedia?',
-        },
-        {
-          negotiationId: negotiation.id,
-          senderId: product.userId,
-          content: 'Halo! Stok aman pak. Mau ambil berapa ton?',
-        },
-        {
-          negotiationId: negotiation.id,
-          senderId: buyer.id,
-          content: 'Rencana 1.5 ton untuk pengiriman minggu depan.',
-          attachmentUrl: 'https://bisa.es/docs/spec.pdf',
-        },
-      ],
-    });
-  }
-
-  // 2. SEED SHIPMENT TRACKING & REVIEWS (For existing orders)
+  // 1. Shipment tracking untuk semua order seed
   for (const order of orders) {
     // 2a. Shipment Tracking
     await prisma.shipmentTracking.upsert({
@@ -94,28 +54,29 @@ export async function seedOperations(prisma, users) {
             rating: faker.number.int({ min: 4, max: 5 }),
             comment:
               'Kualitas biochar sangat baik, pengiriman juga tepat waktu. Sangat direkomendasikan!',
-            imageUrl: faker.image.urlLoremFlickr({ category: 'business' }),
+            imageUrl: loremFlickrDbPath('biomass', { lock: order.id.charCodeAt(0) % 900 + 1 }),
           },
         });
       }
     }
   }
 
-  // 3. SEED NOTIFICATIONS
-  for (const user of allBuyers.slice(0, 3)) {
+  // 3. SEED NOTIFICATIONS (elite demo users)
+  const notifyUsers = [hendra, siti].filter(Boolean);
+  for (const user of notifyUsers) {
     await prisma.notification.createMany({
       data: [
         {
           userId: user.id,
           title: 'Order Terkonfirmasi',
-          body: 'Pesanan Anda #BISA-99283 telah dikonfirmasi oleh supplier.',
+          body: 'Pesanan seed #BISA-SEED-CONF-01 telah dikonfirmasi supplier.',
           type: 'ORDER_STATUS',
           priority: 'HIGH',
         },
         {
           userId: user.id,
-          title: 'Pesan Baru',
-          body: 'Siti Aminah membalas negosiasi Anda.',
+          title: 'Pesan Negosiasi Baru',
+          body: 'Ada balasan negosiasi pada produk biochar.',
           type: 'SYSTEM_ANNOUNCEMENT',
           priority: 'MEDIUM',
         },

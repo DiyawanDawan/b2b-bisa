@@ -4,9 +4,12 @@ import { Prisma } from '#prisma';
 /**
  * Recursively search and convert Prisma.Decimal to Number for clean API responses
  */
+const BLACKLISTED_FIELDS = ['password', 'enable2FA'];
+
 const transformDecimal = (obj: any): any => {
   if (obj === null || obj === undefined) return obj;
   if (typeof obj !== 'object') return obj;
+  if (obj instanceof Date) return obj.toISOString();
   if (Array.isArray(obj)) return obj.map(transformDecimal);
 
   // If it's a Decimal, convert to number
@@ -18,6 +21,7 @@ const transformDecimal = (obj: any): any => {
   const newObj: any = {};
   for (const key in obj) {
     if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      if (BLACKLISTED_FIELDS.includes(key)) continue;
       newObj[key] = transformDecimal(obj[key]);
     }
   }
@@ -86,5 +90,28 @@ export const paginatedResponse = (
       total,
       totalPages: Math.ceil(total / limit),
     },
+  });
+};
+
+export const paginatedObjectResponse = (
+  res: Response,
+  data: Record<string, unknown>,
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  },
+  message = 'Berhasil',
+  statusCode = 200,
+): Response => {
+  return res.status(statusCode).json({
+    meta: {
+      success: true,
+      status: statusCode,
+      message,
+    },
+    data: transformDecimal(data),
+    pagination,
   });
 };

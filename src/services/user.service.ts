@@ -2,10 +2,12 @@ import prisma from '#config/prisma';
 import AppError from '#utils/appError';
 import { transformAddress } from '#utils/transformer.util';
 import { UserRole, UserStatus, ProductStatus, Prisma } from '#prisma';
+import * as storeBannerService from '#services/storeBanner.service';
 
 const addressSelect: Prisma.AddressSelect = {
   fullAddress: true,
   zipCode: true,
+  phoneNumber: true,
   latitude: true,
   longitude: true,
   countryId: true,
@@ -35,7 +37,7 @@ export const getUserById = async (id: string, isAuthorized: boolean = false) => 
       regency: true,
       tier: true,
       ...(isAuthorized && { email: true, phone: true }), // Expose contacts if logged in
-      verification: { select: { isVerified: true } },
+      verification: { select: { isVerified: true, businessName: true, businessAddress: true } },
       profile: {
         select: {
           bio: true,
@@ -44,11 +46,18 @@ export const getUserById = async (id: string, isAuthorized: boolean = false) => 
           website: true,
         },
       },
+      address: { select: addressSelect },
       createdAt: true,
     },
   });
 
   if (!user) throw new AppError('User tidak ditemukan.', 404);
+
+  if (user.role === UserRole.SUPPLIER) {
+    const storeBanners = await storeBannerService.listStoreBanners(id, { activeOnly: true });
+    return { ...user, storeBanners };
+  }
+
   return user;
 };
 
@@ -60,7 +69,13 @@ export const listAddresses = async (userId: string, page = 1, limit = 10) => {
   const [addresses, total] = await prisma.$transaction([
     prisma.customerAddress.findMany({
       where: { userId },
-      include: { address: { select: addressSelect } },
+      select: {
+        id: true,
+        label: true,
+        isPrimary: true,
+        addressId: true,
+        address: { select: addressSelect },
+      },
       skip,
       take: limit,
       orderBy: { id: 'desc' },
@@ -85,6 +100,7 @@ export const createAddress = async (
     villageId?: string;
     fullAddress: string;
     zipCode: string;
+    phone?: string;
     latitude?: number;
     longitude?: number;
   },
@@ -115,12 +131,19 @@ export const createAddress = async (
           village: villageId ? { connect: { id: villageId } } : undefined,
           fullAddress,
           zipCode,
+          phoneNumber: data.phone || '',
           latitude: latitude || 0,
           longitude: longitude || 0,
         },
       },
     },
-    include: { address: { select: addressSelect } },
+    select: {
+      id: true,
+      label: true,
+      isPrimary: true,
+      addressId: true,
+      address: { select: addressSelect },
+    },
   });
 
   return transformAddress(created);
@@ -138,6 +161,7 @@ export const updateAddress = async (
     villageId?: string;
     fullAddress?: string;
     zipCode?: string;
+    phone?: string;
     latitude?: number;
     longitude?: number;
   },
@@ -154,10 +178,11 @@ export const updateAddress = async (
       label: data.label,
       address: {
         update: {
-          fullAddress: data.fullAddress,
-          zipCode: data.zipCode,
-          latitude: data.latitude,
-          longitude: data.longitude,
+          ...(data.fullAddress !== undefined && { fullAddress: data.fullAddress }),
+          ...(data.zipCode !== undefined && { zipCode: data.zipCode }),
+          ...(data.phone !== undefined && { phoneNumber: data.phone }),
+          ...(data.latitude !== undefined && { latitude: data.latitude }),
+          ...(data.longitude !== undefined && { longitude: data.longitude }),
           ...(data.countryId && { country: { connect: { id: data.countryId } } }),
           ...(data.provinceId && { province: { connect: { id: data.provinceId } } }),
           ...(data.regencyId && { regency: { connect: { id: data.regencyId } } }),
@@ -166,7 +191,13 @@ export const updateAddress = async (
         },
       },
     },
-    include: { address: { select: addressSelect } },
+    select: {
+      id: true,
+      label: true,
+      isPrimary: true,
+      addressId: true,
+      address: { select: addressSelect },
+    },
   });
 
   return transformAddress(updated);
@@ -179,10 +210,47 @@ export const deleteAddress = async (id: string, userId: string) => {
 
   if (!existing) throw new AppError('Alamat tidak ditemukan.', 404);
 
-  // We use a transaction to ensure both are deleted
+  // We delete the customer address mapping first.
+  // We do NOT use a transaction that includes the address deletion
+  // because the address might be referenced by historical orders (onDelete: Restrict),
+  // and we want the customer address to be removed from the user's list regardless.
+  await prisma.customerAddress.delete({ where: { id } });
+
+  try {
+    // Attempt to clean up the underlying address record
+    await prisma.address.delete({ where: { id: existing.addressId } });
+  } catch (error) {
+    // If it's referenced by orders, contracts, etc., we just leave it in the DB.
+    console.log(
+      `Address ${existing.addressId} is still referenced by other entities, keeping for historical records.`,
+    );
+  }
+
+  return { success: true };
+};
+
+export const setDefaultAddress = async (id: string, userId: string) => {
   return prisma.$transaction(async (tx) => {
-    await tx.customerAddress.delete({ where: { id } });
-    await tx.address.delete({ where: { id: existing.addressId } });
+    // 1. Reset all addresses for this user to NOT primary
+    await tx.customerAddress.updateMany({
+      where: { userId },
+      data: { isPrimary: false },
+    });
+
+    // 2. Set the target address as primary
+    const updated = await tx.customerAddress.update({
+      where: { id },
+      data: { isPrimary: true },
+      select: {
+        id: true,
+        label: true,
+        isPrimary: true,
+        addressId: true,
+        address: { select: addressSelect },
+      },
+    });
+
+    return transformAddress(updated);
   });
 };
 
@@ -274,7 +342,7 @@ export const listSuppliers = async (
  * Get deep supplier detail including products
  */
 export const getSupplierDetail = async (id: string, isAuthorized: boolean = false) => {
-  const supplier = await prisma.user.findUnique({
+  const supplier = await prisma.user.findFirst({
     where: { id, role: UserRole.SUPPLIER },
     select: {
       id: true,
@@ -285,7 +353,10 @@ export const getSupplierDetail = async (id: string, isAuthorized: boolean = fals
       tier: true,
       ...(isAuthorized && { email: true, phone: true }), // Expose contacts if logged in
       profile: { select: { bio: true, companyName: true, businessType: true, website: true } },
-      verification: { select: { isVerified: true, reviewedAt: true } },
+      verification: {
+        select: { isVerified: true, businessName: true, businessAddress: true, reviewedAt: true },
+      },
+      address: { select: addressSelect },
       products: {
         where: { status: ProductStatus.ACTIVE },
         select: {

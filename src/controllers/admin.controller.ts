@@ -1,7 +1,9 @@
 import { Response } from 'express';
 import { AuthRequest } from '#types/index';
 import catchAsync from '#utils/catchAsync';
-import { successResponse } from '#utils/response.util';
+import { successResponse, paginatedResponse } from '#utils/response.util';
+import { toCsv } from '#utils/csv.util';
+import AppError from '#utils/appError';
 import * as adminService from '#services/admin.service';
 import {
   UserRole,
@@ -67,6 +69,14 @@ export const getTopSuppliers = catchAsync(async (req: AuthRequest, res: Response
 });
 
 /**
+ * GET /api/v1/admin/users/stats
+ */
+export const getUserAnalyticsStats = catchAsync(async (_req: AuthRequest, res: Response) => {
+  const data = await adminService.getUserAnalyticsStats();
+  successResponse(res, data, 'Statistik pengguna berhasil diambil');
+});
+
+/**
  * GET /api/v1/admin/users
  */
 export const listUsers = catchAsync(async (req: AuthRequest, res: Response) => {
@@ -78,7 +88,14 @@ export const listUsers = catchAsync(async (req: AuthRequest, res: Response) => {
     status: status as UserStatus,
     search: search as string,
   });
-  successResponse(res, result, 'Daftar user berhasil diambil');
+  return paginatedResponse(
+    res,
+    result.users,
+    result.pagination.total,
+    result.pagination.page,
+    result.pagination.limit,
+    'Daftar user berhasil diambil',
+  );
 });
 
 /**
@@ -121,7 +138,14 @@ export const getKYCQueue = catchAsync(async (req: AuthRequest, res: Response) =>
     limit: Number(limit),
     status: status as VerificationStatus,
   });
-  successResponse(res, queue, 'Antrean KYC berhasil diambil');
+  return paginatedResponse(
+    res,
+    queue.queue,
+    queue.pagination.total,
+    queue.pagination.page,
+    queue.pagination.limit,
+    'Antrean KYC berhasil diambil',
+  );
 });
 
 /**
@@ -135,7 +159,14 @@ export const listAllProducts = catchAsync(async (req: AuthRequest, res: Response
     status: status as ProductStatus,
     search: search as string,
   });
-  successResponse(res, result, 'Daftar produk berhasil diambil');
+  return paginatedResponse(
+    res,
+    result.products,
+    result.pagination.total,
+    result.pagination.page,
+    result.pagination.limit,
+    'Daftar produk berhasil diambil',
+  );
 });
 
 /**
@@ -143,45 +174,68 @@ export const listAllProducts = catchAsync(async (req: AuthRequest, res: Response
  */
 export const certifyProduct = catchAsync(async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
-  const { isCertified } = req.body;
+  const { isCertified } = req.body as { isCertified: boolean };
   const result = await adminService.verifyProduct(id, isCertified);
 
-  // Audit Log
-  await adminService.createAuditLog({
-    userId: req.user!.id,
-    action: 'CERTIFY_PRODUCT',
-    entity: 'PRODUCT',
-    entityId: id,
-    newValue: { isCertified },
-  });
+  if (result.changed) {
+    try {
+      await adminService.createAuditLog({
+        userId: req.user!.id,
+        action: 'CERTIFY_PRODUCT',
+        entity: 'PRODUCT',
+        entityId: id,
+        oldValue: { isCertified: result.previousIsCertified },
+        newValue: { isCertified },
+      });
+    } catch {
+      /* audit gagal tidak memblokir sertifikasi */
+    }
+  }
 
-  successResponse(res, result, 'Status sertifikasi produk berhasil diperbarui');
+  successResponse(res, result.product, 'Status sertifikasi produk berhasil diperbarui');
 });
 
 /**
  * GET /api/v1/admin/finance/transactions
  */
 export const listTransactions = catchAsync(async (req: AuthRequest, res: Response) => {
-  const { page = 1, limit = 10, type, status } = req.query;
+  const { page = 1, limit = 10, type, status, search } = req.query;
   const result = await adminService.listTransactions({
     page: Number(page),
     limit: Number(limit),
     type: type as TransactionType,
     status: status as TransactionStatus,
+    search: search as string,
   });
-  successResponse(res, result, 'Daftar transaksi berhasil diambil');
+  return paginatedResponse(
+    res,
+    result.transactions,
+    result.pagination.total,
+    result.pagination.page,
+    result.pagination.limit,
+    'Daftar transaksi berhasil diambil',
+  );
 });
 
 /**
  * GET /api/v1/admin/orders/disputes
  */
 export const listDisputes = catchAsync(async (req: AuthRequest, res: Response) => {
-  const { page = 1, limit = 10 } = req.query;
+  const { page = 1, limit = 10, search, statusFilter } = req.query;
   const result = await adminService.listDisputes({
     page: Number(page),
     limit: Number(limit),
+    search: search as string,
+    statusFilter: statusFilter as any,
   });
-  successResponse(res, result, 'Daftar sengketa berhasil diambil');
+  return paginatedResponse(
+    res,
+    result.disputes,
+    result.pagination.total,
+    result.pagination.page,
+    result.pagination.limit,
+    'Daftar sengketa berhasil diambil',
+  );
 });
 
 /**
@@ -216,19 +270,22 @@ export const getFinanceStats = catchAsync(async (req: AuthRequest, res: Response
  */
 export const moderateProduct = catchAsync(async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
-  const { status } = req.body as { status: ProductStatus };
-  const result = await adminService.updateProductStatus(id, status);
+  const { status, reason } = req.body as { status: ProductStatus; reason?: string };
+  const result = await adminService.moderateProductStatus(id, status, {
+    reason,
+    adminUserId: req.user!.id,
+  });
 
-  // Audit Log
   await adminService.createAuditLog({
     userId: req.user!.id,
     action: 'MODERATE_PRODUCT',
     entity: 'PRODUCT',
     entityId: id,
-    newValue: { status },
+    oldValue: { status: result.previousStatus },
+    newValue: { status, reason: result.reason },
   });
 
-  successResponse(res, result, `Status produk berhasil dimoderasi menjadi ${status}`);
+  successResponse(res, result.product, `Status produk berhasil dimoderasi menjadi ${status}`);
 });
 
 /**
@@ -246,13 +303,17 @@ export const updateFee = catchAsync(async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
   const result = await adminService.updatePlatformFee(id, req.body);
 
-  // Audit Log
+  // Audit Log — ERR-B003 FIX: Log sanitized fields only, not raw req.body
   await adminService.createAuditLog({
     userId: req.user!.id,
     action: 'UPDATE_FEE',
     entity: 'PLATFORM_FEE',
     entityId: id,
-    newValue: req.body,
+    newValue: {
+      amount: result.amount,
+      type: result.type,
+      isActive: result.isActive,
+    },
   });
 
   successResponse(res, result, 'Pengaturan biaya platform berhasil diperbarui');
@@ -272,13 +333,18 @@ export const createFee = catchAsync(async (req: AuthRequest, res: Response) => {
     },
   );
 
-  // Audit Log
+  // Audit Log — ERR-B003 FIX: Log sanitized fields only, not raw req.body
   await adminService.createAuditLog({
     userId: req.user!.id,
     action: 'CREATE_FEE',
     entity: 'PLATFORM_FEE',
     entityId: (result as { id: string }).id,
-    newValue: req.body,
+    newValue: {
+      name: (result as any).name,
+      amount: (result as any).amount,
+      type: (result as any).type,
+      isActive: (result as any).isActive,
+    },
   });
 
   successResponse(res, result, 'Pengaturan biaya platform berhasil ditambahkan');
@@ -347,6 +413,31 @@ export const updateCategory = catchAsync(async (req: AuthRequest, res: Response)
  */
 
 /**
+ * GET /api/v1/admin/notifications/stats
+ */
+export const getNotificationStats = catchAsync(async (_req: AuthRequest, res: Response) => {
+  const stats = await adminService.getNotificationAdminStats();
+  successResponse(res, stats, 'Statistik notifikasi berhasil diambil');
+});
+
+/**
+ * GET /api/v1/admin/notifications/history
+ */
+export const listBroadcastHistory = catchAsync(async (req: AuthRequest, res: Response) => {
+  const page = Number(req.query.page) || 1;
+  const limit = Number(req.query.limit) || 20;
+  const result = await adminService.listBroadcastHistory({ page, limit });
+  return paginatedResponse(
+    res,
+    result.items,
+    result.pagination.total,
+    page,
+    limit,
+    'Riwayat broadcast berhasil diambil',
+  );
+});
+
+/**
  * POST /api/v1/admin/notifications/broadcast
  */
 export const sendBroadcast = catchAsync(async (req: AuthRequest, res: Response) => {
@@ -372,7 +463,14 @@ export const listPayoutQueue = catchAsync(async (req: AuthRequest, res: Response
     page: Number(page),
     limit: Number(limit),
   });
-  successResponse(res, result, 'Antrean penarikan dana berhasil diambil');
+  return paginatedResponse(
+    res,
+    result.transactions,
+    result.pagination.total,
+    result.pagination.page,
+    result.pagination.limit,
+    'Antrean penarikan dana berhasil diambil',
+  );
 });
 
 /**
@@ -401,44 +499,34 @@ export const exportTransactionsCsv = catchAsync(async (req: AuthRequest, res: Re
   const { startDate, endDate } = req.query as { startDate: string; endDate: string };
 
   if (!startDate || !endDate) {
-    throw new Error('startDate dan endDate wajib diisi (YYYY-MM-DD)');
+    throw new AppError('startDate dan endDate wajib diisi (YYYY-MM-DD)', 400);
   }
 
   // Validate Date Range (Max 31 Days to prevent OOM)
   const start = new Date(startDate);
   const end = new Date(endDate);
   if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-    throw new Error('Format tanggal tidak valid. Gunakan YYYY-MM-DD');
+    throw new AppError('Format tanggal tidak valid. Gunakan YYYY-MM-DD', 400);
   }
 
   const diffDays = Math.ceil(Math.abs(end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
   if (diffDays > 31) {
-    throw new Error('Rentang waktu ekspor maksimal adalah 31 hari.');
+    throw new AppError('Rentang waktu ekspor maksimal adalah 31 hari.', 400);
   }
 
   const data = await adminService.getExportableTransactions(startDate, endDate);
 
-  // CSV Sanitizer: Prevent Excel Formula Injection
-  const sanitizeCsvField = (field: string): string => {
-    if (/^[=+\-@\t\r]/.test(field)) return `'${field}`;
-    if (field.includes(',') || field.includes('\n') || field.includes('"')) {
-      return `"${field.replace(/"/g, '""')}"`;
-    }
-    return field;
-  };
-
-  // Manual CSV Generation (Header + Rows)
   const headers = ['ID', 'User', 'Amount', 'Type', 'Status', 'CreatedAt'];
-  const rows = data.map((t) => [
-    sanitizeCsvField(t.id),
-    sanitizeCsvField(t.user?.fullName || 'N/A'),
-    sanitizeCsvField(t.amount.toString()),
-    sanitizeCsvField(t.type),
-    sanitizeCsvField(t.status),
-    sanitizeCsvField(t.createdAt.toISOString()),
-  ]);
+  const rows = data.map((t) => ({
+    ID: t.id,
+    User: t.user?.fullName || 'N/A',
+    Amount: t.amount.toString(),
+    Type: t.type,
+    Status: t.status,
+    CreatedAt: t.createdAt.toISOString(),
+  }));
 
-  const csvContent = [headers, ...rows].map((e) => e.join(',')).join('\n');
+  const csvContent = toCsv(headers, rows);
 
   res.setHeader('Content-Type', 'text/csv');
   res.attachment(`Laporan_Transaksi_${startDate}_ke_${endDate}.csv`);
