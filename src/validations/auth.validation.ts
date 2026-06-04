@@ -90,6 +90,7 @@ export const updateProfileSchema = z
     businessType: z.string().optional(),
     rajaongkirOriginId: z.coerce.number().int().positive().optional(),
     rajaongkirOriginLabel: z.string().max(500).optional(),
+    enableNotifications: z.boolean().optional(),
   })
   .optional();
 

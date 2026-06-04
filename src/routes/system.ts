@@ -25,6 +25,8 @@ router.post(
  * @desc Get all system enums for frontend
  * @access Public
  */
+router.get('/support', systemController.getPublicSupport);
+
 router.get('/constants', systemController.getConstants);
 
 /**

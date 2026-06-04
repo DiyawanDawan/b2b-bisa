@@ -48,6 +48,12 @@ export const sendPushNotification = async (
   }
 
   try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { enableNotifications: true },
+    });
+    if (user && !user.enableNotifications) return;
+
     const devices = await prisma.userDevice.findMany({
       where: { userId, isActive: true },
       select: { fcmToken: true },

@@ -6,10 +6,36 @@ import * as storageService from '#services/storage.service';
 import { successResponse } from '#utils/response.util';
 import catchAsync from '#utils/catchAsync';
 import AppError from '#utils/appError';
+import * as platformSettingsService from '#services/platformSettings.service';
+
 /**
  * Get all system constants (Enums) for frontend dropdowns
  * GET /api/v1/system/constants
  */
+/**
+ * GET /api/v1/system/support
+ * Kontak CS & URL verifikasi publik (mobile pusat bantuan, QR tagihan).
+ */
+export const getPublicSupport = catchAsync(async (_req: Request, res: Response) => {
+  const items = await platformSettingsService.listPlatformSettingsForAdmin();
+  const map = Object.fromEntries(items.map((i) => [i.key, i.value.trim()]));
+
+  const publicVerifyBaseUrl = (map.PUBLIC_VERIFY_BASE_URL || 'http://localhost:3001').replace(
+    /\/$/,
+    '',
+  );
+
+  return successResponse(
+    res,
+    {
+      supportWhatsapp: map.SUPPORT_WHATSAPP || '6281234567890',
+      supportEmail: map.SUPPORT_EMAIL || 'cs@bisa.id',
+      publicVerifyBaseUrl,
+    },
+    'Pengaturan dukungan publik',
+  );
+});
+
 export const getConstants = catchAsync(async (_req: Request, res: Response) => {
   const constants = {
     UserRole: Enums.UserRole,

@@ -283,6 +283,7 @@ export const getMe = async (userId: string) => {
       isEmailVerified: true,
       isPhoneVerified: true,
       status: true,
+      enableNotifications: true,
       // Profile: hanya field yang relevan untuk UI
       profile: {
         select: {
@@ -320,6 +321,7 @@ export interface UpdateProfileInput {
   businessType?: string;
   rajaongkirOriginId?: number;
   rajaongkirOriginLabel?: string;
+  enableNotifications?: boolean;
 }
 
 export const updateProfile = async (userId: string, data: UpdateProfileInput) => {
@@ -335,6 +337,7 @@ export const updateProfile = async (userId: string, data: UpdateProfileInput) =>
     businessType,
     rajaongkirOriginId,
     rajaongkirOriginLabel,
+    enableNotifications,
   } = data;
 
   const userUpdate: Record<string, unknown> = {};
@@ -343,6 +346,9 @@ export const updateProfile = async (userId: string, data: UpdateProfileInput) =>
   if (avatarUrl) userUpdate.avatarUrl = avatarUrl;
   if (province) userUpdate.province = province;
   if (regency) userUpdate.regency = regency;
+  if (enableNotifications !== undefined) {
+    userUpdate.enableNotifications = enableNotifications;
+  }
 
   // Profile fields: Only include if explicitly defined to avoid overwriting existing data with null
   const profileData: Record<string, unknown> = {};
