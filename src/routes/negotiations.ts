@@ -72,6 +72,12 @@ router.post(
   negotiationController.postInvoicePreview,
 );
 
+router.get(
+  '/:id/buyer-shipping-addresses',
+  requireRole(UserRole.SUPPLIER, UserRole.ADMIN),
+  negotiationController.getBuyerShippingAddresses,
+);
+
 // [BOTH] Ruang chat per produk — harus sebelum /:id
 router.get('/by-product/:productId', negotiationController.getRoomByProduct);
 

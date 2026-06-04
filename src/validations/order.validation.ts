@@ -5,14 +5,19 @@ const shippingSnapshotSchema = z.object({
   recipient: z.string().min(1, 'Nama penerima wajib diisi').optional(),
   phone: z.string().optional(),
   email: z.string().email('Email tidak valid').optional(),
-  address: z.string().min(10, 'Alamat pengiriman harus lengkap (minimal 10 karakter)'),
+  address: z.string().min(10, 'Alamat pengiriman harus lengkap (minimal 10 karakter)').optional(),
   zipCode: z.string().optional(),
   province: z.string().optional(),
   regency: z.string().optional(),
+  latitude: z.coerce.number().optional(),
+  longitude: z.coerce.number().optional(),
+  source: z.enum(['buyer_profile', 'buyer_saved_address', 'custom']).optional(),
+  customerAddressId: z.string().uuid().optional(),
 });
 
 export const invoicePreviewBodySchema = z.object({
   shippingSelection: shippingSelectionSchema.optional(),
+  shippingSnapshot: shippingSnapshotSchema.optional(),
   quantity: z.coerce.number().positive('Kuantitas harus lebih dari 0').optional(),
   pricePerUnit: z.coerce.number().positive('Harga per unit harus lebih dari 0').optional(),
 });

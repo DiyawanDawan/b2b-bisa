@@ -15,6 +15,7 @@ import {
   negotiationPurposeWhere,
   purposeToRoomType,
 } from '#constants/negotiation.constants';
+import { buildDealEconomics } from '#services/order.service';
 // import { sendNotification } from '#services/notification.service'; // TODO: integrate later
 
 const CHAT_MESSAGE_SELECT = {
@@ -352,6 +353,7 @@ export const listNegotiations = async (params: {
             pricePerUnit: true,
             unit: true,
             minOrder: true,
+            stock: true,
             biomassaType: true,
             thumbnailUrl: true,
             description: true,
@@ -793,6 +795,7 @@ export const getNegotiationById = async (id: string, userId: string) => {
           pricePerUnit: true,
           unit: true,
           minOrder: true,
+          stock: true,
           biomassaType: true,
           thumbnailUrl: true,
           description: true,
@@ -843,9 +846,18 @@ export const getNegotiationById = async (id: string, userId: string) => {
     throw new AppError('Anda bukan partisipan dalam negosiasi ini.', 403);
   }
 
+  const economics = await buildDealEconomics({
+    catalogPricePerUnit: Number(negotiation.product.pricePerUnit),
+    negotiatedPricePerUnit: Number(negotiation.pricePerUnit),
+    quantity: Number(negotiation.quantity),
+    productStock: Number(negotiation.product.stock),
+    unit: negotiation.product.unit,
+  });
+
   const { _count, messages, ...rest } = negotiation;
   return {
     ...rest,
+    economics,
     messages: [...messages].reverse(),
     messagesTotal: _count.messages,
   };

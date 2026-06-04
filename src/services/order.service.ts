@@ -19,7 +19,10 @@ import {
 } from '#prisma';
 import { createNotification } from '#services/notification.service';
 import * as rajaOngkirService from '#services/rajaongkir.service';
-import { persistOrderShipping } from '#services/order-shipping.service';
+import {
+  getSupplierShippingOrigin,
+  persistOrderShipping,
+} from '#services/order-shipping.service';
 import type { LogisticsSnapshotMeta, ShippingSelectionInput } from '#types/order-shipping';
 import { notifyOrderStatusChange } from '#services/orderNotification.service';
 import { Xendit } from 'xendit-node';
@@ -89,6 +92,11 @@ type ShippingAddressSnapshot = {
   zipCode?: string | null;
   province?: string | null;
   regency?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  /** Sumber data: profil pembeli, alamat tersimpan, atau kustom supplier. */
+  source?: 'buyer_profile' | 'buyer_saved_address' | 'custom';
+  customerAddressId?: string | null;
 };
 
 const mergeShippingSnapshot = (
@@ -104,6 +112,10 @@ const mergeShippingSnapshot = (
     zipCode: override.zipCode?.trim() || base.zipCode,
     province: override.province?.trim() || base.province,
     regency: override.regency?.trim() || base.regency,
+    latitude: override.latitude ?? base.latitude,
+    longitude: override.longitude ?? base.longitude,
+    source: override.source ?? base.source,
+    customerAddressId: override.customerAddressId ?? base.customerAddressId,
   };
 };
 
@@ -111,9 +123,42 @@ const addressSelect = {
   fullAddress: true,
   zipCode: true,
   phoneNumber: true,
+  latitude: true,
+  longitude: true,
   province: { select: { name: true } },
   regency: { select: { name: true } },
 } as const;
+
+const snapshotFromLinkedAddress = (
+  buyer: {
+    fullName: string;
+    email: string | null;
+    phone: string | null;
+    regency: string | null;
+  },
+  linkedAddress: {
+    fullAddress: string;
+    zipCode: string;
+    phoneNumber: string | null;
+    latitude: Prisma.Decimal;
+    longitude: Prisma.Decimal;
+    province?: { name: string } | null;
+    regency?: { name: string } | null;
+  },
+  meta?: { source?: ShippingAddressSnapshot['source']; customerAddressId?: string },
+): ShippingAddressSnapshot => ({
+  recipient: buyer.fullName,
+  phone: linkedAddress.phoneNumber ?? buyer.phone,
+  email: buyer.email,
+  address: linkedAddress.fullAddress,
+  zipCode: linkedAddress.zipCode,
+  province: linkedAddress.province?.name,
+  regency: linkedAddress.regency?.name ?? buyer.regency,
+  latitude: Number(linkedAddress.latitude),
+  longitude: Number(linkedAddress.longitude),
+  source: meta?.source ?? 'buyer_profile',
+  customerAddressId: meta?.customerAddressId ?? null,
+});
 
 const resolveBuyerShippingSnapshot = async (
   buyerId: string,
@@ -131,6 +176,7 @@ const resolveBuyerShippingSnapshot = async (
         orderBy: { isPrimary: 'desc' },
         take: 1,
         select: {
+          id: true,
           address: { select: addressSelect },
         },
       },
@@ -140,16 +186,23 @@ const resolveBuyerShippingSnapshot = async (
   if (!buyer) throw new AppError('Data pembeli tidak ditemukan.', 404);
 
   if (override && override.trim().length >= 10) {
+    const primary = buyer.customerAddresses[0]?.address ?? buyer.address ?? null;
     return {
       recipient: buyer.fullName,
       phone: buyer.phone,
       email: buyer.email,
       address: override.trim(),
       regency: buyer.regency,
+      zipCode: primary?.zipCode,
+      province: primary?.province?.name,
+      latitude: primary ? Number(primary.latitude) : undefined,
+      longitude: primary ? Number(primary.longitude) : undefined,
+      source: 'custom',
     };
   }
 
-  const linkedAddress = buyer.customerAddresses[0]?.address ?? buyer.address ?? null;
+  const primaryCustomer = buyer.customerAddresses[0];
+  const linkedAddress = primaryCustomer?.address ?? buyer.address ?? null;
 
   if (!linkedAddress?.fullAddress) {
     throw new AppError(
@@ -158,14 +211,251 @@ const resolveBuyerShippingSnapshot = async (
     );
   }
 
+  return snapshotFromLinkedAddress(buyer, linkedAddress, {
+    source: primaryCustomer ? 'buyer_saved_address' : 'buyer_profile',
+    customerAddressId: primaryCustomer?.id,
+  });
+};
+
+/**
+ * Daftar alamat pengiriman pembeli untuk supplier saat buat tagihan negosiasi.
+ */
+export const listBuyerShippingAddressesForNegotiation = async (
+  negotiationId: string,
+  sellerId: string,
+) => {
+  const negotiation = await prisma.negotiation.findUnique({
+    where: { id: negotiationId },
+    select: { buyerId: true, sellerId: true },
+  });
+
+  if (!negotiation) throw new AppError('Data negosiasi tidak ditemukan.', 404);
+  if (negotiation.sellerId !== sellerId) {
+    throw new AppError('Anda tidak memiliki akses ke alamat pembeli ini.', 403);
+  }
+
+  const buyer = await prisma.user.findUnique({
+    where: { id: negotiation.buyerId },
+    select: {
+      fullName: true,
+      email: true,
+      phone: true,
+      regency: true,
+      address: { select: addressSelect },
+      customerAddresses: {
+        orderBy: [{ isPrimary: 'desc' }, { id: 'asc' }],
+        select: {
+          id: true,
+          label: true,
+          isPrimary: true,
+          address: { select: addressSelect },
+        },
+      },
+    },
+  });
+
+  if (!buyer) throw new AppError('Data pembeli tidak ditemukan.', 404);
+
+  const savedAddresses = buyer.customerAddresses
+    .filter((row) => row.address?.fullAddress)
+    .map((row) => ({
+      id: row.id,
+      label: row.label,
+      isPrimary: row.isPrimary,
+      snapshot: snapshotFromLinkedAddress(buyer, row.address, {
+        source: 'buyer_saved_address',
+        customerAddressId: row.id,
+      }),
+    }));
+
+  let profileAddress: ShippingAddressSnapshot | null = null;
+  if (buyer.address?.fullAddress) {
+    profileAddress = snapshotFromLinkedAddress(buyer, buyer.address, {
+      source: 'buyer_profile',
+    });
+  }
+
+  let defaultSnapshot: ShippingAddressSnapshot;
+  try {
+    defaultSnapshot = await resolveBuyerShippingSnapshot(negotiation.buyerId);
+  } catch {
+    defaultSnapshot =
+      savedAddresses.find((a) => a.isPrimary)?.snapshot ??
+      savedAddresses[0]?.snapshot ??
+      profileAddress ?? {
+        recipient: buyer.fullName,
+        phone: buyer.phone,
+        email: buyer.email,
+        address: '',
+        regency: buyer.regency,
+        source: 'buyer_profile',
+      };
+  }
+
+  const isSameSnapshot = (a: ShippingAddressSnapshot, b: ShippingAddressSnapshot) =>
+    (a.customerAddressId &&
+      b.customerAddressId &&
+      a.customerAddressId === b.customerAddressId) ||
+    (a.address.trim() === b.address.trim() &&
+      (a.regency ?? '') === (b.regency ?? '') &&
+      (a.province ?? '') === (b.province ?? ''));
+
+  type BuyerAddressOption = {
+    key: string;
+    label: string;
+    isPrimary: boolean;
+    isDefault: boolean;
+    snapshot: ShippingAddressSnapshot;
+  };
+
+  const addresses: BuyerAddressOption[] = [];
+
+  if (profileAddress?.address?.trim()) {
+    addresses.push({
+      key: 'profile',
+      label: 'Profil pembeli',
+      isPrimary: false,
+      isDefault: isSameSnapshot(profileAddress, defaultSnapshot),
+      snapshot: profileAddress,
+    });
+  }
+
+  for (const row of savedAddresses) {
+    addresses.push({
+      key: row.id,
+      label: row.label?.trim() || 'Alamat tersimpan',
+      isPrimary: row.isPrimary,
+      isDefault: isSameSnapshot(row.snapshot, defaultSnapshot),
+      snapshot: row.snapshot,
+    });
+  }
+
+  addresses.sort((a, b) => {
+    if (a.isDefault !== b.isDefault) return a.isDefault ? -1 : 1;
+    if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
+    return a.label.localeCompare(b.label);
+  });
+
   return {
-    recipient: buyer.fullName,
-    phone: linkedAddress.phoneNumber ?? buyer.phone,
-    email: buyer.email,
-    address: linkedAddress.fullAddress,
-    zipCode: linkedAddress.zipCode,
-    province: linkedAddress.province?.name,
-    regency: linkedAddress.regency?.name ?? buyer.regency,
+    defaultSnapshot,
+    profileAddress,
+    savedAddresses,
+    addresses,
+  };
+};
+
+/** Alamat asal pengiriman supplier (profil toko / verifikasi bisnis / lokasi produk). */
+export const resolveSellerShippingSnapshot = async (
+  sellerId: string,
+  productLocation?: { regency: string | null; province: string | null },
+): Promise<ShippingAddressSnapshot> => {
+  const seller = await prisma.user.findUnique({
+    where: { id: sellerId },
+    select: {
+      fullName: true,
+      email: true,
+      phone: true,
+      regency: true,
+      profile: {
+        select: {
+          companyName: true,
+          address: { select: addressSelect },
+        },
+      },
+      verification: {
+        select: { businessName: true, businessAddress: true },
+      },
+    },
+  });
+
+  if (!seller) throw new AppError('Data supplier tidak ditemukan.', 404);
+
+  const companyName =
+    seller.profile?.companyName?.trim() ||
+    seller.verification?.businessName?.trim() ||
+    seller.fullName;
+  const linked = seller.profile?.address ?? null;
+  const businessAddress = seller.verification?.businessAddress?.trim() ?? '';
+  const regencyName =
+    linked?.regency?.name?.trim() ||
+    seller.regency?.trim() ||
+    productLocation?.regency?.trim() ||
+    '';
+  const provinceName =
+    linked?.province?.name?.trim() || productLocation?.province?.trim() || '';
+  const street =
+    linked?.fullAddress?.trim() ||
+    businessAddress ||
+    [regencyName, provinceName].filter(Boolean).join(', ');
+
+  return {
+    recipient: companyName,
+    phone: linked?.phoneNumber ?? seller.phone,
+    email: seller.email,
+    address: street,
+    zipCode: linked?.zipCode,
+    province: provinceName || undefined,
+    regency: regencyName || undefined,
+    latitude: linked ? Number(linked.latitude) : undefined,
+    longitude: linked ? Number(linked.longitude) : undefined,
+    source: linked?.fullAddress
+      ? 'seller_profile'
+      : businessAddress
+        ? 'seller_business'
+        : 'seller_product_location',
+  };
+};
+
+/** Origin RajaOngkir: profil supplier, lalu cari otomatis dari lokasi toko/produk. */
+export const resolveSellerShippingOrigin = async (
+  sellerId: string,
+  productLocation?: { regency: string | null; province: string | null },
+) => {
+  const stored = await getSupplierShippingOrigin(sellerId);
+  const snapshot = await resolveSellerShippingSnapshot(sellerId, productLocation);
+
+  if (stored.originId != null) {
+    return {
+      snapshot,
+      originId: stored.originId,
+      originLabel: stored.originLabel ?? snapshot.regency,
+      resolvedFrom: 'rajaongkir_profile' as const,
+    };
+  }
+
+  const queries = [
+    stored.originLabel?.trim(),
+    snapshot.regency && snapshot.province
+      ? `${snapshot.regency}, ${snapshot.province}`
+      : null,
+    snapshot.regency?.trim(),
+    snapshot.province?.trim(),
+  ].filter((q): q is string => !!q && q.length >= 2);
+
+  for (const query of queries) {
+    const results = await rajaOngkirService.searchDomesticDestinations({
+      search: query,
+      limit: 8,
+    });
+    if (results.length > 0) {
+      const first = results[0];
+      const originId = Number(first.id);
+      if (!Number.isNaN(originId)) {
+        return {
+          snapshot,
+          originId,
+          originLabel: first.label ?? query,
+          resolvedFrom: 'auto_search' as const,
+        };
+      }
+    }
+  }
+
+  return {
+    snapshot,
+    originId: null as number | null,
+    originLabel: stored.originLabel ?? snapshot.regency ?? null,
+    resolvedFrom: 'unresolved' as const,
   };
 };
 
@@ -236,6 +526,46 @@ const calculateContractFinancials = async (
   };
 };
 
+/** Ringkasan harga katalog vs nego, diskon %, stok, estimasi bersih supplier (tanpa ongkir). */
+export const buildDealEconomics = async (params: {
+  catalogPricePerUnit: number;
+  negotiatedPricePerUnit: number;
+  quantity: number;
+  productStock: number;
+  unit: string;
+}) => {
+  const { catalogPricePerUnit: catalogUnit, negotiatedPricePerUnit: negoUnit, quantity: qtyNum, productStock: stockNum, unit } =
+    params;
+  const subtotalInput = new Prisma.Decimal(negoUnit).mul(qtyNum);
+  const { platformFee: platformFeeDec, subtotal: subtotalDec } =
+    await calculateContractFinancials(subtotalInput, new Prisma.Decimal(0));
+  const catalogSubtotal = catalogUnit * qtyNum;
+  const negoSubtotal = Number(subtotalDec);
+  const savingsTotal = catalogSubtotal - negoSubtotal;
+  const platformFeeNum = Number(platformFeeDec);
+  const sellerNet = negoSubtotal - platformFeeNum;
+  const roundPct = (v: number) => Math.round(v * 10) / 10;
+
+  return {
+    catalogPricePerUnit: catalogUnit,
+    negotiatedPricePerUnit: negoUnit,
+    quantity: qtyNum,
+    unit,
+    catalogSubtotal,
+    negotiatedSubtotal: negoSubtotal,
+    discountPercentPerUnit:
+      catalogUnit > 0 ? roundPct(((catalogUnit - negoUnit) / catalogUnit) * 100) : 0,
+    discountPercentTotal:
+      catalogSubtotal > 0 ? roundPct((savingsTotal / catalogSubtotal) * 100) : 0,
+    savingsTotal,
+    productStock: stockNum,
+    stockAfterDeal: Math.max(0, stockNum - qtyNum),
+    platformFee: platformFeeNum,
+    sellerNetEstimate: sellerNet,
+    platformFeePercent: negoSubtotal > 0 ? roundPct((platformFeeNum / negoSubtotal) * 100) : 0,
+  };
+};
+
 const resolveLogisticsForCheckout = async (
   selection: ShippingSelectionInput | undefined,
 ): Promise<{ logisticsFee: Prisma.Decimal; logisticsMeta?: LogisticsSnapshotMeta }> => {
@@ -273,6 +603,73 @@ const attachLogisticsToSnapshot = (
   return { ...snapshot, logistics: logisticsMeta };
 };
 
+/** Alamat tujuan wajib lengkap sebelum hitung ongkir / terbitkan tagihan. */
+const assertShippingDestinationReady = (snapshot: ShippingAddressSnapshot) => {
+  const recipient = snapshot.recipient?.trim() ?? '';
+  if (recipient.length < 2) {
+    throw new AppError('Nama penerima wajib diisi sebelum menerbitkan tagihan.', 400);
+  }
+  const phone = snapshot.phone?.trim() ?? '';
+  if (phone.length < 8) {
+    throw new AppError(
+      'Nomor telepon penerima wajib diisi (minimal 8 digit) sebelum menerbitkan tagihan.',
+      400,
+    );
+  }
+  const address = snapshot.address?.trim() ?? '';
+  if (address.length < 10) {
+    throw new AppError(
+      'Alamat tujuan pengiriman belum lengkap (minimal 10 karakter). Isi alamat penerima terlebih dahulu.',
+      400,
+    );
+  }
+  const hasRegion =
+    (snapshot.regency?.trim().length ?? 0) > 0 ||
+    (snapshot.province?.trim().length ?? 0) > 0;
+  if (!hasRegion) {
+    throw new AppError(
+      'Kabupaten/kota atau provinsi tujuan wajib diisi sebelum menerbitkan tagihan.',
+      400,
+    );
+  }
+};
+
+/** Semua data pengiriman & ongkir wajib lengkap sebelum kontrak/tagihan diterbitkan. */
+const assertContractIssueReady = (
+  mergedSnapshot: ShippingAddressSnapshot,
+  shippingSelection: ShippingSelectionInput | undefined,
+  sellerOrigin: Awaited<ReturnType<typeof resolveSellerShippingOrigin>>,
+) => {
+  assertShippingDestinationReady(mergedSnapshot);
+
+  if (!shippingSelection) {
+    throw new AppError(
+      'Ongkir belum dipilih. Hitung dan pilih layanan kurir terlebih dahulu.',
+      400,
+    );
+  }
+  if (!shippingSelection.originId || !shippingSelection.destinationId) {
+    throw new AppError('Data asal/tujuan ongkir tidak valid. Pilih ulang ongkir.', 400);
+  }
+  if (!shippingSelection.courierCode?.trim()) {
+    throw new AppError('Kurir pengiriman belum dipilih.', 400);
+  }
+  const cost = Number(shippingSelection.cost);
+  if (!Number.isFinite(cost) || cost <= 0) {
+    throw new AppError('Biaya ongkir belum valid. Hitung ulang ongkir.', 400);
+  }
+  if (!shippingSelection.weightGrams || shippingSelection.weightGrams < 1) {
+    throw new AppError('Berat pengiriman tidak valid. Sesuaikan jumlah barang.', 400);
+  }
+
+  if (sellerOrigin.originId == null) {
+    throw new AppError(
+      'Asal pengiriman toko belum bisa ditentukan. Lengkapi alamat bisnis di Profil atau atur lokasi di menu Pengiriman.',
+      400,
+    );
+  }
+};
+
 /**
  * Preview invoice breakdown before supplier issues contract (no DB writes).
  */
@@ -281,6 +678,7 @@ export const previewInvoiceFromNegotiation = async (
   sellerId: string,
   options?: {
     shippingSelection?: ShippingSelectionInput;
+    shippingSnapshot?: Partial<ShippingAddressSnapshot>;
     quantity?: number;
     pricePerUnit?: number;
   },
@@ -303,6 +701,11 @@ export const previewInvoiceFromNegotiation = async (
           name: true,
           unit: true,
           thumbnailUrl: true,
+          pricePerUnit: true,
+          stock: true,
+          minOrder: true,
+          regency: true,
+          province: true,
         },
       },
       buyer: {
@@ -337,11 +740,38 @@ export const previewInvoiceFromNegotiation = async (
 
   await assertQuantityMeetsMinOrder(negotiation.product.id, Number(previewQty));
 
+  const baseShippingSnapshot = await resolveBuyerShippingSnapshot(negotiation.buyerId);
+  const mergedSnapshot = options?.shippingSnapshot
+    ? mergeShippingSnapshot(baseShippingSnapshot, {
+        ...options.shippingSnapshot,
+        source: options.shippingSnapshot.source ?? 'custom',
+      })
+    : baseShippingSnapshot;
+
+  if (options?.shippingSelection) {
+    assertShippingDestinationReady(mergedSnapshot);
+  }
+
   const { logisticsFee, logisticsMeta } = await resolveLogisticsForCheckout(
     options?.shippingSelection,
   );
   const financials = await calculateContractFinancials(previewSubtotal, logisticsFee);
-  const buyerShippingSnapshot = await resolveBuyerShippingSnapshot(negotiation.buyerId);
+  const buyerShippingSnapshot = logisticsMeta
+    ? attachLogisticsToSnapshot(mergedSnapshot, logisticsMeta)
+    : mergedSnapshot;
+
+  const economics = await buildDealEconomics({
+    catalogPricePerUnit: Number(negotiation.product.pricePerUnit),
+    negotiatedPricePerUnit: Number(previewPrice),
+    quantity: Number(previewQty),
+    productStock: Number(negotiation.product.stock),
+    unit: negotiation.product.unit,
+  });
+
+  const sellerShipping = await resolveSellerShippingOrigin(sellerId, {
+    regency: negotiation.product.regency,
+    province: negotiation.product.province,
+  });
 
   return {
     negotiationId: negotiation.id,
@@ -355,9 +785,9 @@ export const previewInvoiceFromNegotiation = async (
     logisticsFee: financials.logisticsFee,
     vatAmount: financials.vatAmount,
     totalAmount: financials.totalAmount,
-    buyerShippingSnapshot: logisticsMeta
-      ? attachLogisticsToSnapshot(buyerShippingSnapshot, logisticsMeta)
-      : buyerShippingSnapshot,
+    buyerShippingSnapshot,
+    sellerShipping,
+    economics,
   };
 };
 
@@ -430,6 +860,26 @@ export const createContract = async (
 
   await assertQuantityMeetsMinOrder(negotiation.productId, Number(contractQty));
 
+  const baseShippingSnapshot = await resolveBuyerShippingSnapshot(
+    negotiation.buyerId,
+    data.shippingAddress,
+  );
+  const mergedSnapshot = data.shippingSnapshot
+    ? mergeShippingSnapshot(baseShippingSnapshot, data.shippingSnapshot)
+    : baseShippingSnapshot;
+
+  assertShippingDestinationReady(mergedSnapshot);
+
+  const negotiationProductLocation = await prisma.product.findUnique({
+    where: { id: negotiation.productId },
+    select: { regency: true, province: true },
+  });
+  const sellerOrigin = await resolveSellerShippingOrigin(
+    sellerId,
+    negotiationProductLocation ?? undefined,
+  );
+  assertContractIssueReady(mergedSnapshot, data.shippingSelection, sellerOrigin);
+
   const { logisticsFee, logisticsMeta } = await resolveLogisticsForCheckout(data.shippingSelection);
   const financials = await calculateContractFinancials(contractSubtotal, logisticsFee);
   const {
@@ -439,16 +889,13 @@ export const createContract = async (
     vatAmount,
     totalAmount,
   } = financials;
-  const baseShippingSnapshot = await resolveBuyerShippingSnapshot(
-    negotiation.buyerId,
-    data.shippingAddress,
-  );
-  const shippingSnapshot = attachLogisticsToSnapshot(
-    data.shippingSnapshot
-      ? mergeShippingSnapshot(baseShippingSnapshot, data.shippingSnapshot)
-      : baseShippingSnapshot,
-    logisticsMeta,
-  );
+  const shippingSnapshot = {
+    ...attachLogisticsToSnapshot(mergedSnapshot, logisticsMeta),
+    sellerOrigin: sellerOrigin.snapshot,
+    ...(sellerOrigin.originLabel
+      ? { sellerOriginLabel: sellerOrigin.originLabel }
+      : {}),
+  };
 
   // LOGIKA SMART DESCRIPTION: Menggabungkan spek teknis & kesepakatan chat
   const ts = negotiation.product.technicalSpec;
@@ -1071,6 +1518,8 @@ export const updatePendingInvoice = async (
     ? mergeShippingSnapshot(currentSnapshot, data.shippingSnapshot)
     : currentSnapshot;
 
+  assertShippingDestinationReady(shippingSnapshot);
+
   const specifications =
     data.specifications !== undefined ? data.specifications.trim() || null : order.specifications;
 
@@ -1281,7 +1730,12 @@ const resolveBatchCheckoutOrders = async (buyerId: string, orderIds: string[]) =
     orders.map((o) => o.checkoutBatchId).filter((id): id is string => Boolean(id)),
   );
   if (batchIds.size !== 1) {
-    throw new AppError('Semua pesanan harus dari satu sesi checkout yang sama.', 400);
+    throw new AppError(
+      batchIds.size === 0
+        ? 'Pesanan tunggal tidak memakai pembayaran gabungan. Gunakan bayar per pesanan (/orders/:id/pay).'
+        : 'Semua pesanan harus dari satu sesi checkout yang sama (multi-supplier).',
+      400,
+    );
   }
 
   const checkoutBatchId = [...batchIds][0]!;
@@ -1315,6 +1769,36 @@ export const initializeBatchPayment = async (
   channelCode?: string,
   forceNew = false,
 ) => {
+  const uniqueIds = Array.from(new Set(orderIds));
+  if (uniqueIds.length === 1) {
+    const lone = await prisma.order.findFirst({
+      where: { id: uniqueIds[0]!, buyerId },
+      select: {
+        id: true,
+        orderNumber: true,
+        checkoutBatchId: true,
+        checkoutBatchNumber: true,
+      },
+    });
+    if (!lone) {
+      throw new AppError('Pesanan tidak ditemukan atau bukan milik Anda.', 404);
+    }
+    // Direct checkout 1 supplier: tidak punya checkoutBatchId → bayar per pesanan.
+    if (!lone.checkoutBatchId) {
+      const payment = await initializePayment(lone.id, buyerId, channelCode, forceNew);
+      return {
+        ...payment,
+        checkoutBatchId: null,
+        checkoutBatchNumber: lone.checkoutBatchNumber ?? lone.orderNumber,
+        leadOrderId: lone.id,
+        orderIds: [lone.id],
+        orderNumbers: [lone.orderNumber],
+        batchTotalAmount: payment.amount,
+        isBatchPayment: false,
+      };
+    }
+  }
+
   const { checkoutBatchId, orders, leadOrder } = await resolveBatchCheckoutOrders(
     buyerId,
     orderIds,

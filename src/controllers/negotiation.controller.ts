@@ -203,13 +203,26 @@ export const getInvoicePreview = catchAsync(async (req: AuthRequest, res: Respon
 
 export const postInvoicePreview = catchAsync(async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
-  const { shippingSelection, quantity, pricePerUnit } = req.body;
+  const { shippingSelection, shippingSnapshot, quantity, pricePerUnit } = req.body;
   const preview = await orderService.previewInvoiceFromNegotiation(id, req.user!.id, {
     shippingSelection,
+    shippingSnapshot,
     quantity,
     pricePerUnit,
   });
   successResponse(res, preview, 'Preview tagihan berhasil dimuat.');
+});
+
+/**
+ * [SUPPLIER] Alamat pengiriman pembeli (profil + tersimpan GIS) untuk tagihan negosiasi.
+ */
+export const getBuyerShippingAddresses = catchAsync(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params;
+  const data = await orderService.listBuyerShippingAddressesForNegotiation(
+    id,
+    req.user!.id,
+  );
+  successResponse(res, data, 'Alamat pembeli berhasil dimuat.');
 });
 
 /**
