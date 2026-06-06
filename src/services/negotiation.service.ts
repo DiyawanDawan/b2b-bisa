@@ -2,8 +2,10 @@
 import pusher from '#config/pusher';
 import AppError from '#utils/appError';
 import { assertQuantityMeetsMinOrder } from '#utils/productOrderRules';
+import { assertBuyerCommerceReady } from '#utils/readiness.util';
 import {
   NegotiationStatus,
+  OrderStatus,
   Prisma,
   TaxStatus,
   ProductStatus,
@@ -123,6 +125,8 @@ export const createOffer = async (
     purpose?: NegotiationChatPurpose;
   },
 ) => {
+  await assertBuyerCommerceReady(buyerId);
+
   const purpose: NegotiationChatPurpose = data.purpose ?? 'negotiation';
   // Validate quantity and price are positive
   if (data.quantity <= 0) {
@@ -992,6 +996,17 @@ export const deleteChatMessage = async (
  */
 export const clearChatMessages = async (negotiationId: string, userId: string) => {
   const negotiation = await assertNegotiationParticipant(negotiationId, userId);
+
+  const linkedOrder = await prisma.order.findFirst({
+    where: { negotiation: { id: negotiationId }, status: OrderStatus.DISPUTED },
+    select: { id: true },
+  });
+  if (linkedOrder) {
+    throw new AppError(
+      'Riwayat chat tidak dapat dihapus saat pesanan dalam sengketa aktif.',
+      400,
+    );
+  }
 
   const CHAT_BLOCKED_STATUSES: string[] = [
     NegotiationStatus.OFFER_REJECTED,

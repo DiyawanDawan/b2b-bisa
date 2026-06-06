@@ -39,4 +39,14 @@ router.get('/charts/categories', adminController.getCategoryAnalytics);
  */
 router.get('/charts/performance', adminController.getTopSuppliers);
 
+/**
+ * GET /api/v1/admin/dashboard/analytics/platform
+ */
+router.get('/analytics/platform', adminController.getDashboardPlatformAnalytics);
+
+/**
+ * GET /api/v1/admin/dashboard/visual-gallery
+ */
+router.get('/visual-gallery', adminController.getDashboardVisualGallery);
+
 export default router;

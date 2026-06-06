@@ -174,6 +174,7 @@ export async function seedFinancial(prisma) {
       create: {
         id: 'default-platform-bank',
         paymentChannelId: mandiri.id,
+        // Plaintext di seed; jalankan scripts/migrate-encrypt-sensitive-data.ts setelah seed.
         accountNumber: '889012345678',
         accountName: 'PT BISA EKOSISTEM INDONESIA',
       },

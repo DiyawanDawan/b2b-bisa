@@ -2,6 +2,7 @@
 import prisma from '#config/prisma';
 import AppError from '#utils/appError';
 import { assertQuantityMeetsMinOrder } from '#utils/productOrderRules';
+import { assertBuyerCommerceReady } from '#utils/readiness.util';
 import {
   Prisma,
   OrderStatus,
@@ -25,6 +26,7 @@ import {
 } from '#services/order-shipping.service';
 import type { LogisticsSnapshotMeta, ShippingSelectionInput } from '#types/order-shipping';
 import { notifyOrderStatusChange } from '#services/orderNotification.service';
+import { ensureDisputeNegotiationRoom } from '#services/dispute-mediation.service';
 import { Xendit } from 'xendit-node';
 import { withRetry } from '#utils/retry.util';
 import { shouldFallbackXenditDirectToInvoice, translateXenditError } from '#utils/xenditError.util';
@@ -42,6 +44,7 @@ import {
   sleep,
 } from '#utils/xenditPaymentRequestV3.util';
 import {
+  extractPaymentExpiryDate,
   extractXenditDirectPaymentData,
   mapMethodToPaymentKey,
   mapMethodToXenditType,
@@ -51,6 +54,7 @@ import { attachOrderMediaUrls } from '#utils/orderMedia.util';
 import { buildBisaTrackingNumber } from '#utils/order-tracking.util';
 import * as storageService from '#services/storage.service';
 import { roundIdrAmount, roundIdrDecimal } from '#utils/currency.util';
+import { resolveProviderActions, sealProviderActions } from '#utils/encryption.util';
 import {
   BATCH_PAYMENT_EXTERNAL_PREFIX,
   BISA_MULTI_CHECKOUT_ORDER_PREFIX,
@@ -670,6 +674,33 @@ const assertContractIssueReady = (
   }
 };
 
+/** Direct checkout wajib punya ongkir valid per supplier (parity tagihan negosiasi). */
+const assertDirectCheckoutShippingReady = async (
+  sellerIds: string[],
+  mergedSnapshot: ShippingAddressSnapshot,
+  shippingSelections?: Array<ShippingSelectionInput & { sellerId: string }>,
+) => {
+  if (!shippingSelections?.length) {
+    throw new AppError(
+      'Ongkir belum dipilih. Hitung dan pilih layanan kurir untuk setiap supplier.',
+      400,
+    );
+  }
+
+  const selectionBySeller = new Map(
+    shippingSelections.map((selection) => [selection.sellerId, selection]),
+  );
+
+  for (const sellerId of sellerIds) {
+    const shippingSelection = selectionBySeller.get(sellerId);
+    if (!shippingSelection) {
+      throw new AppError('Ongkir belum dipilih untuk semua supplier.', 400);
+    }
+    const sellerOrigin = await resolveSellerShippingOrigin(sellerId);
+    assertContractIssueReady(mergedSnapshot, shippingSelection, sellerOrigin);
+  }
+};
+
 /**
  * Preview invoice breakdown before supplier issues contract (no DB writes).
  */
@@ -1058,6 +1089,8 @@ export const createDirectOrderFromCart = async (
     throw new AppError('Tidak ada produk yang dipilih untuk checkout.', 400);
   }
 
+  await assertBuyerCommerceReady(buyerId);
+
   // Ambil product info termasuk seller untuk grouping
   const productIds = Array.from(new Set(data.items.map((it) => it.productId)));
   const products = await prisma.product.findMany({
@@ -1100,6 +1133,8 @@ export const createDirectOrderFromCart = async (
     ? mergeShippingSnapshot(baseShippingSnapshot, data.shippingSnapshot)
     : baseShippingSnapshot;
 
+  assertShippingDestinationReady(mergedShippingSnapshot);
+
   const logisticsBySeller = new Map<
     string,
     { logisticsFee: Prisma.Decimal; logisticsMeta?: LogisticsSnapshotMeta }
@@ -1119,6 +1154,12 @@ export const createDirectOrderFromCart = async (
     arr.push(item);
     grouped.set(p.userId, arr);
   }
+
+  await assertDirectCheckoutShippingReady(
+    [...grouped.keys()],
+    mergedShippingSnapshot,
+    data.shippingSelections,
+  );
 
   const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
   const sellerIds = [...grouped.keys()];
@@ -1324,6 +1365,8 @@ export const previewDirectOrderFromCart = async (
     throw new AppError('Tidak ada produk yang dipilih untuk checkout.', 400);
   }
 
+  await assertBuyerCommerceReady(buyerId);
+
   const productIds = Array.from(new Set(data.items.map((it) => it.productId)));
   const products = await prisma.product.findMany({
     where: { id: { in: productIds } },
@@ -1364,6 +1407,8 @@ export const previewDirectOrderFromCart = async (
     ? mergeShippingSnapshot(baseShippingSnapshot, data.shippingSnapshot)
     : baseShippingSnapshot;
 
+  assertShippingDestinationReady(mergedShippingSnapshot);
+
   const logisticsBySeller = new Map<
     string,
     { logisticsFee: Prisma.Decimal; logisticsMeta?: LogisticsSnapshotMeta }
@@ -1382,6 +1427,12 @@ export const previewDirectOrderFromCart = async (
     arr.push(item);
     grouped.set(p.userId, arr);
   }
+
+  await assertDirectCheckoutShippingReady(
+    [...grouped.keys()],
+    mergedShippingSnapshot,
+    data.shippingSelections,
+  );
 
   const orders: Array<{
     sellerId: string;
@@ -1597,6 +1648,7 @@ export const buildPendingPaymentFromTransaction = (params: {
   xenditInvoiceId?: string | null;
   paymentUrl?: string | null;
 }): Record<string, unknown> | null => {
+  const providerActions = resolveProviderActions(params.providerActions);
   const amount = Number(params.amount.toString());
   const roundedAmount = roundIdrAmount(amount);
   const channelCode = params.paymentChannel?.code;
@@ -1608,12 +1660,13 @@ export const buildPendingPaymentFromTransaction = (params: {
       amount: roundedAmount,
       channelCode,
       channelName: params.paymentChannel?.name,
+      expiryDate: extractPaymentExpiryDate(providerActions),
     };
   }
 
-  if (!params.paymentRequestId || !params.providerActions) return null;
+  if (!params.paymentRequestId || !providerActions) return null;
 
-  const extracted = extractXenditDirectPaymentData(params.providerActions, channelCode);
+  const extracted = extractXenditDirectPaymentData(providerActions, channelCode);
   if (!extracted) return null;
 
   return {
@@ -1624,7 +1677,8 @@ export const buildPendingPaymentFromTransaction = (params: {
     channelName: params.paymentChannel?.name,
     paymentData: extracted.paymentData,
     amount: roundedAmount,
-    ...(isMockProviderActions(params.providerActions) ? { isMockPayment: true } : {}),
+    expiryDate: extractPaymentExpiryDate(providerActions),
+    ...(isMockProviderActions(providerActions) ? { isMockPayment: true } : {}),
   };
 };
 
@@ -1657,7 +1711,7 @@ const persistMockPaymentInit = async (params: {
       paymentRequestId: providerActions.id as string,
       paymentChannelId: params.channel.id,
       paymentMethod: methodGroup,
-      providerActions: providerActions as unknown as Prisma.InputJsonValue,
+      providerActions: sealProviderActions(providerActions),
     },
   });
 
@@ -1811,12 +1865,44 @@ export const initializeBatchPayment = async (
   const batchTotalRounded = roundIdrDecimal(batchTotal);
   const batchExternalId = `${BATCH_PAYMENT_EXTERNAL_PREFIX}${checkoutBatchId}`;
 
-  await prisma.transaction.update({
-    where: { id: leadOrder.transaction!.id },
-    data: {
-      externalId: batchExternalId,
-      amount: batchTotalRounded,
-    },
+  await prisma.$transaction(async (tx) => {
+    const lockedLead = await tx.order.findUnique({
+      where: { id: leadOrder.id },
+      select: {
+        id: true,
+        status: true,
+        transaction: { select: { id: true, status: true } },
+      },
+    });
+
+    if (!lockedLead?.transaction) {
+      throw new AppError('Transaksi pembayaran batch tidak ditemukan.', 404);
+    }
+    if (lockedLead.status !== OrderStatus.PENDING) {
+      throw new AppError('Semua pesanan batch harus masih menunggu pembayaran.', 400);
+    }
+
+    const pendingCount = await tx.order.count({
+      where: {
+        checkoutBatchId,
+        buyerId,
+        status: OrderStatus.PENDING,
+      },
+    });
+    if (pendingCount !== orders.length) {
+      throw new AppError('Status pesanan batch berubah. Muat ulang checkout.', 409);
+    }
+
+    await tx.transaction.update({
+      where: {
+        id: lockedLead.transaction.id,
+        status: TransactionStatus.PENDING,
+      },
+      data: {
+        externalId: batchExternalId,
+        amount: batchTotalRounded,
+      },
+    });
   });
 
   const payment = await initializePayment(leadOrder.id, buyerId, channelCode, forceNew);
@@ -2054,7 +2140,7 @@ export const initializePayment = async (
           });
           await prisma.transaction.update({
             where: { id: order.transaction.id },
-            data: { providerActions: pr as unknown as Prisma.InputJsonValue },
+            data: { providerActions: sealProviderActions(pr) },
           });
           cached = tryReturnExisting(pr);
           if (cached) return cached;
@@ -2234,7 +2320,7 @@ export const initializePayment = async (
               paymentRequestId: latestPaymentRequest.id,
               paymentChannelId: channel.id,
               paymentMethod: channel.group ?? undefined,
-              providerActions: latestPaymentRequest as unknown as Prisma.InputJsonValue,
+              providerActions: sealProviderActions(latestPaymentRequest),
             },
           });
 
@@ -2263,7 +2349,7 @@ export const initializePayment = async (
           paymentRequestId: paymentRequest.id,
           paymentChannelId: channel.id,
           paymentMethod: channel.group ?? undefined,
-          providerActions: latestPaymentRequest as unknown as Prisma.InputJsonValue,
+          providerActions: sealProviderActions(latestPaymentRequest),
         },
       });
 
@@ -2290,6 +2376,7 @@ export const initializePayment = async (
         channelName: channel.name,
         paymentData: extracted.paymentData,
         amount,
+        expiryDate: extractPaymentExpiryDate(latestPaymentRequest),
       };
     }
   }
@@ -2350,7 +2437,7 @@ export const initializePayment = async (
     data: {
       xenditInvoiceId: invoicePayload.id,
       paymentUrl: invoicePayload.invoice_url || invoicePayload.invoiceUrl,
-      providerActions: invoice as unknown as Prisma.InputJsonValue,
+      providerActions: sealProviderActions(invoice),
     },
   });
 
@@ -2676,7 +2763,13 @@ export const listOrdersByRole = async (params: {
         buyer: { select: { fullName: true, avatarUrl: true } },
         seller: { select: { fullName: true, avatarUrl: true } },
         transaction: {
-          select: { status: true, paymentUrl: true, paidAt: true, paymentMethod: true },
+          select: {
+            status: true,
+            paymentStatus: true,
+            paymentUrl: true,
+            paidAt: true,
+            paymentMethod: true,
+          },
         },
         shipment: {
           select: {
@@ -2701,7 +2794,13 @@ export const listOrdersByRole = async (params: {
   ]);
 
   return {
-    data: orders.map((order) => attachOrderMediaUrls(order)),
+    data: orders.map((order) => {
+      const enriched = attachOrderMediaUrls(order);
+      return {
+        ...enriched,
+        paymentStatus: order.transaction?.paymentStatus ?? null,
+      };
+    }),
     meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
   };
 };
@@ -2952,6 +3051,9 @@ export const getOrderDetail = async (id: string, userId: string) => {
           resolution: true,
           resolutionNote: true,
           resolvedAt: true,
+          mediationStartedAt: true,
+          readyToResolveAt: true,
+          mediationStartedById: true,
           createdAt: true,
         },
       },
@@ -3005,7 +3107,12 @@ export const getOrderDetail = async (id: string, userId: string) => {
       ? parseDisputeFromChatMessages(orderData.negotiation?.messages ?? [])
       : null);
 
-  const negotiationId = orderData.negotiation?.id ?? null;
+  let negotiationId = orderData.negotiation?.id ?? null;
+  if (orderData.status === OrderStatus.DISPUTED && orderData.dispute && !negotiationId) {
+    const room = await ensureDisputeNegotiationRoom(id);
+    negotiationId = room.id;
+  }
+
   const { dispute: _dispute, negotiation: _negotiation, ...restOrderData } = orderData;
 
   return attachOrderMediaUrls({
@@ -3169,6 +3276,9 @@ const formatDisputeResponse = (
         resolution: string | null;
         resolutionNote: string | null;
         resolvedAt: Date | null;
+        mediationStartedAt: Date | null;
+        readyToResolveAt: Date | null;
+        mediationStartedById: string | null;
         createdAt: Date;
       }
     | null
@@ -3187,6 +3297,9 @@ const formatDisputeResponse = (
     resolution: dispute.resolution,
     resolutionNote: dispute.resolutionNote,
     resolvedAt: dispute.resolvedAt,
+    mediationStartedAt: dispute.mediationStartedAt,
+    readyToResolveAt: dispute.readyToResolveAt,
+    mediationStartedById: dispute.mediationStartedById,
     createdAt: dispute.createdAt,
   };
 };
@@ -3244,12 +3357,26 @@ export const raiseDispute = async (
       sellerId: true,
       orderNumber: true,
       status: true,
+      totalAmount: true,
+      dispute: { select: { id: true } },
+      items: {
+        take: 1,
+        select: {
+          productId: true,
+          quantity: true,
+          pricePerUnit: true,
+          product: { select: { name: true } },
+        },
+      },
     },
   });
 
   if (!order) throw new AppError('Pesanan tidak ditemukan.', 404);
   if (order.buyerId !== buyerId)
     throw new AppError('Hanya pembeli yang bisa mengajukan sengketa.', 403);
+  if (order.dispute) {
+    throw new AppError('Sengketa untuk pesanan ini sudah diajukan.', 409);
+  }
 
   const allowedStatuses: string[] = [OrderStatus.SHIPPED, OrderStatus.PROCESSING];
   if (!allowedStatuses.includes(order.status)) {
@@ -3259,25 +3386,54 @@ export const raiseDispute = async (
     );
   }
 
-  const updatedOrder = await prisma.$transaction(async (tx) => {
-    const updatedOrder = await tx.order.update({
-      where: { id: orderId },
-      data: { status: OrderStatus.DISPUTED },
-    });
+  const firstItem = order.items[0];
+  if (!firstItem) {
+    throw new AppError('Pesanan tidak memiliki item produk.', 400);
+  }
 
-    await tx.orderDispute.create({
-      data: {
-        orderId,
-        raisedById: buyerId,
-        reason: reason.trim(),
-        description: description?.trim() || null,
-        evidenceUrls: evidenceUrls ?? [],
-        status: DisputeStatus.OPEN,
-      },
-    });
+  try {
+    const updatedOrder = await prisma.$transaction(async (tx) => {
+      const statusUpdate = await tx.order.updateMany({
+        where: {
+          id: orderId,
+          buyerId,
+          status: { in: [OrderStatus.SHIPPED, OrderStatus.PROCESSING] },
+          dispute: { is: null },
+        },
+        data: { status: OrderStatus.DISPUTED },
+      });
 
-    const negotiation = await tx.negotiation.findFirst({ where: { orderId } });
-    if (negotiation) {
+      if (statusUpdate.count === 0) {
+        const current = await tx.order.findUnique({
+          where: { id: orderId },
+          select: { dispute: { select: { id: true } }, status: true },
+        });
+        if (current?.dispute) {
+          throw new AppError('Sengketa untuk pesanan ini sudah diajukan.', 409);
+        }
+        throw new AppError(
+          'Sengketa hanya bisa diajukan untuk pesanan yang sedang diproses atau dikirim.',
+          400,
+        );
+      }
+
+      await tx.orderDispute.create({
+        data: {
+          orderId,
+          raisedById: buyerId,
+          reason: reason.trim(),
+          description: description?.trim() || null,
+          evidenceUrls: evidenceUrls ?? [],
+          status: DisputeStatus.OPEN,
+        },
+      });
+
+      let negotiation = await tx.negotiation.findFirst({ where: { orderId } });
+
+      if (!negotiation) {
+        negotiation = await ensureDisputeNegotiationRoom(orderId, tx);
+      }
+
       const detail = description?.trim() ? `\n\nDetail: ${description.trim()}` : '';
       await tx.chatMessage.create({
         data: {
@@ -3299,20 +3455,34 @@ export const raiseDispute = async (
           })),
         });
       }
+
+      const updatedOrder = await tx.order.findUnique({ where: { id: orderId } });
+      return { updatedOrder: updatedOrder!, negotiationId: negotiation.id };
+    });
+
+    void createNotification({
+      userId: order.sellerId,
+      title: 'Sengketa Pesanan',
+      body: `Pembeli mengajukan sengketa pada pesanan ${order.orderNumber}.`,
+      type: NotificationType.DISPUTE,
+      priority: NotificationPriority.HIGH,
+      refId: orderId,
+    }).catch(() => {});
+
+    return {
+      ...updatedOrder.updatedOrder,
+      negotiationId: updatedOrder.negotiationId,
+    };
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002'
+    ) {
+      throw new AppError('Sengketa untuk pesanan ini sudah diajukan.', 409);
     }
-    return updatedOrder;
-  });
-
-  void createNotification({
-    userId: order.sellerId,
-    title: 'Sengketa Pesanan',
-    body: `Pembeli mengajukan sengketa pada pesanan ${order.orderNumber}.`,
-    type: NotificationType.DISPUTE,
-    priority: NotificationPriority.HIGH,
-    refId: orderId,
-  }).catch(() => {});
-
-  return updatedOrder;
+    throw error;
+  }
 };
 
 /**
@@ -3358,28 +3528,27 @@ export const respondToDispute = async (
       },
     });
 
-    const negotiation = await tx.negotiation.findFirst({ where: { orderId } });
-    if (negotiation) {
-      await tx.chatMessage.create({
-        data: {
+    const negotiation = await ensureDisputeNegotiationRoom(orderId, tx);
+
+    await tx.chatMessage.create({
+      data: {
+        negotiationId: negotiation.id,
+        senderId: sellerId,
+        content: `TANGGAPAN SUPPLIER: ${response.trim()}`,
+        isSystemMessage: true,
+      },
+    });
+
+    if (evidenceUrls?.length) {
+      await tx.chatMessage.createMany({
+        data: evidenceUrls.map((url, index) => ({
           negotiationId: negotiation.id,
           senderId: sellerId,
-          content: `TANGGAPAN SUPPLIER: ${response.trim()}`,
+          content: `Bukti tanggapan supplier #${index + 1}`,
+          attachmentUrl: url,
           isSystemMessage: true,
-        },
+        })),
       });
-
-      if (evidenceUrls?.length) {
-        await tx.chatMessage.createMany({
-          data: evidenceUrls.map((url, index) => ({
-            negotiationId: negotiation.id,
-            senderId: sellerId,
-            content: `Bukti tanggapan supplier #${index + 1}`,
-            attachmentUrl: url,
-            isSystemMessage: true,
-          })),
-        });
-      }
     }
 
     return dispute;

@@ -8,6 +8,8 @@ interface CustomerAddressWithAddress {
   label: string;
   isPrimary: boolean;
   addressId: string;
+  rajaongkirDestinationId?: number | null;
+  rajaongkirDestinationLabel?: string | null;
   address: {
     fullAddress: string;
     zipCode: string;
@@ -54,5 +56,7 @@ export const transformAddress = (ca: CustomerAddressWithAddress) => {
     districtId: ca.address.districtId,
     villageId: ca.address.villageId,
     isPrimary: ca.isPrimary,
+    rajaongkirDestinationId: ca.rajaongkirDestinationId ?? null,
+    rajaongkirDestinationLabel: ca.rajaongkirDestinationLabel ?? null,
   };
 };

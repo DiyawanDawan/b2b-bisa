@@ -1,10 +1,13 @@
 import { z } from 'zod';
+import { ProductMode } from '#prisma';
 
 export const createNegotiationSchema = z.object({
   productId: z.string().uuid('Product ID harus berupa UUID yang valid'),
   quantity: z.coerce.number().positive('Kuantitas harus lebih dari 0'),
   pricePerUnit: z.coerce.number().positive('Harga unit penawaran harus valid'),
   purpose: z.enum(['inquiry', 'negotiation']).optional(),
+  message: z.string().max(1000).optional(),
+  attachmentUrl: z.string().url('Format URL lampiran tidak valid').optional(),
 });
 
 export const updateNegotiationStatusSchema = z
@@ -61,5 +64,7 @@ export const listNegotiationsSchema = z.object({
     limit: z.coerce.number().int().min(1).max(100).optional().default(20),
     status: z.string().optional(),
     keyword: z.string().optional(),
+    productMode: z.nativeEnum(ProductMode).optional(),
+    roomType: z.enum(['inquiry', 'negotiation']).optional(),
   }),
 });

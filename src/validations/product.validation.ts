@@ -66,6 +66,18 @@ export const createProductSchema = z.object({
   categoryId: z.string().uuid('ID Kategori tidak valid').optional(),
   /** Urutan foto: JSON array existing/new (multipart) */
   imageOrder: z.string().optional(),
+  /** Path hasil chunked upload (JSON array string) — menggantikan multipart images */
+  imageUrls: z.preprocess((val) => {
+    if (val === undefined || val === null || val === '') return undefined;
+    if (typeof val === 'string') {
+      try {
+        return JSON.parse(val);
+      } catch {
+        return val;
+      }
+    }
+    return val;
+  }, z.array(z.string().min(1)).optional()),
 });
 
 const sanitizeEmptyStrings = (raw: unknown) => {

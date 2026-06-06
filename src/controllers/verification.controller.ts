@@ -6,20 +6,25 @@ import * as verificationService from '#services/verification.service';
 import * as adminService from '#services/admin.service';
 
 import * as storageService from '#services/storage.service';
+import * as mediaUploadService from '#services/mediaUpload.service';
 
 /**
- * User submits their identity documents (multipart/form-data)
+ * User submits identity documents — multipart (legacy) atau JSON dengan path chunked upload.
  */
 export const submitVerification = catchAsync(async (req: AuthRequest, res: Response) => {
   const userId = req.user!.id;
-  const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+  const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
 
-  // Ekstraksi field eksplisit agar aman dari injeksi mass-assignment
-  const { businessName, taxId, businessAddress } = req.body as {
-    businessName?: string;
-    taxId?: string;
-    businessAddress?: string;
-  };
+  const { businessName, taxId, businessAddress, ktpUrl, nibUrl, selfieUrl, siupUrl } =
+    req.body as {
+      businessName?: string;
+      taxId?: string;
+      businessAddress?: string;
+      ktpUrl?: string;
+      nibUrl?: string;
+      selfieUrl?: string;
+      siupUrl?: string;
+    };
 
   const updateData: Record<string, unknown> = {
     businessName,
@@ -27,9 +32,21 @@ export const submitVerification = catchAsync(async (req: AuthRequest, res: Respo
     businessAddress,
   };
 
-  // Helper to upload if file exists
+  const assignPreUploaded = (raw: string | undefined, dbField: string) => {
+    if (!raw?.trim()) return;
+    mediaUploadService.validatePreUploadedPaths([raw], userId, 'verification');
+    const key = storageService.normalizeStorageKey(raw) ?? raw.trim();
+    updateData[dbField] = key;
+  };
+
+  assignPreUploaded(ktpUrl, 'ktpUrl');
+  assignPreUploaded(nibUrl, 'nibUrl');
+  assignPreUploaded(selfieUrl, 'selfieUrl');
+  assignPreUploaded(siupUrl, 'siupUrl');
+
   const uploadIfPresent = async (fieldName: string, dbField: string, folder: string) => {
-    if (files && files[fieldName] && files[fieldName][0]) {
+    if (updateData[dbField]) return;
+    if (files?.[fieldName]?.[0]) {
       const file = files[fieldName][0];
       const timestamp = Date.now();
       const extension = file.originalname.split('.').pop() || 'jpg';
@@ -38,7 +55,6 @@ export const submitVerification = catchAsync(async (req: AuthRequest, res: Respo
     }
   };
 
-  // Upload each file to R2
   await Promise.all([
     uploadIfPresent('ktp', 'ktpUrl', 'verification'),
     uploadIfPresent('nib', 'nibUrl', 'verification'),
@@ -81,7 +97,7 @@ export const updateVerificationStatus = catchAsync(async (req: AuthRequest, res:
     action: 'REVIEW_KYC',
     entity: 'USER_VERIFICATION',
     entityId: userId,
-    newValue: { status, rejectionReason },
+    newValue: { status, rejectionReason, isVerified: status === 'VERIFIED' },
   });
 
   successResponse(

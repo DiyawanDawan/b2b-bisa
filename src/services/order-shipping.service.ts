@@ -2,6 +2,7 @@ import prisma from '#config/prisma';
 import type { LogisticsSnapshotMeta } from '#types/order-shipping';
 import { Prisma } from '#prisma';
 import AppError from '#utils/appError';
+import * as rajaOngkirService from '#services/rajaongkir.service';
 
 type Tx = Prisma.TransactionClient;
 
@@ -149,4 +150,62 @@ export const saveCustomerAddressDestination = async (
       rajaongkirDestinationLabel: true,
     },
   });
+};
+
+/** Resolve & persist RajaOngkir destination ID from GIS alamat buyer (best-effort). */
+export const syncCustomerAddressRajaOngkirDestination = async (
+  customerAddressId: string,
+  userId: string,
+) => {
+  const row = await prisma.customerAddress.findFirst({
+    where: { id: customerAddressId, userId },
+    select: {
+      rajaongkirDestinationId: true,
+      address: {
+        select: {
+          fullAddress: true,
+          province: { select: { name: true } },
+          regency: { select: { name: true } },
+        },
+      },
+    },
+  });
+
+  if (!row?.address) return null;
+  if (row.rajaongkirDestinationId != null) {
+    return {
+      id: customerAddressId,
+      rajaongkirDestinationId: row.rajaongkirDestinationId,
+      rajaongkirDestinationLabel: null,
+    };
+  }
+
+  const { fullAddress, province, regency } = row.address;
+  const queries = [
+    regency?.name?.trim() && province?.name?.trim()
+      ? `${regency.name.trim()}, ${province.name.trim()}`
+      : null,
+    regency?.name?.trim(),
+    province?.name?.trim(),
+    fullAddress?.trim().slice(0, 80),
+  ].filter((q): q is string => !!q && q.length >= 3);
+
+  for (const search of queries) {
+    const results = await rajaOngkirService.searchDomesticDestinations({
+      search,
+      limit: 8,
+    });
+    if (!results.length) continue;
+
+    const first = results[0];
+    const destinationId = Number(first.id);
+    if (Number.isNaN(destinationId) || destinationId <= 0) continue;
+
+    return saveCustomerAddressDestination(customerAddressId, userId, {
+      destinationId,
+      destinationLabel: first.label ?? search,
+    });
+  }
+
+  return null;
 };

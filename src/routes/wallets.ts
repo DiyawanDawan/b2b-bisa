@@ -46,6 +46,13 @@ router.get(
   walletController.listPayoutAccounts,
 );
 
+router.get(
+  '/payout-accounts/:id',
+  requireRole(UserRole.SUPPLIER, UserRole.ADMIN),
+  validate(v.payoutAccountIdParamSchema, 'params'),
+  walletController.getPayoutAccountDetail,
+);
+
 router.post(
   '/payout-accounts',
   requireRole(UserRole.SUPPLIER, UserRole.ADMIN),

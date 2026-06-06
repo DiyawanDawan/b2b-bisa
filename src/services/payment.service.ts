@@ -1,4 +1,6 @@
 import prisma from '#config/prisma';
+import { CACHE_TTL } from '#constants/cache.constants';
+import { cacheAside, cacheKeys } from '#utils/cache.util';
 import AppError from '#utils/appError';
 import { idrAmountsEqual } from '#utils/currency.util';
 import crypto from 'crypto';
@@ -11,6 +13,7 @@ import {
   UserTier,
 } from '#prisma';
 import { SUBSCRIPTION_DURATION_DAYS } from '#utils/env.util';
+import { sealProviderActions } from '#utils/encryption.util';
 import { notifyOrderProcessingById } from '#services/orderNotification.service';
 import {
   XenditInvoiceStatus,
@@ -213,7 +216,7 @@ export const handleXenditWebhook = async (
               paymentStatus: PaymentStatus.SUCCESS,
               status: TransactionStatus.RELEASED, // Langsung rilis tidak masuk Escrow
               paidAt: new Date(),
-              providerActions: payload as unknown as Prisma.InputJsonValue,
+              providerActions: sealProviderActions(payload),
             },
           });
 
@@ -239,7 +242,7 @@ export const handleXenditWebhook = async (
               paymentStatus: PaymentStatus.SUCCESS,
               status: TransactionStatus.ESCROW_HELD,
               paidAt: new Date(),
-              providerActions: payload as unknown as Prisma.InputJsonValue,
+              providerActions: sealProviderActions(payload),
             },
           });
 
@@ -456,7 +459,7 @@ export const handleXenditPaymentRequestWebhook = async (
                 ? TransactionStatus.RELEASED
                 : TransactionStatus.ESCROW_HELD,
             paidAt: new Date(),
-            providerActions: payload as unknown as Prisma.InputJsonValue,
+            providerActions: sealProviderActions(payload),
           },
         });
 
@@ -582,23 +585,22 @@ export const handleXenditPaymentRequestWebhook = async (
  * 4. Mengambil Saluran Pembayaran (Payment Channels) Dinamis.
  * (Bisa dimirror dari Xendit SDK jika Secret ada, jika tidak pakai Fallback).
  */
-export const getAvailableChannels = async () => {
-  // Dalam real-world v7: xenditClient.PaymentMethod.getAll()
-  // Data saluran kini ditarik dinamis dari pengaturan database
-  return prisma.paymentChannel.findMany({
-    where: { isActive: true },
-    select: {
-      id: true,
-      name: true,
-      code: true,
-      group: true,
-      country: true,
-      currency: true,
-      minAmount: true,
-      maxAmount: true,
-      settlementTime: true,
-      logoUrl: true,
-    },
-    orderBy: { name: 'asc' },
-  });
-};
+export const getAvailableChannels = async () =>
+  cacheAside(cacheKeys.payChannels(), CACHE_TTL.PAY_CHANNELS, () =>
+    prisma.paymentChannel.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        name: true,
+        code: true,
+        group: true,
+        country: true,
+        currency: true,
+        minAmount: true,
+        maxAmount: true,
+        settlementTime: true,
+        logoUrl: true,
+      },
+      orderBy: { name: 'asc' },
+    }),
+  );

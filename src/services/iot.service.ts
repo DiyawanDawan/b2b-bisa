@@ -1,5 +1,6 @@
 import prisma from '#config/prisma';
 import AppError from '#utils/appError';
+import { sealProviderActions } from '#utils/encryption.util';
 import { createNotification } from './notification.service';
 import {
   NotificationType,
@@ -495,7 +496,7 @@ export const initiateSubscription = async (
     // Update transaction with provider action (VA number / QR string)
     await prisma.transaction.update({
       where: { id: transaction.id },
-      data: { providerActions: xenditResponse as unknown as Prisma.InputJsonValue },
+      data: { providerActions: sealProviderActions(xenditResponse) },
     });
 
     return {

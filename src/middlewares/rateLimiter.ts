@@ -221,6 +221,26 @@ export const registerLimiter = rateLimit({
  * SEC-BE-002 helper: per-user limit untuk hindari storage abuse.
  * 20 req/menit per user — cukup untuk batch upload foto produk.
  */
+/**
+ * Chunked media upload session init — 30 sesi/jam per user (bukan per chunk).
+ */
+export const mediaUploadInitLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => NODE_ENV === 'development',
+  keyGenerator: compositeKey,
+  message: {
+    meta: {
+      success: false,
+      status: 429,
+      message: 'Terlalu banyak sesi upload. Coba lagi nanti.',
+    },
+    data: null,
+  },
+});
+
 export const uploadLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 20,

@@ -1,4 +1,5 @@
 import { PaymentMethod } from '#prisma';
+import { decryptJsonValue } from '#utils/encryption.util';
 import { mapMethodToPaymentKey, mapMethodToXenditType } from '#utils/paymentMethod.util';
 import { isXenditForbiddenError } from '#utils/xenditError.util';
 import { isXenditWebhookDevMode } from '#utils/xenditWebhookDev.util';
@@ -93,6 +94,7 @@ export const buildMockPaymentInitResult = (input: MockPaymentBuildInput) => {
 };
 
 export const isMockProviderActions = (providerActions: unknown): boolean => {
-  if (!providerActions || typeof providerActions !== 'object') return false;
-  return (providerActions as Record<string, unknown>)._mock === true;
+  const decoded = decryptJsonValue(providerActions);
+  if (!decoded || typeof decoded !== 'object') return false;
+  return (decoded as Record<string, unknown>)._mock === true;
 };

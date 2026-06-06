@@ -13,6 +13,7 @@ import {
 import * as marketService from '#services/market.service';
 import * as forumService from '#services/forum.service';
 import * as negotiationService from '#services/negotiation.service';
+import { invalidatePolicies } from '#utils/cache.util';
 import { POLICY_KEYS } from '#services/policy.service';
 import { CATEGORY_TYPE } from '#prisma';
 
@@ -537,7 +538,7 @@ export const updatePolicyAdmin = async (
 ) => {
   const policy = await prisma.policy.findUnique({ where: { id } });
   if (!policy) throw new AppError('Kebijakan tidak ditemukan', 404);
-  return prisma.policy.update({
+  const updated = await prisma.policy.update({
     where: { id },
     data: {
       ...(data.content !== undefined && { content: data.content }),
@@ -553,6 +554,8 @@ export const updatePolicyAdmin = async (
       updatedAt: true,
     },
   });
+  void invalidatePolicies();
+  return updated;
 };
 
 export const getMarketTrendsAdmin = async (category?: string) =>

@@ -157,6 +157,26 @@ export const extractXenditDirectPaymentData = (
   return { paymentType, channelCode, paymentData };
 };
 
+/** Ambil tanggal kedaluwarsa pembayaran dari payload Xendit / response init. */
+export const extractPaymentExpiryDate = (raw: unknown): string | null => {
+  if (!raw || typeof raw !== 'object') return null;
+  const payload = raw as Record<string, unknown>;
+  const candidates = [
+    payload.expires_at,
+    payload.expiresAt,
+    payload.expiry_date,
+    payload.expiryDate,
+    payload.expiration_date,
+    payload.expirationDate,
+  ];
+  for (const value of candidates) {
+    if (value == null) continue;
+    const text = String(value).trim();
+    if (text.length > 0) return text;
+  }
+  return null;
+};
+
 export const paymentDataHasPayableDetail = (paymentData: Record<string, unknown>): boolean =>
   Boolean(
     paymentData.virtual_account_number ||

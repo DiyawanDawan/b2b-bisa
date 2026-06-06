@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ProductMode } from '#prisma';
 import { shippingSelectionSchema } from '#validations/shipping.validation';
 
 const shippingSnapshotSchema = z.object({
@@ -111,11 +112,29 @@ export const batchSimulatePaymentSchema = z.object({
     .max(50, 'Maksimal 50 pesanan per checkout'),
 });
 
+const disputeEvidenceUrlSchema = z
+  .string()
+  .min(3, 'Path bukti tidak valid')
+  .refine(
+    (value) => {
+      if (value.startsWith('http://') || value.startsWith('https://')) {
+        try {
+          new URL(value);
+          return true;
+        } catch {
+          return false;
+        }
+      }
+      return /^[\w\-./]+$/.test(value);
+    },
+    { message: 'URL bukti tidak valid' },
+  );
+
 export const raiseDisputeSchema = z.object({
   reason: z.string().min(10, 'Alasan sengketa harus jelas (minimal 10 karakter)'),
   description: z.string().max(2000, 'Deskripsi terlalu panjang').optional(),
   evidenceUrls: z
-    .array(z.string().url('URL bukti tidak valid'))
+    .array(disputeEvidenceUrlSchema)
     .max(5, 'Maksimal 5 foto bukti')
     .optional(),
 });
@@ -123,7 +142,7 @@ export const raiseDisputeSchema = z.object({
 export const respondDisputeSchema = z.object({
   response: z.string().min(10, 'Tanggapan minimal 10 karakter'),
   evidenceUrls: z
-    .array(z.string().url('URL bukti tidak valid'))
+    .array(disputeEvidenceUrlSchema)
     .max(5, 'Maksimal 5 foto bukti')
     .optional(),
 });
@@ -134,5 +153,6 @@ export const listOrdersSchema = z.object({
     limit: z.coerce.number().int().min(1).max(100).optional().default(20),
     status: z.string().optional(),
     search: z.string().optional(),
+    productMode: z.nativeEnum(ProductMode).optional(),
   }),
 });

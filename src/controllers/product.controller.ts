@@ -6,6 +6,7 @@ import { successResponse, createdResponse, paginatedResponse } from '#utils/resp
 import * as productService from '#services/product.service';
 import { ProductStatus, BiomassaType, BiocharGrade, ProductMode } from '#prisma';
 import * as storageService from '#services/storage.service';
+import * as mediaUploadService from '#services/mediaUpload.service';
 import { attachProductMediaUrls } from '#utils/productMedia.util';
 import prisma from '#config/prisma';
 
@@ -156,15 +157,33 @@ async function validateExistingImageOwnership(
   }
 }
 
+function parseImageUrlsField(raw: unknown): string[] {
+  if (!raw) return [];
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      return Array.isArray(parsed) ? (parsed as string[]) : [];
+    } catch {
+      throw new AppError('Format imageUrls tidak valid (JSON rusak).', 400);
+    }
+  }
+  return Array.isArray(raw) ? (raw as string[]) : [];
+}
+
 function assertImagePayload(
   imageUrls: string[],
   syncImages: boolean,
   status?: ProductStatus,
   filesUploaded = 0,
   hasImageOrder = false,
+  preUploadedCount = 0,
 ) {
   if (filesUploaded > 0 && !hasImageOrder) {
     throw new AppError('imageOrder wajib dikirim saat mengunggah foto produk.', 400);
+  }
+
+  if (preUploadedCount > 0 && filesUploaded === 0 && imageUrls.length === 0) {
+    throw new AppError('imageUrls hasil upload tidak valid.', 400);
   }
 
   if (syncImages && imageUrls.length === 0) {
@@ -187,18 +206,34 @@ export const createProduct = catchAsync(async (req: AuthRequest, res: Response) 
   let uploadedUrls: string[] = [];
 
   try {
+    const preUploaded = parseImageUrlsField(req.body.imageUrls);
+    if (preUploaded.length > 0) {
+      mediaUploadService.validatePreUploadedPaths(preUploaded, req.user!.id, 'products');
+    }
+
     uploadedUrls = await uploadProductImages(files, req.user!.id);
     const imageOrderRaw = req.body.imageOrder as string | undefined;
-    const imageUrls = resolveImageUrls(uploadedUrls, imageOrderRaw);
+
+    let imageUrls: string[];
+    if (imageOrderRaw) {
+      imageUrls = resolveImageUrls(uploadedUrls, imageOrderRaw);
+    } else if (preUploaded.length > 0) {
+      imageUrls = preUploaded;
+    } else {
+      imageUrls = uploadedUrls;
+    }
+
     assertImagePayload(
       imageUrls,
       false,
       req.body.status as ProductStatus | undefined,
       files?.length ?? 0,
       !!imageOrderRaw,
+      preUploaded.length,
     );
 
-    const { imageOrder: _imageOrder, syncImages: _syncImages, ...body } = req.body;
+    const { imageOrder: _imageOrder, syncImages: _syncImages, imageUrls: _imageUrls, ...body } =
+      req.body;
     const product = await productService.createProduct(req.user!.id, body, imageUrls);
     return createdResponse(res, attachProductMediaUrls(product), 'Produk berhasil ditambahkan');
   } catch (error) {
@@ -326,13 +361,25 @@ export const updateProduct = catchAsync(async (req: AuthRequest, res: Response) 
   let uploadedUrls: string[] = [];
 
   try {
+    const preUploaded = parseImageUrlsField(req.body.imageUrls);
+    if (preUploaded.length > 0) {
+      mediaUploadService.validatePreUploadedPaths(preUploaded, req.user!.id, 'products');
+    }
+
     uploadedUrls = await uploadProductImages(files, req.user!.id);
 
     if ((files?.length ?? 0) > 0 && !imageOrder) {
       throw new AppError('imageOrder wajib dikirim saat mengunggah foto produk.', 400);
     }
 
-    const imageUrls = imageOrder ? resolveImageUrls(uploadedUrls, imageOrder) : uploadedUrls;
+    let imageUrls: string[];
+    if (imageOrder) {
+      imageUrls = resolveImageUrls(uploadedUrls, imageOrder);
+    } else if (preUploaded.length > 0) {
+      imageUrls = preUploaded;
+    } else {
+      imageUrls = uploadedUrls;
+    }
 
     if (syncImages || imageOrder) {
       await validateExistingImageOwnership(req.params.id, req.user!.id, imageUrls, imageOrder);
@@ -352,7 +399,12 @@ export const updateProduct = catchAsync(async (req: AuthRequest, res: Response) 
       }
     }
 
-    const { imageOrder: _imageOrder, syncImages: _syncImages, ...body } = req.body;
+    const {
+      imageOrder: _imageOrder,
+      syncImages: _syncImages,
+      imageUrls: _imageUrls,
+      ...body
+    } = req.body;
     const product = await productService.updateProduct(
       req.params.id,
       req.user!.id,

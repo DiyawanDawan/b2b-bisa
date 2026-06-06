@@ -10,3 +10,10 @@ export const createReviewSchema = z.object({
 export const updateReviewSchema = createReviewSchema.partial({
   orderId: true,
 });
+
+export const replyReviewSchema = z.object({
+  reply: z
+    .string()
+    .min(5, 'Balasan minimal 5 karakter')
+    .max(1000, 'Balasan maksimal 1000 karakter'),
+});

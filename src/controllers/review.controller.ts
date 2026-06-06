@@ -78,6 +78,17 @@ export const getMyReviews = catchAsync(async (req: AuthRequest, res: Response) =
 /**
  * [PUBLIC] Get Review Summary for a Product (Rating Badge)
  */
+/**
+ * [SUPPLIER] Reply to a product review
+ */
+export const replyReview = catchAsync(async (req: AuthRequest, res: Response) => {
+  const { reviewId } = req.params;
+  const { reply } = req.body as { reply: string };
+  const result = await reviewService.replyToReview(req.user!.id, reviewId, reply);
+
+  successResponse(res, attachReviewMediaUrls(result), 'Balasan ulasan berhasil dipublikasikan.');
+});
+
 export const getReviewSummary = catchAsync(async (req: Request, res: Response) => {
   const { productId } = req.params;
 

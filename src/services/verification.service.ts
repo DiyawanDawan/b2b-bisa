@@ -20,8 +20,8 @@ export const submitVerification = async (
 
   return prisma.userVerification.upsert({
     where: { userId },
-    create: { userId, ...data, verificationStatus: VerificationStatus.PENDING },
-    update: { ...data, verificationStatus: VerificationStatus.PENDING },
+    create: { userId, ...data, verificationStatus: VerificationStatus.PENDING, isVerified: false },
+    update: { ...data, verificationStatus: VerificationStatus.PENDING, isVerified: false },
   });
 };
 
@@ -62,6 +62,7 @@ export const updateVerificationStatus = async (
     where: { userId },
     data: {
       verificationStatus: status as VerificationStatus,
+      isVerified: status === 'VERIFIED',
       rejectionReason: status === 'REJECTED' ? rejectionReason : null,
       reviewedBy: adminId,
       reviewedAt: new Date(),

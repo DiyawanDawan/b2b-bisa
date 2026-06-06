@@ -11,6 +11,7 @@ import * as productService from '#services/product.service';
 import { ProductStatus } from '#prisma';
 import AppError from '#utils/appError';
 import { attachUserMediaUrls } from '#utils/userMedia.util';
+import { getUserReadiness } from '#utils/readiness.util';
 
 /**
  * GET /api/v1/users/:id
@@ -30,6 +31,14 @@ export const getMe = catchAsync(async (req: AuthRequest, res: Response) => {
   const data = await authService.getMe(req.user!.id);
   if (!data) throw new AppError('User tidak ditemukan.', 404);
   successResponse(res, attachUserMediaUrls(data), 'Data profil');
+});
+
+/**
+ * GET /api/v1/users/me/readiness
+ */
+export const getMyReadiness = catchAsync(async (req: AuthRequest, res: Response) => {
+  const data = await getUserReadiness(req.user!.id);
+  return successResponse(res, data, 'Status kelengkapan profil');
 });
 
 /**

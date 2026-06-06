@@ -42,4 +42,12 @@ router.patch(
   reviewController.updateReview,
 );
 
+router.patch(
+  '/:reviewId/reply',
+  requireAuth,
+  requireRole(UserRole.SUPPLIER, UserRole.ADMIN),
+  validate(v.replyReviewSchema),
+  reviewController.replyReview,
+);
+
 export default router;

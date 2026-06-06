@@ -10,6 +10,7 @@ import AppError from '#utils/appError';
 import { UserRole } from '#prisma';
 import { AuthRequest } from '#types/index';
 import { attachTransactionMediaUrls } from '#utils/mediaResolver.util';
+import { resolveProviderActions } from '#utils/encryption.util';
 
 /**
  * [BUYER/SUPPLIER] Get Transaction Details by ID
@@ -103,7 +104,7 @@ export const createPaymentRequest = catchAsync(async (req: AuthRequest, res: Res
         paymentRequestId: transaction.paymentRequestId,
         invoiceId: transaction.xenditInvoiceId,
         paymentUrl: transaction.paymentUrl,
-        providerActions: transaction.providerActions,
+        providerActions: resolveProviderActions(transaction.providerActions),
       },
       'Pembayaran sudah diinisialisasi sebelumnya.',
     );

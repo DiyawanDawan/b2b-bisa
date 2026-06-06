@@ -5,6 +5,7 @@ import { successResponse, paginatedResponse } from '#utils/response.util';
 import { toCsv } from '#utils/csv.util';
 import AppError from '#utils/appError';
 import * as adminService from '#services/admin.service';
+import * as disputeMediationService from '#services/dispute-mediation.service';
 import {
   UserRole,
   UserStatus,
@@ -69,6 +70,22 @@ export const getTopSuppliers = catchAsync(async (req: AuthRequest, res: Response
 });
 
 /**
+ * GET /api/v1/admin/dashboard/analytics/platform
+ */
+export const getDashboardPlatformAnalytics = catchAsync(async (req: AuthRequest, res: Response) => {
+  const data = await adminService.getDashboardPlatformAnalytics();
+  successResponse(res, data, 'Analitik platform berhasil diambil');
+});
+
+/**
+ * GET /api/v1/admin/dashboard/visual-gallery
+ */
+export const getDashboardVisualGallery = catchAsync(async (req: AuthRequest, res: Response) => {
+  const data = await adminService.getDashboardVisualGallery();
+  successResponse(res, data, 'Galeri visual dashboard berhasil diambil');
+});
+
+/**
  * GET /api/v1/admin/users/stats
  */
 export const getUserAnalyticsStats = catchAsync(async (_req: AuthRequest, res: Response) => {
@@ -104,7 +121,17 @@ export const listUsers = catchAsync(async (req: AuthRequest, res: Response) => {
  */
 export const getUserDossier = catchAsync(async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
-  const dossier = await adminService.getUserDossier(id);
+  const unmask = req.query.unmask === 'true';
+  const dossier = await adminService.getUserDossier(id, { unmaskPayoutAccounts: unmask });
+
+  await adminService.createAuditLog({
+    userId: req.user!.id,
+    action: 'VIEW_USER_DOSSIER',
+    entity: 'USER',
+    entityId: id,
+    newValue: { targetUserId: id, adminId: req.user!.id, unmask },
+  });
+
   successResponse(res, dossier, 'Dossier user berhasil diambil');
 });
 
@@ -255,6 +282,51 @@ export const getDisputeDetail = catchAsync(async (req: AuthRequest, res: Respons
   const { id } = req.params;
   const detail = await adminService.getDisputeDetail(id);
   successResponse(res, detail, 'Detail sengketa berhasil diambil');
+});
+
+/**
+ * GET /api/v1/admin/orders/disputes/:orderId/chat
+ */
+export const getDisputeChatThread = catchAsync(async (req: AuthRequest, res: Response) => {
+  const { orderId } = req.params;
+  const { page = 1, limit = 200 } = req.query;
+  const data = await disputeMediationService.getDisputeChatThread(orderId, {
+    page: Number(page),
+    limit: Number(limit),
+  });
+  successResponse(res, data, 'Chat mediasi sengketa berhasil diambil');
+});
+
+/**
+ * POST /api/v1/admin/orders/disputes/:orderId/chat/messages
+ */
+export const sendDisputeMediationMessage = catchAsync(async (req: AuthRequest, res: Response) => {
+  const { orderId } = req.params;
+  const { content } = req.body;
+  const message = await disputeMediationService.sendDisputeMediationMessage(
+    orderId,
+    req.user!.id,
+    content,
+  );
+  successResponse(res, message, 'Pesan mediasi berhasil dikirim');
+});
+
+/**
+ * POST /api/v1/admin/orders/disputes/:orderId/mediation/start
+ */
+export const startDisputeMediation = catchAsync(async (req: AuthRequest, res: Response) => {
+  const { orderId } = req.params;
+  const mediation = await disputeMediationService.startDisputeMediation(orderId, req.user!.id);
+  successResponse(res, mediation, 'Mediasi sengketa dimulai');
+});
+
+/**
+ * POST /api/v1/admin/orders/disputes/:orderId/mediation/ready
+ */
+export const markDisputeReadyToResolve = catchAsync(async (req: AuthRequest, res: Response) => {
+  const { orderId } = req.params;
+  const mediation = await disputeMediationService.markDisputeReadyToResolve(orderId, req.user!.id);
+  successResponse(res, mediation, 'Sengketa siap untuk diputus');
 });
 
 /**

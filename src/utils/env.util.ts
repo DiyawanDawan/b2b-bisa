@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -111,3 +112,72 @@ export const IOT_COOLDOWN_MS = parseInt(optional('IOT_COOLDOWN_MS', '900000'), 1
 // TODO: Market Forecasting
 export const FORECAST_ALPHA = parseFloat(optional('FORECAST_ALPHA', '0.4'));
 export const FORECAST_STEPS = parseInt(optional('FORECAST_STEPS', '3'), 10);
+
+// AES-256 field encryption (payout accounts, providerActions, NPWP)
+export const ENCRYPTION_KEY = optional('ENCRYPTION_KEY');
+/** Optional secondary key for rotation window (v2 ciphertext prefix). */
+export const ENCRYPTION_KEY_V2 = optional('ENCRYPTION_KEY_V2');
+
+const DEV_FALLBACK_KEY = crypto.createHash('sha256').update('bisa-dev-encryption-key').digest();
+
+const parseKeyMaterial = (raw: string): Buffer => {
+  const trimmed = raw.trim();
+  if (/^[0-9a-fA-F]{64}$/.test(trimmed)) {
+    return Buffer.from(trimmed, 'hex');
+  }
+  const decoded = Buffer.from(trimmed, 'base64');
+  if (decoded.length !== 32) {
+    throw new Error('ENCRYPTION_KEY must decode to exactly 32 bytes (AES-256).');
+  }
+  return decoded;
+};
+
+const resolveKeyForVersion = (version: string): Buffer => {
+  if (version === '2') {
+    if (ENCRYPTION_KEY_V2) return parseKeyMaterial(ENCRYPTION_KEY_V2);
+    if (NODE_ENV === 'production') {
+      throw new Error('ENCRYPTION_KEY_V2 is required to decrypt v2 payloads in production.');
+    }
+  }
+
+  if (ENCRYPTION_KEY) return parseKeyMaterial(ENCRYPTION_KEY);
+
+  if (NODE_ENV === 'production') {
+    throw new Error('ENCRYPTION_KEY must be set in production (32-byte hex or base64).');
+  }
+
+  return DEV_FALLBACK_KEY;
+};
+
+export const getEncryptionKeyBuffer = (): Buffer => resolveKeyForVersion('1');
+
+export const getEncryptionKeyBufferForVersion = (version: string): Buffer =>
+  resolveKeyForVersion(version);
+
+// Chunked media upload (R2 multipart)
+export const MEDIA_CHUNK_SIZE_BYTES = parseInt(
+  optional('MEDIA_CHUNK_SIZE_BYTES', '5242880'),
+  10,
+);
+export const MEDIA_UPLOAD_SESSION_TTL_HOURS = parseInt(
+  optional('MEDIA_UPLOAD_SESSION_TTL_HOURS', '24'),
+  10,
+);
+export const MEDIA_MAX_IMAGE_BYTES = parseInt(
+  optional('MEDIA_MAX_IMAGE_BYTES', '52428800'),
+  10,
+);
+export const MEDIA_MAX_PDF_BYTES = parseInt(optional('MEDIA_MAX_PDF_BYTES', '20971520'), 10);
+/** When true, chunks go through backend proxy (no R2 CORS required). Default true in development. */
+export const MEDIA_UPLOAD_PROXY_MODE =
+  optional('MEDIA_UPLOAD_PROXY_MODE', NODE_ENV === 'development' ? 'true' : 'false') === 'true';
+
+// Redis cache (Tier A reference data — off by default until REDIS_URL configured)
+export const REDIS_URL = optional('REDIS_URL');
+export const REDIS_KEY_PREFIX = optional('REDIS_KEY_PREFIX', 'bisa:v1');
+export const REDIS_DEFAULT_TTL_SECONDS = parseInt(
+  optional('REDIS_DEFAULT_TTL_SECONDS', '3600'),
+  10,
+);
+export const REDIS_ENABLED =
+  optional('REDIS_ENABLED', 'false') === 'true' && REDIS_URL.length > 0;

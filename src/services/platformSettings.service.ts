@@ -5,6 +5,8 @@ import {
   type PlatformSettingDefinition,
 } from '#constants/platformSettings.definitions';
 import AppError from '#utils/appError';
+import { CACHE_TTL } from '#constants/cache.constants';
+import { cacheAside, cacheKeys, invalidateSysSupport } from '#utils/cache.util';
 
 const resolveEnvFallback = (def: PlatformSettingDefinition): string | null => {
   if (!def.envFallback) return null;
@@ -38,6 +40,22 @@ export const listPlatformSettingsForAdmin = async () => {
     };
   });
 };
+
+/** Payload publik untuk GET /system/support (Tier A cache). */
+export const getPublicSupportConfig = async () =>
+  cacheAside(cacheKeys.sysSupport(), CACHE_TTL.SYS_SUPPORT, async () => {
+    const items = await listPlatformSettingsForAdmin();
+    const map = Object.fromEntries(items.map((i) => [i.key, i.value.trim()]));
+    const publicVerifyBaseUrl = (map.PUBLIC_VERIFY_BASE_URL || 'http://localhost:3001').replace(
+      /\/$/,
+      '',
+    );
+    return {
+      supportWhatsapp: map.SUPPORT_WHATSAPP || '6281234567890',
+      supportEmail: map.SUPPORT_EMAIL || 'cs@bisa.id',
+      publicVerifyBaseUrl,
+    };
+  });
 
 export const upsertPlatformSettings = async (
   settings: Record<string, string>,
@@ -92,6 +110,7 @@ export const upsertPlatformSettings = async (
   );
 
   void updatedBy;
+  void invalidateSysSupport();
 
   return listPlatformSettingsForAdmin();
 };

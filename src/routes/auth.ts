@@ -91,9 +91,8 @@ router.post(
 // [authLimiter] Mencegah spam kirim OTP berulang-ulang
 router.post('/resend-otp', authLimiter, validate(v.resendOtpSchema), authController.resendOTP);
 
-// ── Social Auth (Placeholder — belum diimplementasikan) ───────────────────────
-// Social login melempar 501 Not Implemented di service layer, diberi authLimiter
-// untuk mencegah probe/fuzzing endpoint
+// ── Social Auth ─────────────────────────────────────────────────────────────
+// Google: Firebase ID token verification. Facebook: 501 (belum diimplementasikan).
 router.post('/google', authLimiter, validate(v.socialLoginSchema), authController.loginWithGoogle);
 router.post(
   '/facebook',

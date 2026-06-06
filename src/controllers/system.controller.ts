@@ -7,6 +7,8 @@ import { successResponse } from '#utils/response.util';
 import catchAsync from '#utils/catchAsync';
 import AppError from '#utils/appError';
 import * as platformSettingsService from '#services/platformSettings.service';
+import { CACHE_TTL } from '#constants/cache.constants';
+import { cacheAside, cacheKeys } from '#utils/cache.util';
 
 /**
  * Get all system constants (Enums) for frontend dropdowns
@@ -17,48 +19,36 @@ import * as platformSettingsService from '#services/platformSettings.service';
  * Kontak CS & URL verifikasi publik (mobile pusat bantuan, QR tagihan).
  */
 export const getPublicSupport = catchAsync(async (_req: Request, res: Response) => {
-  const items = await platformSettingsService.listPlatformSettingsForAdmin();
-  const map = Object.fromEntries(items.map((i) => [i.key, i.value.trim()]));
+  const data = await platformSettingsService.getPublicSupportConfig();
 
-  const publicVerifyBaseUrl = (map.PUBLIC_VERIFY_BASE_URL || 'http://localhost:3001').replace(
-    /\/$/,
-    '',
-  );
-
-  return successResponse(
-    res,
-    {
-      supportWhatsapp: map.SUPPORT_WHATSAPP || '6281234567890',
-      supportEmail: map.SUPPORT_EMAIL || 'cs@bisa.id',
-      publicVerifyBaseUrl,
-    },
-    'Pengaturan dukungan publik',
-  );
+  return successResponse(res, data, 'Pengaturan dukungan publik');
 });
 
 export const getConstants = catchAsync(async (_req: Request, res: Response) => {
-  const constants = {
-    UserRole: Enums.UserRole,
-    VerificationStatus: Enums.VerificationStatus,
-    BiomassaType: Enums.BiomassaType,
-    BiocharGrade: Enums.BiocharGrade,
-    OrderStatus: Enums.OrderStatus,
-    TransactionStatus: Enums.TransactionStatus,
-    PaymentStatus: Enums.PaymentStatus,
-    PaymentMethod: Enums.PaymentMethod,
-    PayoutStatus: Enums.PayoutStatus,
-    NotificationType: Enums.NotificationType,
-    NotificationPriority: Enums.NotificationPriority,
-    DevicePlatform: Enums.DevicePlatform,
-    DeviceStatus: Enums.DeviceStatus,
-    PostStatus: Enums.PostStatus,
-    UserTier: Enums.UserTier,
-    ShipmentType: Enums.ShipmentType,
-    VesselType: Enums.VesselType,
-    PackagingType: Enums.PackagingType,
-    ProductStatus: Enums.ProductStatus,
-    UnitStatus: Enums.UnitStatus,
-  };
+  const constants = await cacheAside(cacheKeys.sysConstants(), CACHE_TTL.SYS_CONSTANTS, () =>
+    Promise.resolve({
+      UserRole: Enums.UserRole,
+      VerificationStatus: Enums.VerificationStatus,
+      BiomassaType: Enums.BiomassaType,
+      BiocharGrade: Enums.BiocharGrade,
+      OrderStatus: Enums.OrderStatus,
+      TransactionStatus: Enums.TransactionStatus,
+      PaymentStatus: Enums.PaymentStatus,
+      PaymentMethod: Enums.PaymentMethod,
+      PayoutStatus: Enums.PayoutStatus,
+      NotificationType: Enums.NotificationType,
+      NotificationPriority: Enums.NotificationPriority,
+      DevicePlatform: Enums.DevicePlatform,
+      DeviceStatus: Enums.DeviceStatus,
+      PostStatus: Enums.PostStatus,
+      UserTier: Enums.UserTier,
+      ShipmentType: Enums.ShipmentType,
+      VesselType: Enums.VesselType,
+      PackagingType: Enums.PackagingType,
+      ProductStatus: Enums.ProductStatus,
+      UnitStatus: Enums.UnitStatus,
+    }),
+  );
 
   return successResponse(res, constants, 'Konstanta sistem berhasil diambil');
 });
@@ -111,6 +101,7 @@ export const getSitemap = (_req: Request, res: Response) => {
 
 /**
  * POST /api/v1/system/upload
+ * @deprecated Gunakan chunked upload: POST /api/v1/media/uploads/init → parts → complete
  * Generic authenticated file upload (Negotiation attachment, Forum, Chat, dll.)
  *
  * SEC-BE-002: hanya untuk authenticated user (lihat routes/system.ts).
@@ -123,6 +114,8 @@ const ALLOWED_UPLOAD_FOLDERS = [
   'negotiations',
   'forum',
   'chat',
+  'verification',
+  'disputes',
 ] as const;
 type AllowedFolder = (typeof ALLOWED_UPLOAD_FOLDERS)[number];
 

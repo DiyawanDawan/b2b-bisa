@@ -16,6 +16,9 @@ import {
   ProductMode,
   OrderStatus,
 } from '#prisma';
+import { CACHE_TTL } from '#constants/cache.constants';
+import { cacheAside, cacheKeys } from '#utils/cache.util';
+import { assertSupplierStoreReady } from '#utils/readiness.util';
 
 /** Hapus file R2 produk yang tidak lagi dipakai setelah update/hapus. */
 const deleteOrphanProductMedia = async (
@@ -152,6 +155,9 @@ export const createProduct = async (
   }
 
   const status = data.status ?? ProductStatus.ACTIVE;
+  if (status === ProductStatus.ACTIVE) {
+    await assertSupplierStoreReady(userId);
+  }
   if (status === ProductStatus.ACTIVE && imageUrls.length === 0) {
     throw new AppError('Produk ACTIVE wajib memiliki minimal satu foto.', 400);
   }
@@ -776,6 +782,11 @@ export const updateProduct = async (
     throw new AppError('Sinkronisasi foto gagal: daftar foto kosong.', 400);
   }
 
+  const nextStatus = (data.status ?? product.status) as ProductStatus;
+  if (nextStatus === ProductStatus.ACTIVE && product.status !== ProductStatus.ACTIVE) {
+    await assertSupplierStoreReady(userId);
+  }
+
   const {
     moistureContent,
     carbonPurity,
@@ -1187,12 +1198,13 @@ export const getProductsByCollection = async (
 /**
  * List all active collections
  */
-export const listCollections = async () => {
-  return prisma.productCollection.findMany({
-    where: { isActive: true },
-    orderBy: { createdAt: 'desc' },
-  });
-};
+export const listCollections = async () =>
+  cacheAside(cacheKeys.prodCollections(), CACHE_TTL.PROD_COLLECTIONS, () =>
+    prisma.productCollection.findMany({
+      where: { isActive: true },
+      orderBy: { createdAt: 'desc' },
+    }),
+  );
 
 /**
  * Supplier: like & cart engagement across all own products

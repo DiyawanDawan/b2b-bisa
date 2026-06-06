@@ -48,10 +48,25 @@ export const verifyRegistrationSchema = z.object({
   code: z.string().length(6, 'Kode OTP harus 6 digit'),
 });
 
-export const socialLoginSchema = z.object({
-  token: z.string().min(1, 'ID Token diperlukan'),
-  role: registerableRoleSchema.optional(),
-});
+export const socialLoginSchema = z
+  .object({
+    token: z.string().min(1, 'ID Token diperlukan').optional(),
+    idToken: z.string().min(1, 'ID Token diperlukan').optional(),
+    role: registerableRoleSchema.optional(),
+  })
+  .transform(({ token, idToken, role }) => {
+    const resolved = token ?? idToken;
+    if (!resolved) {
+      throw new z.ZodError([
+        {
+          code: 'custom',
+          path: ['token'],
+          message: 'ID Token diperlukan',
+        },
+      ]);
+    }
+    return { token: resolved, role };
+  });
 
 export const refreshTokenSchema = z.object({
   token: z.string().min(1, 'Refresh token diperlukan'),
@@ -103,15 +118,16 @@ export const verifyPhoneUpdateSchema = z.object({
   phone: z.string().regex(/^\+?[0-9]{10,15}$/, 'Format nomor telepon tidak valid'),
 });
 
-// Schema ini hanya memvalidasi field opsional dari body.
-// URL dokumen (ktpUrl, nibUrl, dll) TIDAK diisi oleh client secara langsung,
-// melainkan di-generate oleh controller setelah file diupload ke cloud storage.
-// Validasi keberadaan dokumen dilakukan di verification.service.ts.
+// Dual mode: multipart legacy ATAU JSON dengan path hasil chunked upload (v24).
 export const submitVerificationSchema = z
   .object({
     businessName: z.string().min(2).optional(),
     taxId: z.string().optional(),
     businessAddress: z.string().optional(),
+    ktpUrl: z.string().min(1).optional(),
+    nibUrl: z.string().min(1).optional(),
+    selfieUrl: z.string().min(1).optional(),
+    siupUrl: z.string().min(1).optional(),
   })
   .optional();
 

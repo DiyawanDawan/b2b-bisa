@@ -19,6 +19,12 @@ import type {
 import AppError from '#utils/appError';
 import fetch from 'node-fetch';
 import prisma from '#config/prisma';
+import { CACHE_TTL } from '#constants/cache.constants';
+import {
+  cacheAside,
+  cacheKeys,
+  invalidateShippingConfig,
+} from '#utils/cache.util';
 
 type RequestOpts = {
   method: 'GET' | 'POST';
@@ -123,12 +129,7 @@ const loadPickupVehicleOptionsFromDb = async (): Promise<KomshipPickupVehicleOpt
   );
 };
 
-const DESTINATION_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-const destinationSearchCache = new Map<
-  string,
-  { at: number; data: RajaOngkirDestination[] }
->();
-let rajaDailyQuotaExceededUntil = 0;
+const rajaDailyQuotaExceededUntil = 0;
 
 const isDailyQuotaError = (message: string): boolean =>
   /daily\s+limit/i.test(message) || /limit\s+exceeded/i.test(message);
@@ -230,34 +231,32 @@ export const searchDomesticDestinations = async (params: {
     return [];
   }
 
-  const cacheKey = keyword.toLowerCase();
-  const cached = destinationSearchCache.get(cacheKey);
-  if (cached && Date.now() - cached.at < DESTINATION_CACHE_TTL_MS) {
-    return cached.data;
-  }
+  const cacheKey = cacheKeys.shipDest(
+    keyword.toLowerCase(),
+    params.limit,
+    params.offset,
+  );
 
-  try {
-    const data = await rajaRequest<RajaOngkirDestination[] | null>({
-      method: 'GET',
-      path: 'destination/domestic-destination',
-      query: {
-        search: keyword,
-        limit: params.limit ?? 20,
-        offset: params.offset ?? 0,
-      },
-    });
+  return cacheAside(cacheKey, CACHE_TTL.SHIP_DEST, async () => {
+    try {
+      const data = await rajaRequest<RajaOngkirDestination[] | null>({
+        method: 'GET',
+        path: 'destination/domestic-destination',
+        query: {
+          search: keyword,
+          limit: params.limit ?? 20,
+          offset: params.offset ?? 0,
+        },
+      });
 
-    const list = Array.isArray(data) ? data : [];
-    destinationSearchCache.set(cacheKey, { at: Date.now(), data: list });
-    return list;
-  } catch (error) {
-    // RajaOngkir returns 404 when keyword has no match (e.g. person names).
-    if (error instanceof AppError && error.statusCode === 404) {
-      destinationSearchCache.set(cacheKey, { at: Date.now(), data: [] });
-      return [];
+      return Array.isArray(data) ? data : [];
+    } catch (error) {
+      if (error instanceof AppError && error.statusCode === 404) {
+        return [];
+      }
+      throw error;
     }
-    throw error;
-  }
+  });
 };
 
 /**
@@ -373,16 +372,17 @@ export const trackWaybill = async (params: {
   return data ?? {};
 };
 
-export const getPickupVehicleOptions = async (): Promise<KomshipPickupVehicleOption[]> => {
-  const fromDb = await loadPickupVehicleOptionsFromDb();
-  if (!fromDb) {
-    throw new AppError(
-      'Konfigurasi pickup vehicle belum diatur admin. Simpan dulu via PUT /api/v1/shipping/pickup/vehicles.',
-      503,
-    );
-  }
-  return fromDb;
-};
+export const getPickupVehicleOptions = async (): Promise<KomshipPickupVehicleOption[]> =>
+  cacheAside(cacheKeys.shipVehicles(), CACHE_TTL.SHIP_VEHICLES, async () => {
+    const fromDb = await loadPickupVehicleOptionsFromDb();
+    if (!fromDb) {
+      throw new AppError(
+        'Konfigurasi pickup vehicle belum diatur admin. Simpan dulu via PUT /api/v1/shipping/pickup/vehicles.',
+        503,
+      );
+    }
+    return fromDb;
+  });
 
 export const setPickupVehicleOptions = async (
   options: KomshipPickupVehicleOption[],
@@ -427,10 +427,12 @@ export const setPickupVehicleOptions = async (
       });
     }
   });
+  void invalidateShippingConfig();
   return normalized;
 };
 
-export const getActiveCouriers = async (): Promise<string[]> => loadActiveCouriersFromDb();
+export const getActiveCouriers = async (): Promise<string[]> =>
+  cacheAside(cacheKeys.shipCouriers(), CACHE_TTL.SHIP_COURIERS, loadActiveCouriersFromDb);
 
 export const setActiveCouriers = async (couriers: string[]): Promise<string[]> => {
   const normalized = normalizeCourierCodes(couriers);
@@ -464,6 +466,7 @@ export const setActiveCouriers = async (couriers: string[]): Promise<string[]> =
       });
     }
   });
+  void invalidateShippingConfig();
   return normalized;
 };
 

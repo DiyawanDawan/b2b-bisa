@@ -3,6 +3,7 @@ import AppError from '#utils/appError';
 import { transformAddress } from '#utils/transformer.util';
 import { UserRole, UserStatus, ProductStatus, Prisma } from '#prisma';
 import * as storeBannerService from '#services/storeBanner.service';
+import { syncCustomerAddressRajaOngkirDestination } from '#services/order-shipping.service';
 
 const addressSelect: Prisma.AddressSelect = {
   fullAddress: true,
@@ -20,6 +21,30 @@ const addressSelect: Prisma.AddressSelect = {
   regency: { select: { name: true } },
   district: { select: { name: true } },
   village: { select: { name: true } },
+};
+
+const customerAddressSelect = {
+  id: true,
+  label: true,
+  isPrimary: true,
+  addressId: true,
+  rajaongkirDestinationId: true,
+  rajaongkirDestinationLabel: true,
+  address: { select: addressSelect },
+} as const;
+
+const reloadCustomerAddress = async (id: string, userId: string) =>
+  prisma.customerAddress.findFirst({
+    where: { id, userId },
+    select: customerAddressSelect,
+  });
+
+const syncAddressDestinationBestEffort = async (id: string, userId: string) => {
+  try {
+    await syncCustomerAddressRajaOngkirDestination(id, userId);
+  } catch {
+    // RajaOngkir lookup is best-effort; address CRUD must still succeed.
+  }
 };
 
 /**
@@ -69,13 +94,7 @@ export const listAddresses = async (userId: string, page = 1, limit = 10) => {
   const [addresses, total] = await prisma.$transaction([
     prisma.customerAddress.findMany({
       where: { userId },
-      select: {
-        id: true,
-        label: true,
-        isPrimary: true,
-        addressId: true,
-        address: { select: addressSelect },
-      },
+      select: customerAddressSelect,
       skip,
       take: limit,
       orderBy: { id: 'desc' },
@@ -137,16 +156,13 @@ export const createAddress = async (
         },
       },
     },
-    select: {
-      id: true,
-      label: true,
-      isPrimary: true,
-      addressId: true,
-      address: { select: addressSelect },
-    },
+    select: customerAddressSelect,
   });
 
-  return transformAddress(created);
+  await syncAddressDestinationBestEffort(created.id, userId);
+  const refreshed = await reloadCustomerAddress(created.id, userId);
+
+  return transformAddress(refreshed ?? created);
 };
 
 export const updateAddress = async (
@@ -172,10 +188,20 @@ export const updateAddress = async (
 
   if (!existing) throw new AppError('Alamat tidak ditemukan.', 404);
 
+  const regionChanged =
+    data.provinceId !== undefined ||
+    data.regencyId !== undefined ||
+    data.districtId !== undefined ||
+    data.fullAddress !== undefined;
+
   const updated = await prisma.customerAddress.update({
     where: { id },
     data: {
       label: data.label,
+      ...(regionChanged && {
+        rajaongkirDestinationId: null,
+        rajaongkirDestinationLabel: null,
+      }),
       address: {
         update: {
           ...(data.fullAddress !== undefined && { fullAddress: data.fullAddress }),
@@ -191,16 +217,13 @@ export const updateAddress = async (
         },
       },
     },
-    select: {
-      id: true,
-      label: true,
-      isPrimary: true,
-      addressId: true,
-      address: { select: addressSelect },
-    },
+    select: customerAddressSelect,
   });
 
-  return transformAddress(updated);
+  await syncAddressDestinationBestEffort(updated.id, userId);
+  const refreshed = await reloadCustomerAddress(updated.id, userId);
+
+  return transformAddress(refreshed ?? updated);
 };
 
 export const deleteAddress = async (id: string, userId: string) => {

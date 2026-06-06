@@ -8,6 +8,8 @@ import multer from 'multer';
 dotenv.config();
 
 import logger from '#config/logger';
+import { connectRedis, pingRedis } from '#config/redis';
+import { REDIS_ENABLED } from '#utils/env.util';
 import {
   globalLimiter,
   authLimiter,
@@ -45,6 +47,7 @@ import chatbotRoutes from '#routes/chatbot';
 import articlesRoutes from '#routes/articles';
 import adminRoutes from '#routes/admin/index';
 import systemRoutes from '#routes/system';
+import mediaUploadRoutes from '#routes/mediaUploads';
 import notificationsRoutes from '#routes/notifications';
 import marketRoutes from '#routes/market';
 import organicRoutes from '#routes/organic';
@@ -92,10 +95,15 @@ app.use(
 app.use(globalLimiter);
 
 // Health Check
-app.get('/health', (req: Request, res: Response) => {
+app.get('/health', async (req: Request, res: Response) => {
+  const redisOk = REDIS_ENABLED ? await pingRedis() : null;
   return successResponse(
     res,
-    { status: 'OK', timestamp: new Date().toISOString() },
+    {
+      status: 'OK',
+      timestamp: new Date().toISOString(),
+      redis: REDIS_ENABLED ? (redisOk ? 'connected' : 'degraded') : 'disabled',
+    },
     'Health check berhasil',
   );
 });
@@ -160,6 +168,7 @@ app.use('/api/v1/chatbot', publicApiLimiter, chatbotRoutes);
 app.use('/api/v1/articles', articlesRoutes);
 app.use('/api/v1/admin', adminActionLimiter, adminRoutes);
 app.use('/api/v1/system', publicApiLimiter, systemRoutes);
+app.use('/api/v1/media/uploads', mediaUploadRoutes);
 app.use('/api/v1/notifications', notificationsRoutes);
 app.use('/api/v1/market', marketRoutes);
 app.use('/api/v1/organic', organicRoutes);
@@ -237,6 +246,8 @@ app.use((err: AppError, req: Request, res: Response, _next: NextFunction) => {
       success: false,
       status: statusCode,
       message: err.message || 'Internal Server Error',
+      ...(err.code && { code: err.code }),
+      ...(err.missing?.length && { missing: err.missing }),
     },
     data: null,
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
@@ -251,6 +262,7 @@ export default app;
  * ==========================================
  */
 if (process.env.NODE_ENV !== 'test') {
+  void connectRedis();
   app.listen(PORT, () => {
     logger.info(`🚀 BISA B2B API is running on http://localhost:${PORT}`);
     logger.info(`⚡ Environment: ${process.env.NODE_ENV || 'development'}`);
@@ -259,6 +271,9 @@ if (process.env.NODE_ENV !== 'test') {
     // BUG-H003: Start negotiation auto-expiry scheduler
     import('#crons/negotiationExpiry').then(({ startNegotiationExpiryCron }) => {
       startNegotiationExpiryCron();
+    });
+    import('#crons/mediaUploadExpiry').then(({ startMediaUploadExpiryCron }) => {
+      startMediaUploadExpiryCron();
     });
   });
 }

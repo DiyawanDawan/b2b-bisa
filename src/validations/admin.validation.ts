@@ -153,6 +153,8 @@ export const resolveDisputeSchema = z.object({
   note: z.string().min(5, 'Catatan resolusi wajib diisi minimal 5 karakter'),
 });
 
+export const disputeChatQuerySchema = paginationQuerySchema.extend({});
+
 /**
  * Phase 5 Extension Schemas
  */

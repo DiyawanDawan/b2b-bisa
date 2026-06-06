@@ -5,6 +5,7 @@ import { Xendit } from 'xendit-node';
 import { withRetry } from '#utils/retry.util';
 import { resolveXenditPayoutSecretKey } from '#utils/env.util';
 import { notifyOrderStatusChange } from '#services/orderNotification.service';
+import { revealAccountNumber } from '#utils/payoutAccount.util';
 
 /**
  * 1. Release Escrow (Buyer Mengonfirmasi Penerimaan Barang)
@@ -175,7 +176,10 @@ export const withdrawFunds = async (supplierId: string, data: { amount: number }
   }
 
   const bankCode = payoutBank.code;
-  const accountNo = mainAccount.accountNumber;
+  const accountNo = revealAccountNumber(mainAccount.accountNumber, {
+    userId: supplierId,
+    bankId: mainAccount.bankId,
+  });
   const accountName = mainAccount.accountName;
 
   if (payoutBank.minAmount && amountToWithdraw.lt(payoutBank.minAmount)) {
@@ -386,27 +390,187 @@ export const getWalletTransactions = async (
  * 6. Refund to Buyer (Admin / System - saat Order CANCELLED atau DISPUTED)
  * Dimigrasikan dari payout.service.ts agar semua logika finansial terpusat
  */
+type EscrowOrderContext = {
+  id: string;
+  buyerId: string;
+  sellerId: string;
+  transaction: {
+    id: string;
+    status: TransactionStatus;
+    sellerAmount: Prisma.Decimal;
+    amount: Prisma.Decimal;
+    paymentRequestId: string | null;
+    xenditInvoiceId?: string | null;
+    paymentStatus: PaymentStatus | null;
+  } | null;
+};
+
+/** Release escrow to supplier wallet — used by admin dispute RELEASE resolution. */
+export const executeDisputeReleaseInTx = async (
+  tx: Prisma.TransactionClient,
+  order: EscrowOrderContext,
+) => {
+  if (!order.transaction) {
+    throw new AppError('Tidak ada transaksi escrow untuk pesanan ini.', 400);
+  }
+
+  const updateResult = await tx.transaction.updateMany({
+    where: { id: order.transaction.id, status: TransactionStatus.ESCROW_HELD },
+    data: {
+      status: TransactionStatus.RELEASED,
+      escrowReleasedAt: new Date(),
+    },
+  });
+
+  if (updateResult.count === 0) {
+    throw new AppError('Dana escrow sudah diproses sebelumnya.', 409);
+  }
+
+  const netSellerAmount = order.transaction.sellerAmount;
+  if (Number(netSellerAmount) <= 0) {
+    throw new AppError('Jumlah payout supplier tidak valid untuk release escrow.', 400);
+  }
+
+  await tx.$queryRaw`SELECT * FROM wallets WHERE user_id = ${order.sellerId} FOR UPDATE`;
+
+  const wallet = await tx.wallet.upsert({
+    where: { userId: order.sellerId },
+    create: {
+      userId: order.sellerId,
+      balance: netSellerAmount,
+      totalEarned: netSellerAmount,
+    },
+    update: {
+      balance: { increment: netSellerAmount },
+      totalEarned: { increment: netSellerAmount },
+    },
+  });
+
+  const completedOrder = await tx.order.update({
+    where: { id: order.id },
+    data: { status: OrderStatus.COMPLETED },
+  });
+
+  return {
+    order: completedOrder,
+    walletBalance: wallet.balance,
+    sellerAmount: netSellerAmount,
+  };
+};
+
+/** Refund escrow — restore stock, credit buyer wallet, mark REFUNDED. */
+export const executeDisputeRefundInTx = async (
+  tx: Prisma.TransactionClient,
+  order: EscrowOrderContext,
+) => {
+  if (!order.transaction) {
+    throw new AppError('Tidak ada transaksi escrow untuk pesanan ini.', 400);
+  }
+
+  const refundAmount = order.transaction.amount;
+
+  const updateResult = await tx.transaction.updateMany({
+    where: { id: order.transaction.id, status: TransactionStatus.ESCROW_HELD },
+    data: { status: TransactionStatus.REFUNDED },
+  });
+
+  if (updateResult.count === 0) {
+    throw new AppError('Dana escrow sudah diproses sebelumnya.', 409);
+  }
+
+  await tx.$queryRaw`SELECT * FROM wallets WHERE user_id = ${order.buyerId} FOR UPDATE`;
+
+  await tx.wallet.upsert({
+    where: { userId: order.buyerId },
+    create: {
+      userId: order.buyerId,
+      balance: refundAmount,
+      totalEarned: new Prisma.Decimal(0),
+      totalWithdrawn: new Prisma.Decimal(0),
+    },
+    update: {
+      balance: { increment: refundAmount },
+    },
+  });
+
+  const orderItems = await tx.orderItem.findMany({
+    where: { orderId: order.id },
+    select: { productId: true, quantity: true },
+  });
+
+  for (const item of orderItems) {
+    await tx.product.update({
+      where: { id: item.productId },
+      data: { stock: { increment: item.quantity } },
+    });
+  }
+
+  await tx.order.update({
+    where: { id: order.id },
+    data: { status: OrderStatus.CANCELLED },
+  });
+
+  return order.transaction;
+};
+
+export const attemptXenditRefundForTransaction = async (
+  transaction: {
+    paymentRequestId: string | null;
+    xenditInvoiceId?: string | null;
+    amount: Prisma.Decimal;
+    paymentStatus: PaymentStatus | null;
+  },
+  reason: string,
+) => {
+  if (transaction.paymentStatus != null && transaction.paymentStatus !== PaymentStatus.SUCCESS) {
+    return null;
+  }
+
+  const paymentId = transaction.paymentRequestId ?? transaction.xenditInvoiceId;
+  if (!paymentId) {
+    return null;
+  }
+
+  try {
+    const { refundPayment } = await import('#config/xendit');
+    const amount = Number(transaction.amount);
+    return await refundPayment(paymentId, amount, reason);
+  } catch (err) {
+    console.error('[wallet] Xendit refund failed (buyer wallet already credited):', err);
+    return null;
+  }
+};
+
 export const refundToBuyer = async (transactionId: string) => {
   const transaction = await prisma.transaction.findUnique({
     where: { id: transactionId },
+    include: { order: { select: { id: true, buyerId: true, sellerId: true } } },
   });
 
   if (!transaction || transaction.status !== TransactionStatus.ESCROW_HELD) {
     throw new AppError('Tidak ada dana escrow yang bisa direfund.', 400);
   }
 
-  return prisma.$transaction(async (tx) => {
-    // Update status Order terkait menjadi CANCELLED jika belum
-    if (transaction.orderId) {
-      await tx.order.update({
-        where: { id: transaction.orderId },
-        data: { status: OrderStatus.CANCELLED },
-      });
-    }
-
-    return tx.transaction.update({
-      where: { id: transactionId },
-      data: { status: TransactionStatus.REFUNDED },
+  const result = await prisma.$transaction(async (tx) => {
+    await executeDisputeRefundInTx(tx, {
+      id: transaction.orderId!,
+      buyerId: transaction.userId,
+      sellerId: transaction.order?.sellerId ?? transaction.userId,
+      transaction: {
+        id: transaction.id,
+        status: transaction.status,
+        sellerAmount: transaction.sellerAmount,
+        amount: transaction.amount,
+        paymentRequestId: transaction.paymentRequestId,
+        xenditInvoiceId: transaction.xenditInvoiceId,
+        paymentStatus: transaction.paymentStatus,
+      },
     });
+
+    return transaction;
   });
+
+  void attemptXenditRefundForTransaction(result, 'DISPUTE_REFUND');
+
+  return result;
 };

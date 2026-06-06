@@ -1,6 +1,8 @@
 import prisma from '#config/prisma';
 import { BiomassaType, UserStatus, ProductStatus } from '#prisma';
 import AppError from '#utils/appError';
+import { CACHE_TTL } from '#constants/cache.constants';
+import { cacheAside, cacheKeys } from '#utils/cache.util';
 
 /**
  * Get distribution of biomass waste potential across regions
@@ -53,6 +55,15 @@ export const matchSupplyDemand = async (type: BiomassaType, regency?: string) =>
  * Get regions based on level and parentId
  */
 export const getRegions = async (level: string, parentId?: string, search?: string) => {
+  const normalizedLevel = level.toLowerCase();
+  return cacheAside(
+    cacheKeys.gisRegions(normalizedLevel, parentId, search?.trim()),
+    CACHE_TTL.GIS,
+    () => fetchRegions(normalizedLevel, parentId, search),
+  );
+};
+
+const fetchRegions = async (level: string, parentId?: string, search?: string) => {
   const select = { id: true, name: true };
   const where: {
     name?: { contains: string };

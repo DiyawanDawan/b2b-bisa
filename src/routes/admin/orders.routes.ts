@@ -2,6 +2,7 @@ import { Router } from 'express';
 import * as adminController from '#controllers/admin.controller';
 import * as extendedController from '#controllers/admin-extended.controller';
 import validate from '#middlewares/validate';
+import { financialLimiter } from '#middlewares/rateLimiter';
 import * as adminValidation from '#validations/admin.validation';
 
 const router = Router();
@@ -36,6 +37,34 @@ router.get(
 router.get('/disputes/:id', adminController.getDisputeDetail);
 
 /**
+ * GET /api/v1/admin/orders/disputes/:orderId/chat
+ */
+router.get(
+  '/disputes/:orderId/chat',
+  validate(adminValidation.disputeChatQuerySchema, 'query'),
+  adminController.getDisputeChatThread,
+);
+
+/**
+ * POST /api/v1/admin/orders/disputes/:orderId/chat/messages
+ */
+router.post(
+  '/disputes/:orderId/chat/messages',
+  validate(adminValidation.adminChatMessageSchema),
+  adminController.sendDisputeMediationMessage,
+);
+
+/**
+ * POST /api/v1/admin/orders/disputes/:orderId/mediation/start
+ */
+router.post('/disputes/:orderId/mediation/start', financialLimiter, adminController.startDisputeMediation);
+
+/**
+ * POST /api/v1/admin/orders/disputes/:orderId/mediation/ready
+ */
+router.post('/disputes/:orderId/mediation/ready', financialLimiter, adminController.markDisputeReadyToResolve);
+
+/**
  * GET /api/v1/admin/orders/:id
  */
 router.get('/:id', extendedController.getOrderDetail);
@@ -45,6 +74,7 @@ router.get('/:id', extendedController.getOrderDetail);
  */
 router.post(
   '/:id/resolve',
+  financialLimiter,
   validate(adminValidation.resolveDisputeSchema),
   adminController.resolveDispute,
 );

@@ -129,6 +129,53 @@ export const updateReview = async (
 };
 
 /**
+ * 1c. Supplier reply to a review
+ */
+export const replyToReview = async (
+  supplierId: string,
+  reviewId: string,
+  reply: string,
+) => {
+  const review = await prisma.review.findUnique({
+    where: { id: reviewId },
+    select: {
+      id: true,
+      product: { select: { userId: true } },
+    },
+  });
+
+  if (!review) throw new AppError('Ulasan tidak ditemukan.', 404);
+  if (review.product.userId !== supplierId) {
+    throw new AppError('Anda bukan pemilik produk untuk ulasan ini.', 403);
+  }
+
+  return prisma.review.update({
+    where: { id: reviewId },
+    data: { supplierReply: reply },
+  });
+};
+
+const formatReviewForApi = (review: {
+  id: string;
+  orderId?: string;
+  productId: string;
+  buyerId: string;
+  rating: number;
+  comment: string | null;
+  supplierReply?: string | null;
+  imageUrl?: string | null;
+  createdAt: Date;
+  buyer?: { fullName: string; avatarUrl?: string | null } | null;
+  product?: { name: string; thumbnailUrl?: string | null } | null;
+}) => ({
+  ...review,
+  userId: review.buyerId,
+  userName: review.buyer?.fullName ?? 'Pengguna',
+  userAvatar: review.buyer?.avatarUrl ?? null,
+  reply: review.supplierReply ?? null,
+});
+
+/**
  * 2. Get Product Reviews (Public)
  */
 export const getProductReviews = async (
@@ -148,6 +195,7 @@ export const getProductReviews = async (
         buyerId: true,
         rating: true,
         comment: true,
+        supplierReply: true,
         createdAt: true,
         buyer: { select: { fullName: true, avatarUrl: true } },
       },
@@ -158,7 +206,10 @@ export const getProductReviews = async (
     prisma.review.count({ where: { productId } }),
   ]);
 
-  return { data: reviews, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+  return {
+    data: reviews.map(formatReviewForApi),
+    meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+  };
 };
 
 /**

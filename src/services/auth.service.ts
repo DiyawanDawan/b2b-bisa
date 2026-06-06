@@ -8,8 +8,20 @@ import AppError from '#utils/appError';
 import * as tokenService from '#services/token.service';
 
 import * as emailService from '#services/email.service';
+import { decryptField, encryptField, isEncryptedPayload } from '#utils/encryption.util';
+import { maskNPWP } from '#utils/sensitiveData.util';
+
+const BCRYPT_ROUNDS = 12;
 
 type ResendOtpType = typeof TokenType.EMAIL_VERIFICATION | typeof TokenType.RESET_PASSWORD;
+
+const sealNpwp = (npwp: string): string => encryptField(npwp.trim());
+
+const revealNpwp = (stored?: string | null): string => {
+  if (!stored) return '';
+  if (isEncryptedPayload(stored)) return decryptField(stored);
+  return stored;
+};
 
 // ─── Register ────────────────────────────────────────────
 export const register = async (userData: {
@@ -34,7 +46,7 @@ export const register = async (userData: {
 
   // Hash password
 
-  const hashedPassword = password ? await bcrypt.hash(password, 10) : undefined;
+  const hashedPassword = password ? await bcrypt.hash(password, BCRYPT_ROUNDS) : undefined;
 
   const user = await prisma.user.create({
     data: {
@@ -106,6 +118,13 @@ export const loginWithSocial = async (
 ) => {
   if (provider !== 'google') {
     throw new AppError(`Login dengan ${provider} belum diimplementasikan.`, 501);
+  }
+
+  if (!admin.apps.length) {
+    throw new AppError(
+      'Login Google belum tersedia di server. Gunakan email/password atau hubungi admin.',
+      503,
+    );
   }
 
   try {
@@ -242,7 +261,7 @@ export const resetPasswordWithToken = async (token: string, password: string) =>
     throw new AppError('Token reset tidak valid atau sudah kedaluwarsa.', 400);
   }
 
-  const hashed = await bcrypt.hash(password, 12);
+  const hashed = await bcrypt.hash(password, BCRYPT_ROUNDS);
   await prisma.user.update({ where: { id: record.userId }, data: { password: hashed } });
 
   // Hapus token setelah dipakai (one-time use)
@@ -250,19 +269,8 @@ export const resetPasswordWithToken = async (token: string, password: string) =>
 };
 
 export const resetPassword = async (userId: string, password: string) => {
-  const hashed = await bcrypt.hash(password, 12);
+  const hashed = await bcrypt.hash(password, BCRYPT_ROUNDS);
   await prisma.user.update({ where: { id: userId }, data: { password: hashed } });
-};
-
-// ─── Utilities ───────────────────────────────────────────
-const maskNPWP = (npwp?: string | null): string => {
-  if (!npwp) return '';
-  // Format target: ••.•••.•••.•-•••.xxx
-  if (npwp.length >= 15) {
-    const last3 = npwp.slice(-3);
-    return `••.•••.•••.•-•••.${last3}`;
-  }
-  return '••.•••.•••.•-•••.xxx';
 };
 
 // ─── Profile ─────────────────────────────────────────────
@@ -303,7 +311,7 @@ export const getMe = async (userId: string) => {
   });
 
   if (user?.profile?.npwp) {
-    user.profile.npwp = maskNPWP(user.profile.npwp);
+    user.profile.npwp = maskNPWP(revealNpwp(user.profile.npwp));
   }
 
   return user;
@@ -354,7 +362,7 @@ export const updateProfile = async (userId: string, data: UpdateProfileInput) =>
   const profileData: Record<string, unknown> = {};
   if (bio !== undefined) profileData.bio = bio;
   if (companyName !== undefined) profileData.companyName = companyName;
-  if (npwp !== undefined) profileData.npwp = npwp;
+  if (npwp !== undefined) profileData.npwp = npwp ? sealNpwp(npwp) : null;
   if (businessType !== undefined) profileData.businessType = businessType;
   if (rajaongkirOriginId !== undefined) profileData.rajaongkirOriginId = rajaongkirOriginId;
   if (rajaongkirOriginLabel !== undefined) {

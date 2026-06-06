@@ -16,6 +16,7 @@ const router = Router();
 // ─── Identity (Authenticated) ───────────────────────────
 
 router.get('/me', requireAuth, userController.getMe);
+router.get('/me/readiness', requireAuth, userController.getMyReadiness);
 router.patch(
   '/me',
   requireAuth,

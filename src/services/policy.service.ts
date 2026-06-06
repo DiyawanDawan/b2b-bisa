@@ -1,5 +1,7 @@
 import prisma from '#config/prisma';
 import AppError from '#utils/appError';
+import { CACHE_TTL } from '#constants/cache.constants';
+import { cacheAside, cacheKeys } from '#utils/cache.util';
 
 /** Slug API → judul unik di tabel policies */
 export const POLICY_KEYS = {
@@ -9,7 +11,7 @@ export const POLICY_KEYS = {
 
 export type PolicyKey = keyof typeof POLICY_KEYS;
 
-export const getPolicyByKey = async (key: string) => {
+const fetchPolicyByKey = async (key: string) => {
   const title = POLICY_KEYS[key as PolicyKey];
   if (!title) {
     throw new AppError('Kebijakan tidak ditemukan', 404);
@@ -33,7 +35,10 @@ export const getPolicyByKey = async (key: string) => {
   return { ...policy, key };
 };
 
-export const listActivePolicies = async () => {
+export const getPolicyByKey = async (key: string) =>
+  cacheAside(cacheKeys.policyByKey(key), CACHE_TTL.POLICY, () => fetchPolicyByKey(key));
+
+const fetchActivePolicies = async () => {
   const policies = await prisma.policy.findMany({
     where: { isActive: true },
     select: {
@@ -50,3 +55,6 @@ export const listActivePolicies = async () => {
     key: Object.entries(POLICY_KEYS).find(([, title]) => title === p.title)?.[0] ?? null,
   }));
 };
+
+export const listActivePolicies = async () =>
+  cacheAside(cacheKeys.policyList(), CACHE_TTL.POLICY, fetchActivePolicies);
