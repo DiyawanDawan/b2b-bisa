@@ -103,6 +103,34 @@ router.get(
   iotController.streamDeviceTelemetry,
 );
 
+router.get(
+  '/devices/:deviceId/pyrolysis-session',
+  requireRole(UserRole.SUPPLIER, UserRole.ADMIN),
+  validate(deviceValidation.iotDeviceIdParamsSchema, 'all'),
+  iotController.getPyrolysisSession,
+);
+
+router.post(
+  '/devices/:deviceId/pyrolysis-session/start',
+  requireRole(UserRole.SUPPLIER, UserRole.ADMIN),
+  validate(deviceValidation.iotPyrolysisSessionStartSchema, 'all'),
+  iotController.startPyrolysisSession,
+);
+
+router.post(
+  '/devices/:deviceId/pyrolysis-session/stop',
+  requireRole(UserRole.SUPPLIER, UserRole.ADMIN),
+  validate(deviceValidation.iotDeviceIdParamsSchema, 'all'),
+  iotController.stopPyrolysisSession,
+);
+
+router.post(
+  '/devices/:deviceId/analyze-realtime',
+  requireRole(UserRole.SUPPLIER, UserRole.ADMIN),
+  validate(deviceValidation.iotAnalyzeRealtimeSchema, 'all'),
+  iotController.analyzeDeviceRealtime,
+);
+
 // Telemetry & History
 router.get(
   '/data/:deviceId',

@@ -2,8 +2,50 @@
 
 export class Decimal {
   constructor(public readonly value: number | string) {}
+
+  private n() {
+    return Number(this.value);
+  }
+
+  toNumber() {
+    return this.n();
+  }
+
   toString() {
     return String(this.value);
+  }
+
+  lte(other: Decimal | number) {
+    const o = other instanceof Decimal ? other.n() : Number(other);
+    return this.n() <= o;
+  }
+
+  lt(other: Decimal | number) {
+    const o = other instanceof Decimal ? other.n() : Number(other);
+    return this.n() < o;
+  }
+
+  valueOf() {
+    return this.n();
+  }
+
+  mul(other: Decimal | number) {
+    const o = other instanceof Decimal ? other.n() : Number(other);
+    return new Decimal(this.n() * o);
+  }
+
+  div(other: Decimal | number) {
+    const o = other instanceof Decimal ? other.n() : Number(other);
+    return new Decimal(this.n() / o);
+  }
+
+  add(other: Decimal | number) {
+    const o = other instanceof Decimal ? other.n() : Number(other);
+    return new Decimal(this.n() + o);
+  }
+
+  static min(a: Decimal, b: Decimal) {
+    return a.n() <= b.n() ? a : b;
   }
 }
 
@@ -78,3 +120,18 @@ export const NotificationType = {
 
 export type VerificationStatus =
   (typeof VerificationStatus)[keyof typeof VerificationStatus];
+
+export const VoucherScope = {
+  PLATFORM: 'PLATFORM',
+  SUPPLIER: 'SUPPLIER',
+} as const;
+
+export const VoucherType = {
+  PERCENT: 'PERCENT',
+  FIXED: 'FIXED',
+} as const;
+
+export const ReferralRewardStatus = {
+  PENDING: 'PENDING',
+  CREDITED: 'CREDITED',
+} as const;

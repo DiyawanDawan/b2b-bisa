@@ -7,6 +7,7 @@ import { AuthRequest, UserRole } from '#types/index';
 
 interface ForumQuery {
   categoryId?: string;
+  groupId?: string;
   keyword?: string;
   tag?: string;
   page?: string;
@@ -21,11 +22,12 @@ interface MyPostsQuery {
 }
 
 export const listPosts = catchAsync(async (req: AuthRequest, res: Response) => {
-  const { categoryId, keyword, tag, page, limit, sortBy } = req.query as ForumQuery;
+  const { categoryId, groupId, keyword, tag, page, limit, sortBy } = req.query as ForumQuery;
   const pageNumber = page ? Number(page) : 1;
   const limitNumber = limit ? Number(limit) : 10;
   const data = await forumService.listPosts({
     categoryId,
+    groupId,
     keyword,
     tag,
     page: pageNumber,

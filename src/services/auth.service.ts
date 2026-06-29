@@ -32,8 +32,9 @@ export const register = async (userData: {
   role: 'SUPPLIER' | 'BUYER';
   province?: string;
   regency?: string;
+  referralCode?: string;
 }) => {
-  const { fullName, email, password, phone, role, province, regency } = userData;
+  const { fullName, email, password, phone, role, province, regency, referralCode } = userData;
 
   // Check if user exists
   const orConditions: Prisma.UserWhereInput[] = [{ email }];
@@ -59,6 +60,11 @@ export const register = async (userData: {
       regency,
     },
   });
+
+  if (referralCode) {
+    const { applyReferralOnRegister } = await import('#services/referral.service');
+    await applyReferralOnRegister(user.id, referralCode);
+  }
 
   const otp = await tokenService.generateOtp(user.id, TokenType.EMAIL_VERIFICATION);
   await emailService.sendOtpEmail(user.email, user.fullName, otp);
@@ -305,7 +311,14 @@ export const getMe = async (userId: string) => {
         },
       },
       // Verification: hanya status, bukan seluruh dokumen URL
-      verification: { select: { verificationStatus: true, isVerified: true } },
+      verification: {
+        select: {
+          verificationStatus: true,
+          isVerified: true,
+          rejectionReason: true,
+          reviewedAt: true,
+        },
+      },
       createdAt: true,
     },
   });

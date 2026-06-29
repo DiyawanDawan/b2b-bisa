@@ -8,6 +8,8 @@ import * as uv from '#validations/user.validation';
 import * as verificationController from '#controllers/verification.controller';
 import * as storeBannerController from '#controllers/storeBanner.controller';
 import * as sbv from '#validations/storeBanner.validation';
+import * as savedPaymentController from '#controllers/saved-payment.controller';
+import { savedPaymentIdParamSchema } from '#validations/saved-payment.validation';
 
 const router = Router();
 
@@ -16,6 +18,19 @@ const router = Router();
 // ─── Identity (Authenticated) ───────────────────────────
 
 router.get('/me', requireAuth, userController.getMe);
+router.get('/me/saved-payments', requireAuth, savedPaymentController.listSaved);
+router.patch(
+  '/me/saved-payments/:id/default',
+  requireAuth,
+  validate(savedPaymentIdParamSchema, 'params'),
+  savedPaymentController.setDefault,
+);
+router.delete(
+  '/me/saved-payments/:id',
+  requireAuth,
+  validate(savedPaymentIdParamSchema, 'params'),
+  savedPaymentController.removeSaved,
+);
 router.get('/me/readiness', requireAuth, userController.getMyReadiness);
 router.patch(
   '/me',

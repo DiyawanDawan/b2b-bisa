@@ -14,6 +14,7 @@ const toJsonValue = (arr?: unknown[] | null): Prisma.InputJsonValue | typeof Pri
 
 export const listPosts = async (params: {
   categoryId?: string;
+  groupId?: string;
   keyword?: string;
   tag?: string;
   page?: number;
@@ -21,7 +22,16 @@ export const listPosts = async (params: {
   userId?: string;
   sortBy?: 'newest' | 'popular' | 'trending';
 }) => {
-  const { categoryId, keyword, tag, page = 1, limit = 10, userId, sortBy = 'trending' } = params;
+  const {
+    categoryId,
+    groupId,
+    keyword,
+    tag,
+    page = 1,
+    limit = 10,
+    userId,
+    sortBy = 'trending',
+  } = params;
   const skip = (page - 1) * limit;
 
   // MySQL JSON tidak mendukung query path generik via Prisma typed API
@@ -32,6 +42,9 @@ export const listPosts = async (params: {
 
   const where: Prisma.ForumPostWhereInput = {
     ...(categoryId && { categoryId }),
+    ...(groupId
+      ? { groupId }
+      : { groupId: null }),
     ...(keyword && {
       OR: [{ title: { contains: keyword } }, { content: { contains: keyword } }],
     }),
@@ -62,6 +75,7 @@ export const listPosts = async (params: {
         tags: true,
         productMentions: true,
         categoryId: true,
+        groupId: true,
         upvotes: true,
         downvotes: true,
         viewCount: true,
@@ -245,12 +259,17 @@ export const createPost = async (
     title: string;
     content?: string;
     categoryId?: string;
+    groupId?: string;
     mediaUrls?: ForumMediaInput[];
     status?: PostStatus | 'PUBLISHED' | 'DRAFT';
     tags?: string[];
   },
 ) => {
   const cleanContent = data.content?.trim() || '';
+  if (data.groupId) {
+    const { assertGroupMember } = await import('#services/forum-group.service');
+    await assertGroupMember(data.groupId, userId);
+  }
   // Parse #hashtag dan @product dari title + content sekaligus supaya
   // tag di judul juga ke-capture.
   const { tags, productMentions } = await buildForumMetadata({
@@ -264,6 +283,7 @@ export const createPost = async (
       title: data.title,
       content: cleanContent,
       categoryId: data.categoryId,
+      groupId: data.groupId,
       mediaUrls: toMediaJson(data.mediaUrls),
       tags: toJsonValue(tags),
       productMentions: toJsonValue(productMentions as unknown[]),

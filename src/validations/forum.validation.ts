@@ -29,6 +29,7 @@ export const createPostSchema = z
       .max(150, 'Judul diskusi maksimal 150 karakter'),
     content: z.string().max(5000, 'Konten terlalu panjang').optional().default(''),
     categoryId: z.string().uuid('Kategori ID tidak valid').optional(),
+    groupId: z.string().uuid('Group ID tidak valid').optional(),
     mediaUrls: z.array(forumMediaSchema).max(10, 'Maksimal 10 media per posting').optional(),
     // Status saat dibuat: PUBLISHED langsung tayang, DRAFT disimpan untuk
     // diedit dulu. Default PUBLISHED demi backward-compat dengan mobile lama.
@@ -69,18 +70,51 @@ export const updatePostSchema = z.object({
     .optional(),
 });
 
+/** Query pagination — terima string atau number (Express / Dio). */
+const pageQuery = z.coerce.number().int().min(1).optional().default(1);
+const limitQuery = z.coerce.number().int().min(1).max(100).optional().default(20);
+const keywordQuery = z
+  .union([z.string(), z.number()])
+  .optional()
+  .transform((v) => {
+    if (v == null) return undefined;
+    const s = String(v).trim();
+    return s.length > 0 ? s : undefined;
+  });
+const mineQuery = z
+  .union([z.boolean(), z.string(), z.number()])
+  .optional()
+  .transform((v) => v === true || v === 'true' || v === '1' || v === 1);
+
+export const listGroupsSchema = z.object({
+  page: pageQuery,
+  limit: limitQuery,
+  keyword: keywordQuery,
+  mine: mineQuery,
+});
+
+export const createGroupSchema = z.object({
+  name: z.string().min(3, 'Nama grup minimal 3 karakter').max(80, 'Nama grup maksimal 80 karakter'),
+  description: z.string().max(500, 'Deskripsi terlalu panjang').optional(),
+  avatarUrl: z.string().min(1).optional(),
+  bannerUrl: z.string().min(1).optional(),
+  isPublic: z.boolean().optional().default(true),
+});
+
+export const updateGroupSchema = z.object({
+  name: z.string().min(3).max(80).optional(),
+  description: z.string().max(500).nullable().optional(),
+  avatarUrl: z.string().min(1).nullable().optional(),
+  bannerUrl: z.string().min(1).nullable().optional(),
+  isPublic: z.boolean().optional(),
+});
+
 /**
  * Query untuk endpoint "postingan saya": filter status opsional.
  */
 export const myPostsSchema = z.object({
-  page: z
-    .string()
-    .optional()
-    .transform((v) => (v ? parseInt(v, 10) : 1)),
-  limit: z
-    .string()
-    .optional()
-    .transform((v) => (v ? parseInt(v, 10) : 20)),
+  page: pageQuery,
+  limit: limitQuery,
   status: z.enum(['PUBLISHED', 'DRAFT', 'ARCHIVED']).optional(),
 });
 
@@ -106,16 +140,11 @@ export const voteSchema = z.object({
 });
 
 export const paginationSchema = z.object({
-  page: z
-    .string()
-    .optional()
-    .transform((v) => (v ? parseInt(v, 10) : 1)),
-  limit: z
-    .string()
-    .optional()
-    .transform((v) => (v ? parseInt(v, 10) : 20)),
+  page: pageQuery,
+  limit: limitQuery,
   categoryId: z.string().uuid('Kategori ID tidak valid').optional(),
-  keyword: z.string().optional(),
-  // Filter by hashtag — case-insensitive, optional prefix #.
+  keyword: keywordQuery,
   tag: z.string().max(40).optional(),
+  groupId: z.string().uuid('Group ID tidak valid').optional(),
+  sortBy: z.enum(['newest', 'popular', 'trending']).optional(),
 });

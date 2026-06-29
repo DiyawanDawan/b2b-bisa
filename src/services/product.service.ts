@@ -6,6 +6,8 @@ import {
   type ProductSpecInput,
 } from '#utils/productSpec.util';
 import prisma from '#config/prisma';
+import { expireStalePromotions } from '#services/product-promotion.service';
+import { scheduleSupplyDemandRefresh } from '#services/marketSupplyDemand.service';
 import AppError from '#utils/appError';
 import * as storageService from '#services/storage.service';
 import {
@@ -15,7 +17,75 @@ import {
   ProductStatus,
   ProductMode,
   OrderStatus,
+  DeviceStatus,
 } from '#prisma';
+
+const enrichProductsWithActiveIot = async <
+  T extends { userId: string; isIotMonitored: boolean },
+>(
+  products: T[],
+): Promise<(T & { hasActiveIot: boolean })[]> => {
+  if (products.length === 0) return [];
+  const supplierIds = [...new Set(products.map((p) => p.userId))];
+  const withIot = await prisma.iotDevice.findMany({
+    where: { userId: { in: supplierIds }, status: DeviceStatus.ACTIVE },
+    select: { userId: true },
+    distinct: ['userId'],
+  });
+  const iotSet = new Set(withIot.map((d) => d.userId));
+  return products.map((p) => {
+    const active = p.isIotMonitored || iotSet.has(p.userId);
+    return { ...p, isIotMonitored: active, hasActiveIot: active };
+  });
+};
+
+const enrichSingleProductIot = async <
+  T extends { userId: string; isIotMonitored: boolean },
+>(
+  product: T,
+): Promise<T & { hasActiveIot: boolean }> => {
+  const [enriched] = await enrichProductsWithActiveIot([product]);
+  return enriched!;
+};
+
+const resolveAiPredictionForProduct = async (
+  userId: string,
+  aiPredictionId: string | undefined,
+  data: {
+    grade?: BiocharGrade;
+    biomassaType?: BiomassaType;
+    carbonPurity?: number;
+  },
+) => {
+  if (!aiPredictionId) {
+    return { isIotMonitored: false as boolean, carbonPurity: data.carbonPurity };
+  }
+
+  const prediction = await prisma.aIPrediction.findFirst({
+    where: { id: aiPredictionId, userId },
+  });
+  if (!prediction) {
+    throw new AppError('Prediksi IoT/ML tidak ditemukan atau bukan milik Anda.', 404);
+  }
+
+  let meta: Record<string, unknown> = {};
+  try {
+    meta = JSON.parse(prediction.rawOutput ?? '{}') as Record<string, unknown>;
+  } catch {
+    meta = {};
+  }
+
+  return {
+    isIotMonitored: true,
+    grade: data.grade ?? prediction.predictedGrade ?? undefined,
+    biomassaType: data.biomassaType,
+    carbonPurity:
+      data.carbonPurity ??
+      (prediction.cOrganik != null ? Number(prediction.cOrganik) : undefined),
+    predictionMeta: meta,
+    prediction,
+  };
+};
 import { CACHE_TTL } from '#constants/cache.constants';
 import { cacheAside, cacheKeys } from '#utils/cache.util';
 import { assertSupplierStoreReady } from '#utils/readiness.util';
@@ -48,6 +118,16 @@ const productImagesSelect = {
     order: true,
   },
   orderBy: { order: 'asc' as const },
+};
+
+const productVideoSelect = {
+  select: {
+    id: true,
+    url: true,
+    thumbnailUrl: true,
+    title: true,
+    durationSec: true,
+  },
 };
 
 const resolveProductLocation = async (
@@ -149,21 +229,6 @@ export const createProduct = async (
   data: CreateProductInput,
   imageUrls: string[] = [],
 ) => {
-  // Validate: grade is required for BIOCHAR
-  if (data.biomassaType === BiomassaType.BIOCHAR && !data.grade) {
-    throw new AppError('Grade wajib diisi untuk produk Biochar (A, B, atau C).', 400);
-  }
-
-  const status = data.status ?? ProductStatus.ACTIVE;
-  if (status === ProductStatus.ACTIVE) {
-    await assertSupplierStoreReady(userId);
-  }
-  if (status === ProductStatus.ACTIVE && imageUrls.length === 0) {
-    throw new AppError('Produk ACTIVE wajib memiliki minimal satu foto.', 400);
-  }
-
-  const location = await resolveProductLocation(userId, data.province, data.regency);
-
   const {
     moistureContent,
     carbonPurity,
@@ -183,8 +248,34 @@ export const createProduct = async (
     specs: specsInput,
     imageOrder: _imageOrder,
     syncImages: _syncImages,
+    aiPredictionId,
     ...productData
-  } = data as CreateProductInput & { imageOrder?: string; syncImages?: boolean };
+  } = data as CreateProductInput & {
+    imageOrder?: string;
+    syncImages?: boolean;
+    aiPredictionId?: string;
+  };
+
+  const predictionContext = await resolveAiPredictionForProduct(userId, aiPredictionId, {
+    grade: productData.grade,
+    biomassaType: productData.biomassaType,
+    carbonPurity,
+  });
+
+  const effectiveGrade = predictionContext.grade ?? productData.grade;
+  if (productData.biomassaType === BiomassaType.BIOCHAR && !effectiveGrade) {
+    throw new AppError('Grade wajib diisi untuk produk Biochar (A, B, atau C).', 400);
+  }
+
+  const status = productData.status ?? ProductStatus.ACTIVE;
+  if (status === ProductStatus.ACTIVE) {
+    await assertSupplierStoreReady(userId);
+  }
+  if (status === ProductStatus.ACTIVE && imageUrls.length === 0) {
+    throw new AppError('Produk ACTIVE wajib memiliki minimal satu foto.', 400);
+  }
+
+  const location = await resolveProductLocation(userId, productData.province, productData.regency);
 
   const parsedSpecs = parseSpecsInput(specsInput);
   const mappedFromSpecs = applyKnownFieldsFromSpecs(
@@ -194,9 +285,13 @@ export const createProduct = async (
 
   const merged = {
     ...productData,
+    grade: effectiveGrade,
     ...mappedFromSpecs,
     moistureContent: mappedFromSpecs.moistureContent ?? moistureContent,
-    carbonPurity: mappedFromSpecs.carbonPurity ?? carbonPurity,
+    carbonPurity:
+      mappedFromSpecs.carbonPurity ??
+      predictionContext.carbonPurity ??
+      carbonPurity,
     productionCapacity: mappedFromSpecs.productionCapacity ?? productionCapacity,
     surfaceArea: mappedFromSpecs.surfaceArea ?? surfaceArea,
     phLevel: mappedFromSpecs.phLevel ?? phLevel,
@@ -218,9 +313,11 @@ export const createProduct = async (
 
   const thumbnailUrl = imageUrls.length > 0 ? imageUrls[0] : null;
 
-  return prisma.product.create({
+  const product = await prisma.product.create({
     data: {
       ...productData,
+      grade: effectiveGrade,
+      isIotMonitored: predictionContext.isIotMonitored,
       cropType: merged.cropType as string | undefined,
       fertilizerType: merged.fertilizerType as string | undefined,
       isChemicalFree: isChemicalFreeVal,
@@ -317,9 +414,13 @@ export const createProduct = async (
         },
       },
       images: productImagesSelect,
+      video: productVideoSelect,
       user: { select: publicProductUserSelect },
     },
   });
+
+  scheduleSupplyDemandRefresh();
+  return product;
 };
 
 export const listProducts = async (filters: {
@@ -404,13 +505,20 @@ export const listProducts = async (filters: {
       : {}),
   };
 
+  await expireStalePromotions();
+
+  const isPublicCatalog = !userId;
+  const orderBy = isPublicCatalog
+    ? [{ isPromoted: 'desc' as const }, { [sortBy]: sortOrder }]
+    : { [sortBy]: sortOrder };
+
   const [total, products] = await Promise.all([
     prisma.product.count({ where }),
     prisma.product.findMany({
       where,
       skip: (page - 1) * limit,
       take: limit,
-      orderBy: { [sortBy]: sortOrder },
+      orderBy,
       select: {
         id: true,
         userId: true,
@@ -440,6 +548,9 @@ export const listProducts = async (filters: {
         regency: true,
         createdAt: true,
         updatedAt: true,
+        isPromoted: true,
+        promotedUntil: true,
+        video: productVideoSelect,
         category: {
           select: {
             id: true,
@@ -476,7 +587,8 @@ export const listProducts = async (filters: {
     },
   }));
 
-  return { total, page, limit, products: mappedProducts };
+  const enriched = await enrichProductsWithActiveIot(mappedProducts);
+  return { total, page, limit, products: enriched };
 };
 
 export const getProductById = async (id: string, requestUserId?: string) => {
@@ -513,6 +625,11 @@ export const getProductById = async (id: string, requestUserId?: string) => {
       regency: true,
       createdAt: true,
       updatedAt: true,
+      isPromoted: true,
+      promotedUntil: true,
+      promoImpressions: true,
+      promoClicks: true,
+      video: productVideoSelect,
       category: {
         select: {
           id: true,
@@ -557,7 +674,7 @@ export const getProductById = async (id: string, requestUserId?: string) => {
   }
 
   // averageRating & totalReviews are kept in-sync by the review service cache writer.
-  return {
+  const base = {
     ...product,
     user: {
       ...product.user,
@@ -565,6 +682,7 @@ export const getProductById = async (id: string, requestUserId?: string) => {
       verificationStatus: product.user?.verification?.verificationStatus || 'PENDING',
     },
   };
+  return enrichSingleProductIot(base);
 };
 
 export const getProductStats = async (id: string, userId: string) => {
@@ -610,6 +728,7 @@ export const duplicateProduct = async (id: string, userId: string) => {
     include: {
       technicalSpec: true,
       images: { orderBy: { order: 'asc' } },
+      video: true,
       specs: { orderBy: { sortOrder: 'asc' } },
     },
   });
@@ -617,7 +736,7 @@ export const duplicateProduct = async (id: string, userId: string) => {
   if (source.userId !== userId)
     throw new AppError('Anda tidak memiliki akses untuk menduplikasi produk ini.', 403);
 
-  const { technicalSpec, images, specs, ...base } = source;
+  const { technicalSpec, images, specs, video, ...base } = source;
 
   const copiedImages = await Promise.all(
     images.map(async (img, index) => {
@@ -633,6 +752,13 @@ export const duplicateProduct = async (id: string, userId: string) => {
   const copiedThumbnail = base.thumbnailUrl
     ? await copyProductMediaKey(base.thumbnailUrl, userId, 'dup_thumb')
     : (copiedImages.find((img) => img.isPrimary)?.url ?? copiedImages[0]?.url ?? null);
+
+  const copiedVideoUrl = video?.url
+    ? await copyProductMediaKey(video.url, userId, 'dup_video')
+    : null;
+  const copiedVideoThumbnail = video?.thumbnailUrl
+    ? await copyProductMediaKey(video.thumbnailUrl, userId, 'dup_video_thumb')
+    : null;
 
   const created = await prisma.product.create({
     data: {
@@ -695,6 +821,16 @@ export const duplicateProduct = async (id: string, userId: string) => {
           order: img.order,
         })),
       },
+      ...(copiedVideoUrl && {
+        video: {
+          create: {
+            url: copiedVideoUrl,
+            ...(copiedVideoThumbnail && { thumbnailUrl: copiedVideoThumbnail }),
+            ...(video?.title && { title: video.title }),
+            ...(video?.durationSec != null && { durationSec: video.durationSec }),
+          },
+        },
+      }),
     },
     select: {
       id: true,
@@ -727,6 +863,7 @@ export const duplicateProduct = async (id: string, userId: string) => {
       regency: true,
       createdAt: true,
       updatedAt: true,
+      video: productVideoSelect,
       category: {
         select: { id: true, name: true, categoryType: true },
       },
@@ -1017,6 +1154,7 @@ export const updateProduct = async (
           },
         },
         images: productImagesSelect,
+        video: productVideoSelect,
       },
     });
   });
@@ -1028,6 +1166,7 @@ export const updateProduct = async (
     );
   }
 
+  scheduleSupplyDemandRefresh();
   return updated;
 };
 
@@ -1039,6 +1178,7 @@ export const deleteProduct = async (id: string, userId: string) => {
       userId: true,
       thumbnailUrl: true,
       images: { select: { url: true } },
+      video: { select: { url: true } },
       _count: {
         select: { orderItems: true },
       },
@@ -1075,15 +1215,21 @@ export const deleteProduct = async (id: string, userId: string) => {
   if (product._count.orderItems === 0) {
     await prisma.product.delete({ where: { id } });
     await deleteOrphanProductMedia(
-      [product.thumbnailUrl, ...product.images.map((img) => img.url)],
+      [
+        product.thumbnailUrl,
+        product.video?.url,
+        ...product.images.map((img) => img.url),
+      ].filter((url): url is string => Boolean(url)),
       [],
     );
+    scheduleSupplyDemandRefresh();
     return { message: 'Produk berhasil dihapus secara permanen.' };
   } else {
     await prisma.product.update({
       where: { id },
       data: { status: ProductStatus.DELETED },
     });
+    scheduleSupplyDemandRefresh();
     return { message: 'Produk berhasil dihapus (Riwayat transaksi diarsipkan).' };
   }
 };
@@ -1091,6 +1237,117 @@ export const deleteProduct = async (id: string, userId: string) => {
 /**
  * Get Featured Products (Certified & Active)
  */
+/**
+ * Rekomendasi produk: same category / productMode top sellers + co-purchase ringan.
+ */
+export const getProductRecommendations = async (
+  productId: string,
+  limit = 8,
+) => {
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
+    select: {
+      id: true,
+      categoryId: true,
+      productMode: true,
+      biomassaType: true,
+      userId: true,
+    },
+  });
+  if (!product) throw new AppError('Produk tidak ditemukan.', 404);
+
+  const coPurchase = await prisma.orderItem.findMany({
+    where: {
+      order: { status: { in: ['COMPLETED', 'SHIPPED', 'PROCESSING', 'CONFIRMED'] } },
+      productId,
+    },
+    select: { orderId: true },
+    take: 40,
+    orderBy: { createdAt: 'desc' },
+  });
+  const orderIds = coPurchase.map((r) => r.orderId);
+  let coProductIds: string[] = [];
+  if (orderIds.length > 0) {
+    const siblings = await prisma.orderItem.groupBy({
+      by: ['productId'],
+      where: {
+        orderId: { in: orderIds },
+        productId: { not: productId },
+        product: { status: ProductStatus.ACTIVE },
+      },
+      _count: { productId: true },
+      orderBy: { _count: { productId: 'desc' } },
+      take: limit,
+    });
+    coProductIds = siblings.map((s) => s.productId);
+  }
+
+  const categoryProducts =
+    coProductIds.length >= limit
+      ? []
+      : await prisma.product.findMany({
+          where: {
+            id: { not: productId },
+            status: ProductStatus.ACTIVE,
+            productMode: product.productMode,
+            userId: { not: product.userId },
+            ...(product.categoryId ? { categoryId: product.categoryId } : {}),
+            ...(coProductIds.length
+              ? { id: { notIn: coProductIds } }
+              : {}),
+          },
+          orderBy: [{ totalSold: 'desc' }, { averageRating: 'desc' }],
+          take: limit - coProductIds.length,
+          select: {
+            id: true,
+            name: true,
+            pricePerUnit: true,
+            originalPrice: true,
+            unit: true,
+            thumbnailUrl: true,
+            biomassaType: true,
+            grade: true,
+            productMode: true,
+            averageRating: true,
+            totalReviews: true,
+            totalSold: true,
+            isCertified: true,
+            user: { select: { id: true, fullName: true } },
+          },
+        });
+
+  const coProducts =
+    coProductIds.length === 0
+      ? []
+      : await prisma.product.findMany({
+          where: { id: { in: coProductIds }, status: ProductStatus.ACTIVE },
+          select: {
+            id: true,
+            name: true,
+            pricePerUnit: true,
+            originalPrice: true,
+            unit: true,
+            thumbnailUrl: true,
+            biomassaType: true,
+            grade: true,
+            productMode: true,
+            averageRating: true,
+            totalReviews: true,
+            totalSold: true,
+            isCertified: true,
+            user: { select: { id: true, fullName: true } },
+          },
+        });
+
+  const byId = new Map(coProducts.map((p) => [p.id, p]));
+  const ordered = coProductIds
+    .map((id) => byId.get(id))
+    .filter((p): p is NonNullable<typeof p> => p != null);
+
+  const combined = [...ordered, ...categoryProducts].slice(0, limit);
+  return enrichProductsWithActiveIot(combined);
+};
+
 export const getFeaturedProducts = async (limit: number = 6) => {
   return prisma.product.findMany({
     where: {
@@ -1265,4 +1522,48 @@ export const getSupplierProductEngagement = async (sellerId: string) => {
     topLiked,
     topInCart,
   };
+};
+
+export const setProductVideo = async (productId: string, userId: string, videoKey: string) => {
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
+    select: { userId: true, video: { select: { url: true } } },
+  });
+  if (!product || product.userId !== userId) {
+    throw new AppError('Produk tidak ditemukan atau bukan milik Anda.', 404);
+  }
+
+  const oldKey = product.video?.url;
+  await prisma.productVideo.upsert({
+    where: { productId },
+    create: { productId, url: videoKey },
+    update: { url: videoKey },
+  });
+
+  if (oldKey && oldKey !== videoKey) {
+    await storageService.deleteFile(oldKey).catch(() => undefined);
+  }
+
+  return getProductById(productId, userId);
+};
+
+export const removeProductVideo = async (productId: string, userId: string) => {
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
+    select: { userId: true, video: { select: { url: true } } },
+  });
+  if (!product || product.userId !== userId) {
+    throw new AppError('Produk tidak ditemukan atau bukan milik Anda.', 404);
+  }
+
+  const oldKey = product.video?.url;
+  if (product.video) {
+    await prisma.productVideo.delete({ where: { productId } });
+  }
+
+  if (oldKey) {
+    await storageService.deleteFile(oldKey).catch(() => undefined);
+  }
+
+  return getProductById(productId, userId);
 };

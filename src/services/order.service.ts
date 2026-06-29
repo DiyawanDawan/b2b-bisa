@@ -1,7 +1,13 @@
 ﻿import crypto from 'crypto';
 import prisma from '#config/prisma';
 import AppError from '#utils/appError';
-import { assertQuantityMeetsMinOrder } from '#utils/productOrderRules';
+import {
+  assertQuantityMeetsMinOrder,
+  assertDirectCheckoutItem,
+  assertSampleCheckoutShape,
+  directCheckoutProductSelect,
+  resolveCheckoutUnitPrice,
+} from '#utils/productOrderRules';
 import { assertBuyerCommerceReady } from '#utils/readiness.util';
 import {
   Prisma,
@@ -26,7 +32,14 @@ import {
 } from '#services/order-shipping.service';
 import type { LogisticsSnapshotMeta, ShippingSelectionInput } from '#types/order-shipping';
 import { notifyOrderStatusChange } from '#services/orderNotification.service';
+import { scheduleSupplyDemandRefresh } from '#services/marketSupplyDemand.service';
 import { ensureDisputeNegotiationRoom } from '#services/dispute-mediation.service';
+import {
+  validateVoucherForCheckout,
+  allocateVoucherDiscount,
+  redeemVoucherForOrder,
+} from '#services/voucher.service';
+import { saveUserPaymentPreference } from '#services/saved-payment.service';
 import { Xendit } from 'xendit-node';
 import { withRetry } from '#utils/retry.util';
 import { shouldFallbackXenditDirectToInvoice, translateXenditError } from '#utils/xenditError.util';
@@ -1006,6 +1019,7 @@ export const createContract = async (
         totalQuantity: contractQty,
         shippingAddressSnapshot: shippingSnapshot,
         status: OrderStatus.PENDING,
+        isDigitalSigned: false,
         specifications: orderSpecifications,
         items: {
           create: {
@@ -1055,6 +1069,8 @@ export const createContract = async (
     return { order, transaction, buyer: negotiation.buyer, smartDescription };
   });
 
+  scheduleSupplyDemandRefresh();
+
   return {
     orderId: result.order.id,
     orderNumber: result.order.orderNumber,
@@ -1075,6 +1091,27 @@ export const createContract = async (
  * - Status awal `PENDING` (siap dibayar via `/orders/:id/pay`)
  * - Return list orders yang berhasil dibuat
  */
+const computeGroupedSubtotals = (
+  grouped: Map<string, Array<{ productId: string; quantity: number }>>,
+  productMap: Map<string, { id: string; name: string; userId: string } & Record<string, unknown>>,
+  orderType: 'STANDARD' | 'SAMPLE',
+) => {
+  const subtotals = new Map<string, Prisma.Decimal>();
+  let grand = new Prisma.Decimal(0);
+  for (const [sellerId, sellerItems] of grouped.entries()) {
+    let sellerSubtotal = new Prisma.Decimal(0);
+    for (const it of sellerItems) {
+      const p = productMap.get(it.productId)!;
+      const qty = new Prisma.Decimal(it.quantity);
+      const unitPrice = resolveCheckoutUnitPrice(p as any, orderType);
+      sellerSubtotal = sellerSubtotal.add(qty.mul(unitPrice));
+    }
+    subtotals.set(sellerId, sellerSubtotal);
+    grand = grand.add(sellerSubtotal);
+  }
+  return { subtotals, grandSubtotal: grand };
+};
+
 export const createDirectOrderFromCart = async (
   buyerId: string,
   data: {
@@ -1083,11 +1120,16 @@ export const createDirectOrderFromCart = async (
     shippingSnapshot?: Partial<ShippingAddressSnapshot>;
     shippingSelections?: Array<ShippingSelectionInput & { sellerId: string }>;
     notes?: string;
+    orderType?: 'STANDARD' | 'SAMPLE';
+    voucherCode?: string;
   },
 ) => {
   if (!Array.isArray(data.items) || data.items.length === 0) {
     throw new AppError('Tidak ada produk yang dipilih untuk checkout.', 400);
   }
+
+  const orderType = data.orderType ?? 'STANDARD';
+  assertSampleCheckoutShape(data.items, orderType);
 
   await assertBuyerCommerceReady(buyerId);
 
@@ -1095,37 +1137,17 @@ export const createDirectOrderFromCart = async (
   const productIds = Array.from(new Set(data.items.map((it) => it.productId)));
   const products = await prisma.product.findMany({
     where: { id: { in: productIds } },
-    select: {
-      id: true,
-      userId: true,
-      name: true,
-      stock: true,
-      minOrder: true,
-      pricePerUnit: true,
-      status: true,
-    },
+    select: directCheckoutProductSelect,
   });
 
   if (products.length !== productIds.length) {
     throw new AppError('Beberapa produk tidak ditemukan atau sudah tidak tersedia.', 404);
   }
 
-  // Validasi semua product aktif dan jumlah memenuhi minOrder
   const productMap = new Map(products.map((p) => [p.id, p]));
   for (const item of data.items) {
     const p = productMap.get(item.productId)!;
-    if (p.userId === buyerId) {
-      throw new AppError(`Anda tidak bisa membeli produk milik sendiri (${p.name}).`, 400);
-    }
-    if (p.stock.lt(item.quantity)) {
-      throw new AppError(`Stok ${p.name} tidak mencukupi. Tersisa ${p.stock.toString()}.`, 400);
-    }
-    if (item.quantity < Number(p.minOrder)) {
-      throw new AppError(
-        `Jumlah ${p.name} di bawah minimum order (${p.minOrder.toString()}).`,
-        400,
-      );
-    }
+    assertDirectCheckoutItem(buyerId, item, p, orderType);
   }
 
   const baseShippingSnapshot = await resolveBuyerShippingSnapshot(buyerId, data.shippingAddress);
@@ -1189,6 +1211,20 @@ export const createDirectOrderFromCart = async (
     ? `${BISA_MULTI_CHECKOUT_ORDER_PREFIX}-${dateStr}-${batchRandom}`
     : null;
 
+  const { subtotals: sellerSubtotals, grandSubtotal } = computeGroupedSubtotals(
+    grouped,
+    productMap,
+    orderType,
+  );
+  const voucherCtx = data.voucherCode?.trim()
+    ? await validateVoucherForCheckout({
+        code: data.voucherCode,
+        userId: buyerId,
+        subtotal: grandSubtotal,
+        sellerIds: [...grouped.keys()],
+      })
+    : null;
+
   const createdOrders: Array<{
     orderId: string;
     orderNumber: string;
@@ -1214,23 +1250,33 @@ export const createDirectOrderFromCart = async (
         for (const it of sellerItems) {
           const p = productMap.get(it.productId)!;
           const qty = new Prisma.Decimal(it.quantity);
-          const lineSub = qty.mul(p.pricePerUnit);
+          const unitPrice = resolveCheckoutUnitPrice(p, orderType);
+          const lineSub = qty.mul(unitPrice);
           subtotal = subtotal.add(lineSub);
           totalQty = totalQty.add(qty);
           itemRows.push({
             productId: p.id,
             quantity: qty,
-            pricePerUnit: p.pricePerUnit,
+            pricePerUnit: unitPrice,
             subtotal: lineSub,
           });
 
-          // Verifikasi minimum order utk produk-produk di assertion shared
-          await assertQuantityMeetsMinOrder(p.id, it.quantity);
+          if (orderType !== 'SAMPLE') {
+            await assertQuantityMeetsMinOrder(p.id, it.quantity);
+          }
         }
 
         const sellerLogistics = logisticsBySeller.get(sellerId);
+        const sellerDiscount = voucherCtx
+          ? allocateVoucherDiscount(
+              sellerSubtotals.get(sellerId) ?? subtotal,
+              grandSubtotal,
+              voucherCtx.discountAmount,
+            )
+          : new Prisma.Decimal(0);
+        const adjustedSubtotal = subtotal.sub(sellerDiscount);
         const financials = await calculateContractFinancials(
-          subtotal,
+          adjustedSubtotal,
           sellerLogistics?.logisticsFee ?? new Prisma.Decimal(0),
         );
         const shippingSnapshot = attachLogisticsToSnapshot(
@@ -1267,15 +1313,22 @@ export const createDirectOrderFromCart = async (
             orderNumber,
             checkoutBatchId,
             checkoutBatchNumber: sharedCheckoutBatchNumber ?? orderNumber,
+            orderType,
             subtotal: financials.subtotal,
             platformFee: financials.platformFee,
             logisticsFee: financials.logisticsFee,
             vatAmount: financials.vatAmount,
             totalAmount: financials.totalAmount,
             totalQuantity: totalQty,
+            voucherCode: voucherCtx?.code ?? null,
+            voucherDiscount: sellerDiscount,
             shippingAddressSnapshot: shippingSnapshot,
             status: OrderStatus.PENDING,
-            specifications: data.notes?.trim() || 'Direct checkout dari cart.',
+            specifications:
+              data.notes?.trim() ||
+              (orderType === 'SAMPLE'
+                ? 'Sample order — evaluasi kualitas sebelum PO penuh.'
+                : 'Direct checkout dari cart.'),
             items: {
               create: itemRows,
             },
@@ -1341,6 +1394,17 @@ export const createDirectOrderFromCart = async (
   const checkoutBatchNumber =
     sharedCheckoutBatchNumber ?? createdOrders[0]?.orderNumber ?? null;
 
+  if (voucherCtx && createdOrders[0]?.orderId) {
+    await redeemVoucherForOrder({
+      voucherId: voucherCtx.voucherId,
+      userId: buyerId,
+      orderId: createdOrders[0].orderId,
+      discountAmount: voucherCtx.discountAmount,
+    });
+  }
+
+  scheduleSupplyDemandRefresh();
+
   return {
     checkoutBatchId,
     checkoutBatchNumber,
@@ -1348,6 +1412,8 @@ export const createDirectOrderFromCart = async (
     batchTotalAmount,
     orders: createdOrders,
     totalOrders: createdOrders.length,
+    voucherDiscount: voucherCtx ? Number(voucherCtx.discountAmount) : 0,
+    voucherCode: voucherCtx?.code ?? null,
   };
 };
 
@@ -1359,26 +1425,23 @@ export const previewDirectOrderFromCart = async (
     shippingSnapshot?: Partial<ShippingAddressSnapshot>;
     shippingSelections?: Array<ShippingSelectionInput & { sellerId: string }>;
     notes?: string;
+    orderType?: 'STANDARD' | 'SAMPLE';
+    voucherCode?: string;
   },
 ) => {
   if (!Array.isArray(data.items) || data.items.length === 0) {
     throw new AppError('Tidak ada produk yang dipilih untuk checkout.', 400);
   }
 
+  const orderType = data.orderType ?? 'STANDARD';
+  assertSampleCheckoutShape(data.items, orderType);
+
   await assertBuyerCommerceReady(buyerId);
 
   const productIds = Array.from(new Set(data.items.map((it) => it.productId)));
   const products = await prisma.product.findMany({
     where: { id: { in: productIds } },
-    select: {
-      id: true,
-      userId: true,
-      name: true,
-      stock: true,
-      minOrder: true,
-      pricePerUnit: true,
-      status: true,
-    },
+    select: directCheckoutProductSelect,
   });
 
   if (products.length !== productIds.length) {
@@ -1388,18 +1451,7 @@ export const previewDirectOrderFromCart = async (
   const productMap = new Map(products.map((p) => [p.id, p]));
   for (const item of data.items) {
     const p = productMap.get(item.productId)!;
-    if (p.userId === buyerId) {
-      throw new AppError(`Anda tidak bisa membeli produk milik sendiri (${p.name}).`, 400);
-    }
-    if (p.stock.lt(item.quantity)) {
-      throw new AppError(`Stok ${p.name} tidak mencukupi. Tersisa ${p.stock.toString()}.`, 400);
-    }
-    if (item.quantity < Number(p.minOrder)) {
-      throw new AppError(
-        `Jumlah ${p.name} di bawah minimum order (${p.minOrder.toString()}).`,
-        400,
-      );
-    }
+    assertDirectCheckoutItem(buyerId, item, p, orderType);
   }
 
   const baseShippingSnapshot = await resolveBuyerShippingSnapshot(buyerId, data.shippingAddress);
@@ -1449,6 +1501,22 @@ export const previewDirectOrderFromCart = async (
   let vatAmount = new Prisma.Decimal(0);
   let logisticsFee = new Prisma.Decimal(0);
   let totalAmount = new Prisma.Decimal(0);
+  let voucherDiscount = new Prisma.Decimal(0);
+
+  const { subtotals: sellerSubtotals, grandSubtotal } = computeGroupedSubtotals(
+    grouped,
+    productMap,
+    orderType,
+  );
+  const voucherCtx = data.voucherCode?.trim()
+    ? await validateVoucherForCheckout({
+        code: data.voucherCode,
+        userId: buyerId,
+        subtotal: grandSubtotal,
+        sellerIds: [...grouped.keys()],
+      })
+    : null;
+  if (voucherCtx) voucherDiscount = voucherCtx.discountAmount;
 
   for (const [sellerId, sellerItems] of grouped.entries()) {
     let sellerSubtotal = new Prisma.Decimal(0);
@@ -1456,14 +1524,25 @@ export const previewDirectOrderFromCart = async (
     for (const it of sellerItems) {
       const p = productMap.get(it.productId)!;
       const qty = new Prisma.Decimal(it.quantity);
-      const lineSub = qty.mul(p.pricePerUnit);
+      const unitPrice = resolveCheckoutUnitPrice(p, orderType);
+      const lineSub = qty.mul(unitPrice);
       sellerSubtotal = sellerSubtotal.add(lineSub);
       totalQty = totalQty.add(qty);
-      await assertQuantityMeetsMinOrder(p.id, it.quantity);
+      if (orderType !== 'SAMPLE') {
+        await assertQuantityMeetsMinOrder(p.id, it.quantity);
+      }
     }
     const sellerLogistics = logisticsBySeller.get(sellerId);
+    const sellerDiscount = voucherCtx
+      ? allocateVoucherDiscount(
+          sellerSubtotals.get(sellerId) ?? sellerSubtotal,
+          grandSubtotal,
+          voucherCtx.discountAmount,
+        )
+      : new Prisma.Decimal(0);
+    const adjustedSubtotal = sellerSubtotal.sub(sellerDiscount);
     const financials = await calculateContractFinancials(
-      sellerSubtotal,
+      adjustedSubtotal,
       sellerLogistics?.logisticsFee ?? new Prisma.Decimal(0),
     );
     subtotal = subtotal.add(financials.subtotal);
@@ -1476,6 +1555,7 @@ export const previewDirectOrderFromCart = async (
       sellerId,
       totalQuantity: totalQty,
       subtotal: financials.subtotal,
+      voucherDiscount: sellerDiscount,
       platformFee: financials.platformFee,
       vatAmount: financials.vatAmount,
       logisticsFee: financials.logisticsFee,
@@ -1493,6 +1573,8 @@ export const previewDirectOrderFromCart = async (
     vatAmount,
     logisticsFee,
     totalAmount,
+    voucherDiscount,
+    voucherCode: voucherCtx?.code ?? null,
     totalOrders: orders.length,
     orders,
   };
@@ -2203,6 +2285,12 @@ export const initializePayment = async (
         503,
       );
 
+    void saveUserPaymentPreference(buyerId, {
+      code: channel.code,
+      name: channel.name,
+      group: channel.group ?? 'BANK_TRANSFER',
+    });
+
     const payAmount = new Prisma.Decimal(amount);
     if (channel.minAmount && payAmount.lt(channel.minAmount)) {
       throw new AppError(
@@ -2688,24 +2776,16 @@ const buildOrderListSearchFilter = (search?: string): Prisma.OrderWhereInput => 
   };
 };
 
-export const listOrdersByRole = async (params: {
+const buildOrderListBaseWhere = (params: {
   userId: string;
   role: 'BUYER' | 'SELLER';
-  statusFilter?: string;
   search?: string;
   productMode?: string;
-  page?: number;
-  limit?: number;
-}) => {
-  const { userId, role, statusFilter, search, productMode, page = 1, limit = 20 } = params;
-  const skip = (page - 1) * limit;
-
-  const where: Prisma.OrderWhereInput = {
+  orderTypeFilter?: 'STANDARD' | 'SAMPLE';
+}): Prisma.OrderWhereInput => {
+  const { userId, role, search, productMode, orderTypeFilter } = params;
+  return {
     ...(role === UserRole.BUYER ? { buyerId: userId } : { sellerId: userId }),
-    ...(statusFilter &&
-      Object.values(OrderStatus).includes(statusFilter as OrderStatus) && {
-        status: statusFilter as OrderStatus,
-      }),
     ...(search?.trim() && buildOrderListSearchFilter(search)),
     ...(productMode && {
       items: {
@@ -2716,6 +2796,74 @@ export const listOrdersByRole = async (params: {
         },
       },
     }),
+    ...(orderTypeFilter && { orderType: orderTypeFilter }),
+  };
+};
+
+export const getOrderStatusCounts = async (params: {
+  userId: string;
+  role: 'BUYER' | 'SELLER';
+  search?: string;
+  productMode?: string;
+  orderTypeFilter?: 'STANDARD' | 'SAMPLE';
+}) => {
+  const baseWhere = buildOrderListBaseWhere(params);
+
+  const [statusGroups, refundedCount, total] = await Promise.all([
+    prisma.order.groupBy({
+      by: ['status'],
+      where: baseWhere,
+      _count: { id: true },
+    }),
+    prisma.order.count({
+      where: {
+        ...baseWhere,
+        transaction: { status: TransactionStatus.REFUNDED },
+      },
+    }),
+    prisma.order.count({ where: baseWhere }),
+  ]);
+
+  const byStatus = new Map(
+    statusGroups.map((row) => [row.status, row._count.id ?? 0]),
+  );
+
+  const processing =
+    (byStatus.get(OrderStatus.PROCESSING) ?? 0) +
+    (byStatus.get(OrderStatus.CONFIRMED) ?? 0);
+
+  return {
+    ALL: total,
+    PENDING: byStatus.get(OrderStatus.PENDING) ?? 0,
+    PROCESSING: processing,
+    SHIPPED: byStatus.get(OrderStatus.SHIPPED) ?? 0,
+    COMPLETED: byStatus.get(OrderStatus.COMPLETED) ?? 0,
+    CANCELLED: byStatus.get(OrderStatus.CANCELLED) ?? 0,
+    DISPUTED: byStatus.get(OrderStatus.DISPUTED) ?? 0,
+    REFUNDED: refundedCount,
+  };
+};
+
+export const listOrdersByRole = async (params: {
+  userId: string;
+  role: 'BUYER' | 'SELLER';
+  statusFilter?: string;
+  search?: string;
+  productMode?: string;
+  orderTypeFilter?: 'STANDARD' | 'SAMPLE';
+  page?: number;
+  limit?: number;
+}) => {
+  const { userId, role, statusFilter, search, productMode, orderTypeFilter, page = 1, limit = 20 } =
+    params;
+  const skip = (page - 1) * limit;
+
+  const where: Prisma.OrderWhereInput = {
+    ...buildOrderListBaseWhere({ userId, role, search, productMode, orderTypeFilter }),
+    ...(statusFilter &&
+      Object.values(OrderStatus).includes(statusFilter as OrderStatus) && {
+        status: statusFilter as OrderStatus,
+      }),
   };
 
   const [orders, total] = await Promise.all([
@@ -2730,6 +2878,7 @@ export const listOrdersByRole = async (params: {
         buyerId: true,
         sellerId: true,
         status: true,
+        orderType: true,
         subtotal: true,
         platformFee: true,
         logisticsFee: true,
@@ -2912,6 +3061,9 @@ export const getOrderDetail = async (id: string, userId: string) => {
       shippingAddressId: true,
       shippingAddressSnapshot: true,
       specifications: true,
+      isDigitalSigned: true,
+      buyerSignedAt: true,
+      sellerSignedAt: true,
       createdAt: true,
       updatedAt: true,
       shippingAddress: {
@@ -3570,6 +3722,60 @@ export const respondToDispute = async (
  * 6. Public Contract Verification (Untuk QR Scan Logistik)
  * Tidak memerlukan Auth, hanya mengembalikan data publik terbatas.
  */
+export const signContract = async (orderId: string, userId: string) => {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: {
+      id: true,
+      buyerId: true,
+      sellerId: true,
+      buyerSignedAt: true,
+      sellerSignedAt: true,
+      isDigitalSigned: true,
+    },
+  });
+  if (!order) throw new AppError('Pesanan tidak ditemukan.', 404);
+
+  const isBuyer = order.buyerId === userId;
+  const isSeller = order.sellerId === userId;
+  if (!isBuyer && !isSeller) throw new AppError('Anda tidak berhak menandatangani kontrak ini.', 403);
+
+  const now = new Date();
+  const signHash = crypto
+    .createHash('sha256')
+    .update(`${userId}:${orderId}:${now.toISOString()}`)
+    .digest('hex');
+
+  const data: Prisma.OrderUpdateInput = {};
+  if (isBuyer && !order.buyerSignedAt) {
+    data.buyerSignedAt = now;
+    data.buyerSignHash = signHash;
+  } else if (isSeller && !order.sellerSignedAt) {
+    data.sellerSignedAt = now;
+    data.sellerSignHash = signHash;
+  } else {
+    throw new AppError('Kontrak sudah Anda tandatangani.', 400);
+  }
+
+  const buyerWillSign = isBuyer ? now : order.buyerSignedAt;
+  const sellerWillSign = isSeller ? now : order.sellerSignedAt;
+  if (buyerWillSign && sellerWillSign) {
+    data.isDigitalSigned = true;
+  }
+
+  return prisma.order.update({
+    where: { id: orderId },
+    data,
+    select: {
+      id: true,
+      orderNumber: true,
+      isDigitalSigned: true,
+      buyerSignedAt: true,
+      sellerSignedAt: true,
+    },
+  });
+};
+
 export const getPublicContractVerification = async (orderNumber: string) => {
   const order = await prisma.order.findUnique({
     where: { orderNumber },
@@ -3580,6 +3786,9 @@ export const getPublicContractVerification = async (orderNumber: string) => {
       createdAt: true,
       totalQuantity: true,
       specifications: true,
+      isDigitalSigned: true,
+      buyerSignedAt: true,
+      sellerSignedAt: true,
       seller: {
         select: { fullName: true },
       },
@@ -3596,7 +3805,9 @@ export const getPublicContractVerification = async (orderNumber: string) => {
 
   return {
     ...order,
-    verificationStatus: 'VERIFIED_BY_BISA_B2B',
+    verificationStatus: order.isDigitalSigned
+      ? 'SIGNED_AND_VERIFIED'
+      : 'ISSUED_PENDING_SIGNATURE',
     timestamp: new Date(),
   };
 };
@@ -3984,6 +4195,7 @@ export const getSalesStats = async (sellerId: string) => {
   });
 
   return {
+    tier: 'basic',
     totalRevenue,
     totalOrders,
     totalQuantity: toNumber(stats._sum.totalQuantity),

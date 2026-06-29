@@ -14,11 +14,13 @@ export { attachNegotiationMediaUrls, attachNegotiationMessageMedia };
 export const resolveMediaField = (path: string | null | undefined): string | null =>
   storageService.getPublicUrl(path ?? null);
 
+type ForumMediaItem = { url: string; type: string };
+
 type UserLike = { avatarUrl?: string | null; [key: string]: unknown };
 
 type ForumCommentLike = {
   author?: UserLike | null;
-  mediaUrls?: string[] | null;
+  mediaUrls?: unknown[] | null;
   replies?: ForumCommentLike[] | null;
   user?: UserLike | null;
   [key: string]: unknown;
@@ -27,7 +29,7 @@ type ForumCommentLike = {
 type ForumPostLike = {
   author?: UserLike | null;
   user?: UserLike | null;
-  mediaUrls?: string[] | null;
+  mediaUrls?: unknown[] | null;
   participants?: UserLike[] | null;
   comments?: ForumCommentLike[] | null;
   [key: string]: unknown;
@@ -35,10 +37,32 @@ type ForumPostLike = {
 
 const mapUser = <T extends UserLike>(u: T): T => attachUserMediaUrls({ ...u });
 
-const resolveUrlList = (urls: string[] | null | undefined): string[] | null | undefined =>
-  Array.isArray(urls)
-    ? urls.map((u) => resolveMediaField(u) ?? u)
-    : urls;
+/** Forum media di DB bisa string path atau `{ url, type }` dari seed/mobile. */
+const resolveForumMediaList = (
+  media: unknown[] | null | undefined,
+): ForumMediaItem[] | null | undefined => {
+  if (!Array.isArray(media)) return media as ForumMediaItem[] | null | undefined;
+
+  const resolved = media
+    .map((item): ForumMediaItem | null => {
+      if (typeof item === 'string') {
+        const url = resolveMediaField(item) ?? item;
+        return url ? { url, type: 'image' } : null;
+      }
+      if (item && typeof item === 'object') {
+        const raw = item as { url?: unknown; type?: unknown };
+        const path = typeof raw.url === 'string' ? raw.url : raw.url != null ? String(raw.url) : '';
+        if (!path) return null;
+        const url = resolveMediaField(path) ?? path;
+        const type = raw.type === 'video' ? 'video' : 'image';
+        return { url, type };
+      }
+      return null;
+    })
+    .filter((item): item is ForumMediaItem => item != null);
+
+  return resolved.length > 0 ? resolved : [];
+};
 
 const attachForumComment = (c: ForumCommentLike): ForumCommentLike => {
   const comment: ForumCommentLike = { ...c };
@@ -48,7 +72,7 @@ const attachForumComment = (c: ForumCommentLike): ForumCommentLike => {
     if (comment.author) comment.author = mapped;
     if (comment.user) comment.user = mapped;
   }
-  comment.mediaUrls = resolveUrlList(comment.mediaUrls) ?? comment.mediaUrls;
+  comment.mediaUrls = resolveForumMediaList(comment.mediaUrls) ?? comment.mediaUrls;
   if (Array.isArray(comment.replies)) {
     comment.replies = comment.replies.map((r) => attachForumComment({ ...r }));
   }
@@ -65,7 +89,7 @@ export const attachForumMediaUrls = <T extends ForumPostLike>(post: T): T => {
     if (next.author) next.author = mapped;
     if (next.user) next.user = mapped;
   }
-  next.mediaUrls = resolveUrlList(next.mediaUrls) ?? next.mediaUrls;
+  next.mediaUrls = resolveForumMediaList(next.mediaUrls) ?? next.mediaUrls;
   if (Array.isArray(next.participants)) {
     next.participants = next.participants.map((p) => mapUser({ ...p }));
   }

@@ -4,6 +4,7 @@ import catchAsync from '#utils/catchAsync';
 import AppError from '#utils/appError';
 import { successResponse, createdResponse, paginatedResponse } from '#utils/response.util';
 import * as productService from '#services/product.service';
+import * as productPromotionService from '#services/product-promotion.service';
 import { ProductStatus, BiomassaType, BiocharGrade, ProductMode } from '#prisma';
 import * as storageService from '#services/storage.service';
 import * as mediaUploadService from '#services/mediaUpload.service';
@@ -338,6 +339,16 @@ export const getMyProducts = catchAsync(async (req: AuthRequest, res: Response) 
 /**
  * GET /api/v1/products/:id
  */
+export const getProductRecommendations = catchAsync(async (req: AuthRequest, res: Response) => {
+  const limit = Math.min(Number(req.query.limit) || 8, 20);
+  const items = await productService.getProductRecommendations(req.params.id, limit);
+  return successResponse(
+    res,
+    items.map((p) => attachProductMediaUrls(p)),
+    'Rekomendasi produk berhasil diambil',
+  );
+});
+
 export const getProductById = catchAsync(async (req: AuthRequest, res: Response) => {
   const product = await productService.getProductById(req.params.id, req.user?.id);
 
@@ -487,4 +498,63 @@ export const getCollectionProducts = catchAsync(async (req: Request, res: Respon
     products.map(attachProductMediaUrls),
     `Daftar produk dalam koleksi ${slug} berhasil diambil`,
   );
+});
+
+/**
+ * POST /api/v1/products/:id/promote
+ */
+export const promoteProduct = catchAsync(async (req: AuthRequest, res: Response) => {
+  const days = parseInt(req.body.days as string) || productPromotionService.PROMOTE_DAYS;
+  const result = await productPromotionService.promoteProduct(
+    req.user!.id,
+    req.params.id,
+    days,
+  );
+  return successResponse(res, result, 'Produk berhasil dipromosikan');
+});
+
+/**
+ * POST /api/v1/products/:id/promo-impression
+ */
+export const recordPromoImpression = catchAsync(async (req: Request, res: Response) => {
+  const result = await productPromotionService.recordPromoImpression(req.params.id);
+  return successResponse(res, result, 'Impression dicatat');
+});
+
+/**
+ * POST /api/v1/products/:id/promo-click
+ */
+export const recordPromoClick = catchAsync(async (req: Request, res: Response) => {
+  const result = await productPromotionService.recordPromoClick(req.params.id);
+  return successResponse(res, result, 'Klik promosi dicatat');
+});
+
+/**
+ * POST /api/v1/products/:id/video
+ */
+export const uploadProductVideo = catchAsync(async (req: AuthRequest, res: Response) => {
+  const file = req.file;
+  if (!file) {
+    throw new AppError('File video wajib diunggah.', 400);
+  }
+
+  const ext = file.originalname.split('.').pop() || 'mp4';
+  const path = `products/${req.user!.id}/videos/${req.params.id}_${Date.now()}.${ext}`;
+  const key = await storageService.uploadFile(file.buffer, path, file.mimetype);
+
+  try {
+    const product = await productService.setProductVideo(req.params.id, req.user!.id, key);
+    return successResponse(res, attachProductMediaUrls(product), 'Video produk berhasil diunggah');
+  } catch (error) {
+    await storageService.deleteFile(key);
+    throw error;
+  }
+});
+
+/**
+ * DELETE /api/v1/products/:id/video
+ */
+export const deleteProductVideo = catchAsync(async (req: AuthRequest, res: Response) => {
+  const product = await productService.removeProductVideo(req.params.id, req.user!.id);
+  return successResponse(res, attachProductMediaUrls(product), 'Video produk dihapus');
 });

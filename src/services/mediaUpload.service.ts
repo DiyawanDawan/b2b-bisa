@@ -2,6 +2,8 @@ import {
   AbortMultipartUploadCommand,
   CompleteMultipartUploadCommand,
   CreateMultipartUploadCommand,
+  DeleteObjectCommand,
+  PutObjectCommand,
   UploadPartCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
@@ -29,6 +31,19 @@ import {
 
 const BUCKET_NAME = process.env.R2_BUCKET_NAME || '';
 const PRESIGN_TTL_SECONDS = 3600;
+
+const isSinglePartSession = (session: { totalParts: number; r2UploadId: string | null }) =>
+  session.totalParts === 1 && !session.r2UploadId;
+
+const isNoSuchMultipartUpload = (err: unknown): boolean => {
+  const code = (err as { Code?: string; name?: string })?.Code ?? (err as { name?: string })?.name;
+  const message = String((err as Error)?.message ?? err ?? '');
+  return (
+    code === 'NoSuchUpload' ||
+    message.includes('multipart upload does not exist') ||
+    message.includes('specified multipart upload does not exist')
+  );
+};
 
 const sessionExpiry = (): Date => {
   const d = new Date();
@@ -72,16 +87,22 @@ export const initUpload = async (params: {
   const { partSize, totalParts } = computeMultipartPlan(params.totalBytes);
   const r2Key = buildR2ObjectKey(folder, params.userId, params.fileName);
 
-  const createRes = await r2Client.send(
-    new CreateMultipartUploadCommand({
-      Bucket: BUCKET_NAME,
-      Key: r2Key,
-      ContentType: params.mimeType,
-    }),
-  );
+  let r2UploadId: string | null = null;
 
-  if (!createRes.UploadId) {
-    throw new AppError('Gagal memulai multipart upload di R2.', 500);
+  // File kecil (1 part) — PutObject langsung, hindari error multipart di R2.
+  if (totalParts > 1) {
+    const createRes = await r2Client.send(
+      new CreateMultipartUploadCommand({
+        Bucket: BUCKET_NAME,
+        Key: r2Key,
+        ContentType: params.mimeType,
+      }),
+    );
+
+    if (!createRes.UploadId) {
+      throw new AppError('Gagal memulai multipart upload di R2.', 500);
+    }
+    r2UploadId = createRes.UploadId;
   }
 
   const session = await prisma.mediaUploadSession.create({
@@ -93,7 +114,7 @@ export const initUpload = async (params: {
       totalBytes: BigInt(params.totalBytes),
       partSize,
       totalParts,
-      r2UploadId: createRes.UploadId,
+      r2UploadId,
       r2Key,
       status: MediaUploadSessionStatus.INIT,
       completedParts: [],
@@ -178,20 +199,34 @@ export const uploadPartProxy = async (
   if (partNumber < 1 || partNumber > session.totalParts) {
     throw new AppError('Nomor part tidak valid.', 400);
   }
-  if (!session.r2UploadId) throw new AppError('Upload R2 belum diinisialisasi.', 500);
+  let etag: string;
 
-  const response = await r2Client.send(
-    new UploadPartCommand({
-      Bucket: BUCKET_NAME,
-      Key: session.r2Key,
-      UploadId: session.r2UploadId,
-      PartNumber: partNumber,
-      Body: body,
-    }),
-  );
+  if (isSinglePartSession(session)) {
+    await r2Client.send(
+      new PutObjectCommand({
+        Bucket: BUCKET_NAME,
+        Key: session.r2Key,
+        Body: body,
+        ContentType: session.mimeType,
+      }),
+    );
+    etag = 'single';
+  } else {
+    if (!session.r2UploadId) throw new AppError('Upload R2 belum diinisialisasi.', 500);
 
-  const etag = response.ETag?.replace(/"/g, '') ?? '';
-  if (!etag) throw new AppError('ETag part tidak diterima dari R2.', 500);
+    const response = await r2Client.send(
+      new UploadPartCommand({
+        Bucket: BUCKET_NAME,
+        Key: session.r2Key,
+        UploadId: session.r2UploadId,
+        PartNumber: partNumber,
+        Body: body,
+      }),
+    );
+
+    etag = response.ETag?.replace(/"/g, '') ?? '';
+    if (!etag) throw new AppError('ETag part tidak diterima dari R2.', 500);
+  }
 
   const existing = parseCompletedParts(session.completedParts);
   const filtered = existing.filter((p) => p.partNumber !== partNumber);
@@ -217,7 +252,6 @@ export const completeUpload = async (
   parts: { partNumber: number; etag: string }[],
 ) => {
   const session = await loadOwnedSession(sessionId, userId);
-  if (!session.r2UploadId) throw new AppError('Upload R2 belum diinisialisasi.', 500);
 
   const stored = parseCompletedParts(session.completedParts);
   const merged = new Map<number, string>();
@@ -232,20 +266,42 @@ export const completeUpload = async (
     );
   }
 
-  const completedParts = Array.from(merged.entries())
-    .map(([partNumber, etag]) => ({ PartNumber: partNumber, ETag: etag }))
-    .sort((a, b) => a.PartNumber - b.PartNumber);
-
-  await r2Client.send(
-    new CompleteMultipartUploadCommand({
-      Bucket: BUCKET_NAME,
-      Key: session.r2Key,
-      UploadId: session.r2UploadId,
-      MultipartUpload: { Parts: completedParts },
-    }),
-  );
-
   const finalPath = session.r2Key;
+
+  if (isSinglePartSession(session)) {
+    if (!merged.has(1)) {
+      throw new AppError('File belum diunggah. Kirim chunk terlebih dahulu.', 400);
+    }
+  } else {
+    if (!session.r2UploadId) throw new AppError('Upload R2 belum diinisialisasi.', 500);
+
+    const completedParts = Array.from(merged.entries())
+      .map(([partNumber, etag]) => ({ PartNumber: partNumber, ETag: etag }))
+      .sort((a, b) => a.PartNumber - b.PartNumber);
+
+    try {
+      await r2Client.send(
+        new CompleteMultipartUploadCommand({
+          Bucket: BUCKET_NAME,
+          Key: session.r2Key,
+          UploadId: session.r2UploadId,
+          MultipartUpload: { Parts: completedParts },
+        }),
+      );
+    } catch (err) {
+      if (isNoSuchMultipartUpload(err)) {
+        await prisma.mediaUploadSession.update({
+          where: { id: sessionId },
+          data: { status: MediaUploadSessionStatus.ABORTED },
+        });
+        throw new AppError(
+          'Sesi upload kedaluwarsa di penyimpanan. Silakan unggah ulang dokumen.',
+          410,
+        );
+      }
+      throw err;
+    }
+  }
   await prisma.mediaUploadSession.update({
     where: { id: sessionId },
     data: {
@@ -264,15 +320,24 @@ export const completeUpload = async (
 
 export const abortUpload = async (sessionId: string, userId: string) => {
   const session = await loadOwnedSession(sessionId, userId);
-  if (session.r2UploadId && session.status !== MediaUploadSessionStatus.COMPLETED) {
+  if (session.status !== MediaUploadSessionStatus.COMPLETED) {
     try {
-      await r2Client.send(
-        new AbortMultipartUploadCommand({
-          Bucket: BUCKET_NAME,
-          Key: session.r2Key,
-          UploadId: session.r2UploadId,
-        }),
-      );
+      if (session.r2UploadId) {
+        await r2Client.send(
+          new AbortMultipartUploadCommand({
+            Bucket: BUCKET_NAME,
+            Key: session.r2Key,
+            UploadId: session.r2UploadId,
+          }),
+        );
+      } else if (isSinglePartSession(session)) {
+        await r2Client.send(
+          new DeleteObjectCommand({
+            Bucket: BUCKET_NAME,
+            Key: session.r2Key,
+          }),
+        );
+      }
     } catch {
       // best-effort
     }

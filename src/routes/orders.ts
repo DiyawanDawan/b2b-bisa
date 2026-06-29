@@ -102,6 +102,13 @@ router.get(
   orderController.getMyPurchases,
 );
 
+router.get(
+  '/my-purchases/status-counts',
+  requireRole(UserRole.BUYER, UserRole.ADMIN),
+  validate(v.orderStatusCountsSchema, 'all'),
+  orderController.getMyPurchasesStatusCounts,
+);
+
 // [SUPPLIER] My Sales Tab
 router.get(
   '/my-sales',
@@ -111,9 +118,15 @@ router.get(
 );
 
 router.get(
+  '/my-sales/status-counts',
+  requireRole(UserRole.SUPPLIER, UserRole.ADMIN),
+  validate(v.orderStatusCountsSchema, 'all'),
+  orderController.getMySalesStatusCounts,
+);
+
+router.get(
   '/sales-stats',
   requireRole(UserRole.SUPPLIER, UserRole.ADMIN),
-  requireTierPro,
   orderController.getSalesStats,
 );
 
@@ -196,6 +209,8 @@ router.post(
 
 // [BOTH] Detail with Digital QR Contract & Escrow Maps
 // PENTING: Harus paling bawah agar tidak menyerobot route spesifik di atas
+router.post('/:id/sign', orderController.signContract);
+
 router.get('/:id/batch', orderController.getCheckoutBatchDetail);
 router.get('/:id', orderController.getOrderDetail);
 

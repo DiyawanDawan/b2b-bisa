@@ -1,0 +1,2034 @@
+{
+  "version": "2.0.0",
+  "generatedFrom": [
+    "ml-bisa/data/clean/harga_historis.csv",
+    "ml-bisa/data/clean/harga_marketplace.csv",
+    "ml-bisa/data/clean/piphs_monthly_national.csv",
+    "ml-bisa/data/clean/grade_price_benchmark.csv"
+  ],
+  "periodRange": {
+    "from": "2022-01",
+    "to": "2026-02",
+    "months": 50
+  },
+  "commodities": [
+    {
+      "label": "Biochar Grade A Premium",
+      "category": "CARBON",
+      "currentValue": "Rp 5.400/kg",
+      "trendType": "STABLE",
+      "historyData": [
+        {
+          "x": "2022-01",
+          "y": 3296,
+          "source": "seed"
+        },
+        {
+          "x": "2022-02",
+          "y": 3330,
+          "source": "seed"
+        },
+        {
+          "x": "2022-03",
+          "y": 3536,
+          "source": "seed"
+        },
+        {
+          "x": "2022-04",
+          "y": 3572,
+          "source": "seed"
+        },
+        {
+          "x": "2022-05",
+          "y": 3519,
+          "source": "seed"
+        },
+        {
+          "x": "2022-06",
+          "y": 3644,
+          "source": "seed"
+        },
+        {
+          "x": "2022-07",
+          "y": 3680,
+          "source": "seed"
+        },
+        {
+          "x": "2022-08",
+          "y": 3716,
+          "source": "seed"
+        },
+        {
+          "x": "2022-09",
+          "y": 3751,
+          "source": "seed"
+        },
+        {
+          "x": "2022-10",
+          "y": 3696,
+          "source": "seed"
+        },
+        {
+          "x": "2022-11",
+          "y": 3637,
+          "source": "seed"
+        },
+        {
+          "x": "2022-12",
+          "y": 3671,
+          "source": "seed"
+        },
+        {
+          "x": "2023-01",
+          "y": 3705,
+          "source": "seed"
+        },
+        {
+          "x": "2023-02",
+          "y": 3802,
+          "source": "seed"
+        },
+        {
+          "x": "2023-03",
+          "y": 3851,
+          "source": "seed"
+        },
+        {
+          "x": "2023-04",
+          "y": 3900,
+          "source": "seed"
+        },
+        {
+          "x": "2023-05",
+          "y": 3998,
+          "source": "seed"
+        },
+        {
+          "x": "2023-06",
+          "y": 3949,
+          "source": "seed"
+        },
+        {
+          "x": "2023-07",
+          "y": 4095,
+          "source": "seed"
+        },
+        {
+          "x": "2023-08",
+          "y": 4144,
+          "source": "seed"
+        },
+        {
+          "x": "2023-09",
+          "y": 4192,
+          "source": "seed"
+        },
+        {
+          "x": "2023-10",
+          "y": 4394,
+          "source": "seed"
+        },
+        {
+          "x": "2023-11",
+          "y": 4561,
+          "source": "seed"
+        },
+        {
+          "x": "2023-12",
+          "y": 4612,
+          "source": "seed"
+        },
+        {
+          "x": "2024-01",
+          "y": 4655,
+          "source": "seed"
+        },
+        {
+          "x": "2024-02",
+          "y": 4697,
+          "source": "seed"
+        },
+        {
+          "x": "2024-03",
+          "y": 4740,
+          "source": "seed"
+        },
+        {
+          "x": "2024-04",
+          "y": 4782,
+          "source": "seed"
+        },
+        {
+          "x": "2024-05",
+          "y": 4824,
+          "source": "seed"
+        },
+        {
+          "x": "2024-06",
+          "y": 4866,
+          "source": "seed"
+        },
+        {
+          "x": "2024-07",
+          "y": 4904,
+          "source": "seed"
+        },
+        {
+          "x": "2024-08",
+          "y": 4780,
+          "source": "seed"
+        },
+        {
+          "x": "2024-09",
+          "y": 4749,
+          "source": "seed"
+        },
+        {
+          "x": "2024-10",
+          "y": 4789,
+          "source": "seed"
+        },
+        {
+          "x": "2024-11",
+          "y": 4829,
+          "source": "seed"
+        },
+        {
+          "x": "2024-12",
+          "y": 4869,
+          "source": "seed"
+        },
+        {
+          "x": "2025-01",
+          "y": 5161,
+          "source": "seed"
+        },
+        {
+          "x": "2025-02",
+          "y": 5203,
+          "source": "seed"
+        },
+        {
+          "x": "2025-03",
+          "y": 5246,
+          "source": "seed"
+        },
+        {
+          "x": "2025-04",
+          "y": 5288,
+          "source": "seed"
+        },
+        {
+          "x": "2025-05",
+          "y": 5288,
+          "source": "seed"
+        },
+        {
+          "x": "2025-06",
+          "y": 5400,
+          "source": "seed"
+        },
+        {
+          "x": "2025-07",
+          "y": 5400,
+          "source": "seed"
+        },
+        {
+          "x": "2025-08",
+          "y": 5400,
+          "source": "seed"
+        },
+        {
+          "x": "2025-09",
+          "y": 5400,
+          "source": "seed"
+        },
+        {
+          "x": "2025-10",
+          "y": 5400,
+          "source": "seed"
+        },
+        {
+          "x": "2025-11",
+          "y": 5400,
+          "source": "seed"
+        },
+        {
+          "x": "2025-12",
+          "y": 5400,
+          "source": "seed"
+        },
+        {
+          "x": "2026-01",
+          "y": 5400,
+          "source": "seed"
+        },
+        {
+          "x": "2026-02",
+          "y": 5400,
+          "source": "seed"
+        }
+      ],
+      "dataSources": [
+        "harga_historis",
+        "harga_marketplace",
+        "piphs_reference",
+        "bps_harvest_estimate"
+      ]
+    },
+    {
+      "label": "Biochar Grade B Standard",
+      "category": "CARBON",
+      "currentValue": "Rp 4.860/kg",
+      "trendType": "STABLE",
+      "historyData": [
+        {
+          "x": "2022-01",
+          "y": 2966,
+          "source": "seed"
+        },
+        {
+          "x": "2022-02",
+          "y": 2997,
+          "source": "seed"
+        },
+        {
+          "x": "2022-03",
+          "y": 3182,
+          "source": "seed"
+        },
+        {
+          "x": "2022-04",
+          "y": 3215,
+          "source": "seed"
+        },
+        {
+          "x": "2022-05",
+          "y": 3167,
+          "source": "seed"
+        },
+        {
+          "x": "2022-06",
+          "y": 3280,
+          "source": "seed"
+        },
+        {
+          "x": "2022-07",
+          "y": 3312,
+          "source": "seed"
+        },
+        {
+          "x": "2022-08",
+          "y": 3344,
+          "source": "seed"
+        },
+        {
+          "x": "2022-09",
+          "y": 3376,
+          "source": "seed"
+        },
+        {
+          "x": "2022-10",
+          "y": 3326,
+          "source": "seed"
+        },
+        {
+          "x": "2022-11",
+          "y": 3273,
+          "source": "seed"
+        },
+        {
+          "x": "2022-12",
+          "y": 3304,
+          "source": "seed"
+        },
+        {
+          "x": "2023-01",
+          "y": 3334,
+          "source": "seed"
+        },
+        {
+          "x": "2023-02",
+          "y": 3422,
+          "source": "seed"
+        },
+        {
+          "x": "2023-03",
+          "y": 3466,
+          "source": "seed"
+        },
+        {
+          "x": "2023-04",
+          "y": 3510,
+          "source": "seed"
+        },
+        {
+          "x": "2023-05",
+          "y": 3598,
+          "source": "seed"
+        },
+        {
+          "x": "2023-06",
+          "y": 3554,
+          "source": "seed"
+        },
+        {
+          "x": "2023-07",
+          "y": 3686,
+          "source": "seed"
+        },
+        {
+          "x": "2023-08",
+          "y": 3730,
+          "source": "seed"
+        },
+        {
+          "x": "2023-09",
+          "y": 3773,
+          "source": "seed"
+        },
+        {
+          "x": "2023-10",
+          "y": 3955,
+          "source": "seed"
+        },
+        {
+          "x": "2023-11",
+          "y": 4105,
+          "source": "seed"
+        },
+        {
+          "x": "2023-12",
+          "y": 4151,
+          "source": "seed"
+        },
+        {
+          "x": "2024-01",
+          "y": 4190,
+          "source": "seed"
+        },
+        {
+          "x": "2024-02",
+          "y": 4227,
+          "source": "seed"
+        },
+        {
+          "x": "2024-03",
+          "y": 4266,
+          "source": "seed"
+        },
+        {
+          "x": "2024-04",
+          "y": 4304,
+          "source": "seed"
+        },
+        {
+          "x": "2024-05",
+          "y": 4342,
+          "source": "seed"
+        },
+        {
+          "x": "2024-06",
+          "y": 4379,
+          "source": "seed"
+        },
+        {
+          "x": "2024-07",
+          "y": 4414,
+          "source": "seed"
+        },
+        {
+          "x": "2024-08",
+          "y": 4302,
+          "source": "seed"
+        },
+        {
+          "x": "2024-09",
+          "y": 4274,
+          "source": "seed"
+        },
+        {
+          "x": "2024-10",
+          "y": 4310,
+          "source": "seed"
+        },
+        {
+          "x": "2024-11",
+          "y": 4346,
+          "source": "seed"
+        },
+        {
+          "x": "2024-12",
+          "y": 4382,
+          "source": "seed"
+        },
+        {
+          "x": "2025-01",
+          "y": 4645,
+          "source": "seed"
+        },
+        {
+          "x": "2025-02",
+          "y": 4683,
+          "source": "seed"
+        },
+        {
+          "x": "2025-03",
+          "y": 4721,
+          "source": "seed"
+        },
+        {
+          "x": "2025-04",
+          "y": 4759,
+          "source": "seed"
+        },
+        {
+          "x": "2025-05",
+          "y": 4759,
+          "source": "seed"
+        },
+        {
+          "x": "2025-06",
+          "y": 4860,
+          "source": "seed"
+        },
+        {
+          "x": "2025-07",
+          "y": 4860,
+          "source": "seed"
+        },
+        {
+          "x": "2025-08",
+          "y": 4860,
+          "source": "seed"
+        },
+        {
+          "x": "2025-09",
+          "y": 4860,
+          "source": "seed"
+        },
+        {
+          "x": "2025-10",
+          "y": 4860,
+          "source": "seed"
+        },
+        {
+          "x": "2025-11",
+          "y": 4860,
+          "source": "seed"
+        },
+        {
+          "x": "2025-12",
+          "y": 4860,
+          "source": "seed"
+        },
+        {
+          "x": "2026-01",
+          "y": 4860,
+          "source": "seed"
+        },
+        {
+          "x": "2026-02",
+          "y": 4860,
+          "source": "seed"
+        }
+      ],
+      "dataSources": [
+        "harga_historis",
+        "harga_marketplace",
+        "piphs_reference",
+        "bps_harvest_estimate"
+      ]
+    },
+    {
+      "label": "Biochar Grade C Ekonomis",
+      "category": "CARBON",
+      "currentValue": "Rp 4.212/kg",
+      "trendType": "STABLE",
+      "historyData": [
+        {
+          "x": "2022-01",
+          "y": 2571,
+          "source": "seed"
+        },
+        {
+          "x": "2022-02",
+          "y": 2597,
+          "source": "seed"
+        },
+        {
+          "x": "2022-03",
+          "y": 2758,
+          "source": "seed"
+        },
+        {
+          "x": "2022-04",
+          "y": 2786,
+          "source": "seed"
+        },
+        {
+          "x": "2022-05",
+          "y": 2745,
+          "source": "seed"
+        },
+        {
+          "x": "2022-06",
+          "y": 2842,
+          "source": "seed"
+        },
+        {
+          "x": "2022-07",
+          "y": 2870,
+          "source": "seed"
+        },
+        {
+          "x": "2022-08",
+          "y": 2898,
+          "source": "seed"
+        },
+        {
+          "x": "2022-09",
+          "y": 2926,
+          "source": "seed"
+        },
+        {
+          "x": "2022-10",
+          "y": 2883,
+          "source": "seed"
+        },
+        {
+          "x": "2022-11",
+          "y": 2837,
+          "source": "seed"
+        },
+        {
+          "x": "2022-12",
+          "y": 2863,
+          "source": "seed"
+        },
+        {
+          "x": "2023-01",
+          "y": 2890,
+          "source": "seed"
+        },
+        {
+          "x": "2023-02",
+          "y": 2966,
+          "source": "seed"
+        },
+        {
+          "x": "2023-03",
+          "y": 3004,
+          "source": "seed"
+        },
+        {
+          "x": "2023-04",
+          "y": 3042,
+          "source": "seed"
+        },
+        {
+          "x": "2023-05",
+          "y": 3118,
+          "source": "seed"
+        },
+        {
+          "x": "2023-06",
+          "y": 3080,
+          "source": "seed"
+        },
+        {
+          "x": "2023-07",
+          "y": 3194,
+          "source": "seed"
+        },
+        {
+          "x": "2023-08",
+          "y": 3232,
+          "source": "seed"
+        },
+        {
+          "x": "2023-09",
+          "y": 3270,
+          "source": "seed"
+        },
+        {
+          "x": "2023-10",
+          "y": 3427,
+          "source": "seed"
+        },
+        {
+          "x": "2023-11",
+          "y": 3558,
+          "source": "seed"
+        },
+        {
+          "x": "2023-12",
+          "y": 3597,
+          "source": "seed"
+        },
+        {
+          "x": "2024-01",
+          "y": 3631,
+          "source": "seed"
+        },
+        {
+          "x": "2024-02",
+          "y": 3664,
+          "source": "seed"
+        },
+        {
+          "x": "2024-03",
+          "y": 3697,
+          "source": "seed"
+        },
+        {
+          "x": "2024-04",
+          "y": 3730,
+          "source": "seed"
+        },
+        {
+          "x": "2024-05",
+          "y": 3763,
+          "source": "seed"
+        },
+        {
+          "x": "2024-06",
+          "y": 3795,
+          "source": "seed"
+        },
+        {
+          "x": "2024-07",
+          "y": 3825,
+          "source": "seed"
+        },
+        {
+          "x": "2024-08",
+          "y": 3728,
+          "source": "seed"
+        },
+        {
+          "x": "2024-09",
+          "y": 3704,
+          "source": "seed"
+        },
+        {
+          "x": "2024-10",
+          "y": 3735,
+          "source": "seed"
+        },
+        {
+          "x": "2024-11",
+          "y": 3767,
+          "source": "seed"
+        },
+        {
+          "x": "2024-12",
+          "y": 3798,
+          "source": "seed"
+        },
+        {
+          "x": "2025-01",
+          "y": 4026,
+          "source": "seed"
+        },
+        {
+          "x": "2025-02",
+          "y": 4058,
+          "source": "seed"
+        },
+        {
+          "x": "2025-03",
+          "y": 4092,
+          "source": "seed"
+        },
+        {
+          "x": "2025-04",
+          "y": 4125,
+          "source": "seed"
+        },
+        {
+          "x": "2025-05",
+          "y": 4125,
+          "source": "seed"
+        },
+        {
+          "x": "2025-06",
+          "y": 4212,
+          "source": "seed"
+        },
+        {
+          "x": "2025-07",
+          "y": 4212,
+          "source": "seed"
+        },
+        {
+          "x": "2025-08",
+          "y": 4212,
+          "source": "seed"
+        },
+        {
+          "x": "2025-09",
+          "y": 4212,
+          "source": "seed"
+        },
+        {
+          "x": "2025-10",
+          "y": 4212,
+          "source": "seed"
+        },
+        {
+          "x": "2025-11",
+          "y": 4212,
+          "source": "seed"
+        },
+        {
+          "x": "2025-12",
+          "y": 4212,
+          "source": "seed"
+        },
+        {
+          "x": "2026-01",
+          "y": 4212,
+          "source": "seed"
+        },
+        {
+          "x": "2026-02",
+          "y": 4212,
+          "source": "seed"
+        }
+      ],
+      "dataSources": [
+        "harga_historis",
+        "harga_marketplace",
+        "piphs_reference",
+        "bps_harvest_estimate"
+      ]
+    },
+    {
+      "label": "Sekam Padi Mentah",
+      "category": "BIOMASSA",
+      "currentValue": "Rp 848/kg",
+      "trendType": "UP",
+      "historyData": [
+        {
+          "x": "2022-01",
+          "y": 746,
+          "source": "seed"
+        },
+        {
+          "x": "2022-02",
+          "y": 669,
+          "source": "seed"
+        },
+        {
+          "x": "2022-03",
+          "y": 748,
+          "source": "seed"
+        },
+        {
+          "x": "2022-04",
+          "y": 684,
+          "source": "seed"
+        },
+        {
+          "x": "2022-05",
+          "y": 692,
+          "source": "seed"
+        },
+        {
+          "x": "2022-06",
+          "y": 789,
+          "source": "seed"
+        },
+        {
+          "x": "2022-07",
+          "y": 797,
+          "source": "seed"
+        },
+        {
+          "x": "2022-08",
+          "y": 806,
+          "source": "seed"
+        },
+        {
+          "x": "2022-09",
+          "y": 814,
+          "source": "seed"
+        },
+        {
+          "x": "2022-10",
+          "y": 734,
+          "source": "seed"
+        },
+        {
+          "x": "2022-11",
+          "y": 737,
+          "source": "seed"
+        },
+        {
+          "x": "2022-12",
+          "y": 774,
+          "source": "seed"
+        },
+        {
+          "x": "2023-01",
+          "y": 848,
+          "source": "seed"
+        },
+        {
+          "x": "2023-02",
+          "y": 840,
+          "source": "seed"
+        },
+        {
+          "x": "2023-03",
+          "y": 859,
+          "source": "seed"
+        },
+        {
+          "x": "2023-04",
+          "y": 743,
+          "source": "seed"
+        },
+        {
+          "x": "2023-05",
+          "y": 733,
+          "source": "seed"
+        },
+        {
+          "x": "2023-06",
+          "y": 752,
+          "source": "seed"
+        },
+        {
+          "x": "2023-07",
+          "y": 752,
+          "source": "seed"
+        },
+        {
+          "x": "2023-08",
+          "y": 761,
+          "source": "seed"
+        },
+        {
+          "x": "2023-09",
+          "y": 761,
+          "source": "seed"
+        },
+        {
+          "x": "2023-10",
+          "y": 829,
+          "source": "seed"
+        },
+        {
+          "x": "2023-11",
+          "y": 848,
+          "source": "seed"
+        },
+        {
+          "x": "2023-12",
+          "y": 848,
+          "source": "seed"
+        },
+        {
+          "x": "2024-01",
+          "y": 778,
+          "source": "seed"
+        },
+        {
+          "x": "2024-02",
+          "y": 833,
+          "source": "seed"
+        },
+        {
+          "x": "2024-03",
+          "y": 848,
+          "source": "seed"
+        },
+        {
+          "x": "2024-04",
+          "y": 794,
+          "source": "seed"
+        },
+        {
+          "x": "2024-05",
+          "y": 767,
+          "source": "seed"
+        },
+        {
+          "x": "2024-06",
+          "y": 806,
+          "source": "seed"
+        },
+        {
+          "x": "2024-07",
+          "y": 848,
+          "source": "seed"
+        },
+        {
+          "x": "2024-08",
+          "y": 848,
+          "source": "seed"
+        },
+        {
+          "x": "2024-09",
+          "y": 788,
+          "source": "seed"
+        },
+        {
+          "x": "2024-10",
+          "y": 752,
+          "source": "seed"
+        },
+        {
+          "x": "2024-11",
+          "y": 752,
+          "source": "seed"
+        },
+        {
+          "x": "2024-12",
+          "y": 752,
+          "source": "seed"
+        },
+        {
+          "x": "2025-01",
+          "y": 848,
+          "source": "seed"
+        },
+        {
+          "x": "2025-02",
+          "y": 848,
+          "source": "seed"
+        },
+        {
+          "x": "2025-03",
+          "y": 848,
+          "source": "seed"
+        },
+        {
+          "x": "2025-04",
+          "y": 848,
+          "source": "seed"
+        },
+        {
+          "x": "2025-05",
+          "y": 752,
+          "source": "seed"
+        },
+        {
+          "x": "2025-06",
+          "y": 781,
+          "source": "seed"
+        },
+        {
+          "x": "2025-07",
+          "y": 848,
+          "source": "seed"
+        },
+        {
+          "x": "2025-08",
+          "y": 752,
+          "source": "seed"
+        },
+        {
+          "x": "2025-09",
+          "y": 752,
+          "source": "seed"
+        },
+        {
+          "x": "2025-10",
+          "y": 752,
+          "source": "seed"
+        },
+        {
+          "x": "2025-11",
+          "y": 752,
+          "source": "seed"
+        },
+        {
+          "x": "2025-12",
+          "y": 848,
+          "source": "seed"
+        },
+        {
+          "x": "2026-01",
+          "y": 848,
+          "source": "seed"
+        },
+        {
+          "x": "2026-02",
+          "y": 848,
+          "source": "seed"
+        }
+      ],
+      "dataSources": [
+        "harga_historis",
+        "harga_marketplace",
+        "piphs_reference",
+        "bps_harvest_estimate"
+      ]
+    },
+    {
+      "label": "Tongkol Jagung Kering",
+      "category": "BIOMASSA",
+      "currentValue": "Rp 689/kg",
+      "trendType": "STABLE",
+      "historyData": [
+        {
+          "x": "2022-01",
+          "y": 662,
+          "source": "seed"
+        },
+        {
+          "x": "2022-02",
+          "y": 669,
+          "source": "seed"
+        },
+        {
+          "x": "2022-03",
+          "y": 677,
+          "source": "seed"
+        },
+        {
+          "x": "2022-04",
+          "y": 684,
+          "source": "seed"
+        },
+        {
+          "x": "2022-05",
+          "y": 780,
+          "source": "seed"
+        },
+        {
+          "x": "2022-06",
+          "y": 789,
+          "source": "seed"
+        },
+        {
+          "x": "2022-07",
+          "y": 797,
+          "source": "seed"
+        },
+        {
+          "x": "2022-08",
+          "y": 783,
+          "source": "seed"
+        },
+        {
+          "x": "2022-09",
+          "y": 722,
+          "source": "seed"
+        },
+        {
+          "x": "2022-10",
+          "y": 729,
+          "source": "seed"
+        },
+        {
+          "x": "2022-11",
+          "y": 739,
+          "source": "seed"
+        },
+        {
+          "x": "2022-12",
+          "y": 749,
+          "source": "seed"
+        },
+        {
+          "x": "2023-01",
+          "y": 823,
+          "source": "seed"
+        },
+        {
+          "x": "2023-02",
+          "y": 856,
+          "source": "seed"
+        },
+        {
+          "x": "2023-03",
+          "y": 761,
+          "source": "seed"
+        },
+        {
+          "x": "2023-04",
+          "y": 743,
+          "source": "seed"
+        },
+        {
+          "x": "2023-05",
+          "y": 821,
+          "source": "seed"
+        },
+        {
+          "x": "2023-06",
+          "y": 803,
+          "source": "seed"
+        },
+        {
+          "x": "2023-07",
+          "y": 761,
+          "source": "seed"
+        },
+        {
+          "x": "2023-08",
+          "y": 761,
+          "source": "seed"
+        },
+        {
+          "x": "2023-09",
+          "y": 761,
+          "source": "seed"
+        },
+        {
+          "x": "2023-10",
+          "y": 752,
+          "source": "seed"
+        },
+        {
+          "x": "2023-11",
+          "y": 752,
+          "source": "seed"
+        },
+        {
+          "x": "2023-12",
+          "y": 752,
+          "source": "seed"
+        },
+        {
+          "x": "2024-01",
+          "y": 645,
+          "source": "seed"
+        },
+        {
+          "x": "2024-02",
+          "y": 611,
+          "source": "seed"
+        },
+        {
+          "x": "2024-03",
+          "y": 611,
+          "source": "seed"
+        },
+        {
+          "x": "2024-04",
+          "y": 689,
+          "source": "seed"
+        },
+        {
+          "x": "2024-05",
+          "y": 689,
+          "source": "seed"
+        },
+        {
+          "x": "2024-06",
+          "y": 689,
+          "source": "seed"
+        },
+        {
+          "x": "2024-07",
+          "y": 611,
+          "source": "seed"
+        },
+        {
+          "x": "2024-08",
+          "y": 611,
+          "source": "seed"
+        },
+        {
+          "x": "2024-09",
+          "y": 611,
+          "source": "seed"
+        },
+        {
+          "x": "2024-10",
+          "y": 611,
+          "source": "seed"
+        },
+        {
+          "x": "2024-11",
+          "y": 648,
+          "source": "seed"
+        },
+        {
+          "x": "2024-12",
+          "y": 689,
+          "source": "seed"
+        },
+        {
+          "x": "2025-01",
+          "y": 676,
+          "source": "seed"
+        },
+        {
+          "x": "2025-02",
+          "y": 611,
+          "source": "seed"
+        },
+        {
+          "x": "2025-03",
+          "y": 689,
+          "source": "seed"
+        },
+        {
+          "x": "2025-04",
+          "y": 689,
+          "source": "seed"
+        },
+        {
+          "x": "2025-05",
+          "y": 676,
+          "source": "seed"
+        },
+        {
+          "x": "2025-06",
+          "y": 689,
+          "source": "seed"
+        },
+        {
+          "x": "2025-07",
+          "y": 689,
+          "source": "seed"
+        },
+        {
+          "x": "2025-08",
+          "y": 689,
+          "source": "seed"
+        },
+        {
+          "x": "2025-09",
+          "y": 689,
+          "source": "seed"
+        },
+        {
+          "x": "2025-10",
+          "y": 664,
+          "source": "seed"
+        },
+        {
+          "x": "2025-11",
+          "y": 688,
+          "source": "seed"
+        },
+        {
+          "x": "2025-12",
+          "y": 689,
+          "source": "seed"
+        },
+        {
+          "x": "2026-01",
+          "y": 689,
+          "source": "seed"
+        },
+        {
+          "x": "2026-02",
+          "y": 689,
+          "source": "seed"
+        }
+      ],
+      "dataSources": [
+        "harga_historis",
+        "harga_marketplace",
+        "piphs_reference",
+        "bps_harvest_estimate"
+      ]
+    },
+    {
+      "label": "Tempurung Kelapa",
+      "category": "BIOMASSA",
+      "currentValue": "Rp 968/kg",
+      "trendType": "STABLE",
+      "historyData": [
+        {
+          "x": "2022-01",
+          "y": 750,
+          "source": "seed"
+        },
+        {
+          "x": "2022-02",
+          "y": 750,
+          "source": "seed"
+        },
+        {
+          "x": "2022-03",
+          "y": 750,
+          "source": "seed"
+        },
+        {
+          "x": "2022-04",
+          "y": 750,
+          "source": "seed"
+        },
+        {
+          "x": "2022-05",
+          "y": 750,
+          "source": "seed"
+        },
+        {
+          "x": "2022-06",
+          "y": 750,
+          "source": "seed"
+        },
+        {
+          "x": "2022-07",
+          "y": 750,
+          "source": "seed"
+        },
+        {
+          "x": "2022-08",
+          "y": 750,
+          "source": "seed"
+        },
+        {
+          "x": "2022-09",
+          "y": 750,
+          "source": "seed"
+        },
+        {
+          "x": "2022-10",
+          "y": 750,
+          "source": "seed"
+        },
+        {
+          "x": "2022-11",
+          "y": 750,
+          "source": "seed"
+        },
+        {
+          "x": "2022-12",
+          "y": 750,
+          "source": "seed"
+        },
+        {
+          "x": "2023-01",
+          "y": 752,
+          "source": "seed"
+        },
+        {
+          "x": "2023-02",
+          "y": 771,
+          "source": "seed"
+        },
+        {
+          "x": "2023-03",
+          "y": 761,
+          "source": "seed"
+        },
+        {
+          "x": "2023-04",
+          "y": 750,
+          "source": "seed"
+        },
+        {
+          "x": "2023-05",
+          "y": 750,
+          "source": "seed"
+        },
+        {
+          "x": "2023-06",
+          "y": 797,
+          "source": "seed"
+        },
+        {
+          "x": "2023-07",
+          "y": 848,
+          "source": "seed"
+        },
+        {
+          "x": "2023-08",
+          "y": 840,
+          "source": "seed"
+        },
+        {
+          "x": "2023-09",
+          "y": 807,
+          "source": "seed"
+        },
+        {
+          "x": "2023-10",
+          "y": 769,
+          "source": "seed"
+        },
+        {
+          "x": "2023-11",
+          "y": 755,
+          "source": "seed"
+        },
+        {
+          "x": "2023-12",
+          "y": 784,
+          "source": "seed"
+        },
+        {
+          "x": "2024-01",
+          "y": 990,
+          "source": "seed"
+        },
+        {
+          "x": "2024-02",
+          "y": 960,
+          "source": "seed"
+        },
+        {
+          "x": "2024-03",
+          "y": 1007,
+          "source": "seed"
+        },
+        {
+          "x": "2024-04",
+          "y": 1007,
+          "source": "seed"
+        },
+        {
+          "x": "2024-05",
+          "y": 1007,
+          "source": "seed"
+        },
+        {
+          "x": "2024-06",
+          "y": 1007,
+          "source": "seed"
+        },
+        {
+          "x": "2024-07",
+          "y": 1004,
+          "source": "seed"
+        },
+        {
+          "x": "2024-08",
+          "y": 991,
+          "source": "seed"
+        },
+        {
+          "x": "2024-09",
+          "y": 996,
+          "source": "seed"
+        },
+        {
+          "x": "2024-10",
+          "y": 999,
+          "source": "seed"
+        },
+        {
+          "x": "2024-11",
+          "y": 1007,
+          "source": "seed"
+        },
+        {
+          "x": "2024-12",
+          "y": 1007,
+          "source": "seed"
+        },
+        {
+          "x": "2025-01",
+          "y": 1007,
+          "source": "seed"
+        },
+        {
+          "x": "2025-02",
+          "y": 1007,
+          "source": "seed"
+        },
+        {
+          "x": "2025-03",
+          "y": 1007,
+          "source": "seed"
+        },
+        {
+          "x": "2025-04",
+          "y": 1007,
+          "source": "seed"
+        },
+        {
+          "x": "2025-05",
+          "y": 1007,
+          "source": "seed"
+        },
+        {
+          "x": "2025-06",
+          "y": 1007,
+          "source": "seed"
+        },
+        {
+          "x": "2025-07",
+          "y": 972,
+          "source": "seed"
+        },
+        {
+          "x": "2025-08",
+          "y": 953,
+          "source": "seed"
+        },
+        {
+          "x": "2025-09",
+          "y": 931,
+          "source": "seed"
+        },
+        {
+          "x": "2025-10",
+          "y": 922,
+          "source": "seed"
+        },
+        {
+          "x": "2025-11",
+          "y": 922,
+          "source": "seed"
+        },
+        {
+          "x": "2025-12",
+          "y": 974,
+          "source": "seed"
+        },
+        {
+          "x": "2026-01",
+          "y": 974,
+          "source": "seed"
+        },
+        {
+          "x": "2026-02",
+          "y": 968,
+          "source": "seed"
+        }
+      ],
+      "dataSources": [
+        "harga_historis",
+        "harga_marketplace",
+        "piphs_reference",
+        "bps_harvest_estimate"
+      ]
+    },
+    {
+      "label": "Kargo Truk (Jawa - Bali)",
+      "category": "LOGISTICS",
+      "currentValue": "Rp 3.654.934",
+      "trendType": "STABLE",
+      "historyData": [
+        {
+          "x": "2022-01",
+          "y": 3769800,
+          "source": "seed"
+        },
+        {
+          "x": "2022-02",
+          "y": 3593850,
+          "source": "seed"
+        },
+        {
+          "x": "2022-03",
+          "y": 3862500,
+          "source": "seed"
+        },
+        {
+          "x": "2022-04",
+          "y": 3681150,
+          "source": "seed"
+        },
+        {
+          "x": "2022-05",
+          "y": 3724800,
+          "source": "seed"
+        },
+        {
+          "x": "2022-06",
+          "y": 4001550,
+          "source": "seed"
+        },
+        {
+          "x": "2022-07",
+          "y": 4047900,
+          "source": "seed"
+        },
+        {
+          "x": "2022-08",
+          "y": 4094250,
+          "source": "seed"
+        },
+        {
+          "x": "2022-09",
+          "y": 4140600,
+          "source": "seed"
+        },
+        {
+          "x": "2022-10",
+          "y": 3943050,
+          "source": "seed"
+        },
+        {
+          "x": "2022-11",
+          "y": 3986700,
+          "source": "seed"
+        },
+        {
+          "x": "2022-12",
+          "y": 4058132,
+          "source": "seed"
+        },
+        {
+          "x": "2023-01",
+          "y": 4326000,
+          "source": "seed"
+        },
+        {
+          "x": "2023-02",
+          "y": 4248810,
+          "source": "seed"
+        },
+        {
+          "x": "2023-03",
+          "y": 4223000,
+          "source": "seed"
+        },
+        {
+          "x": "2023-04",
+          "y": 4365000,
+          "source": "seed"
+        },
+        {
+          "x": "2023-05",
+          "y": 3880000,
+          "source": "seed"
+        },
+        {
+          "x": "2023-06",
+          "y": 3783000,
+          "source": "seed"
+        },
+        {
+          "x": "2023-07",
+          "y": 3734500,
+          "source": "seed"
+        },
+        {
+          "x": "2023-08",
+          "y": 3686000,
+          "source": "seed"
+        },
+        {
+          "x": "2023-09",
+          "y": 3589000,
+          "source": "seed"
+        },
+        {
+          "x": "2023-10",
+          "y": 3708000,
+          "source": "seed"
+        },
+        {
+          "x": "2023-11",
+          "y": 3656500,
+          "source": "seed"
+        },
+        {
+          "x": "2023-12",
+          "y": 3605000,
+          "source": "seed"
+        },
+        {
+          "x": "2024-01",
+          "y": 3504861,
+          "source": "seed"
+        },
+        {
+          "x": "2024-02",
+          "y": 3610007,
+          "source": "seed"
+        },
+        {
+          "x": "2024-03",
+          "y": 3718307,
+          "source": "seed"
+        },
+        {
+          "x": "2024-04",
+          "y": 3688797,
+          "source": "seed"
+        },
+        {
+          "x": "2024-05",
+          "y": 3578133,
+          "source": "seed"
+        },
+        {
+          "x": "2024-06",
+          "y": 3606531,
+          "source": "seed"
+        },
+        {
+          "x": "2024-07",
+          "y": 3714727,
+          "source": "seed"
+        },
+        {
+          "x": "2024-08",
+          "y": 3826169,
+          "source": "seed"
+        },
+        {
+          "x": "2024-09",
+          "y": 3769232,
+          "source": "seed"
+        },
+        {
+          "x": "2024-10",
+          "y": 3656155,
+          "source": "seed"
+        },
+        {
+          "x": "2024-11",
+          "y": 3546470,
+          "source": "seed"
+        },
+        {
+          "x": "2024-12",
+          "y": 3440076,
+          "source": "seed"
+        },
+        {
+          "x": "2025-01",
+          "y": 3543278,
+          "source": "seed"
+        },
+        {
+          "x": "2025-02",
+          "y": 3649576,
+          "source": "seed"
+        },
+        {
+          "x": "2025-03",
+          "y": 3759063,
+          "source": "seed"
+        },
+        {
+          "x": "2025-04",
+          "y": 3871835,
+          "source": "seed"
+        },
+        {
+          "x": "2025-05",
+          "y": 3755680,
+          "source": "seed"
+        },
+        {
+          "x": "2025-06",
+          "y": 3668122,
+          "source": "seed"
+        },
+        {
+          "x": "2025-07",
+          "y": 3778166,
+          "source": "seed"
+        },
+        {
+          "x": "2025-08",
+          "y": 3664821,
+          "source": "seed"
+        },
+        {
+          "x": "2025-09",
+          "y": 3554876,
+          "source": "seed"
+        },
+        {
+          "x": "2025-10",
+          "y": 3448230,
+          "source": "seed"
+        },
+        {
+          "x": "2025-11",
+          "y": 3344783,
+          "source": "seed"
+        },
+        {
+          "x": "2025-12",
+          "y": 3445126,
+          "source": "seed"
+        },
+        {
+          "x": "2026-01",
+          "y": 3548480,
+          "source": "seed"
+        },
+        {
+          "x": "2026-02",
+          "y": 3654934,
+          "source": "seed"
+        }
+      ],
+      "dataSources": [
+        "harga_historis",
+        "harga_marketplace",
+        "piphs_reference",
+        "bps_harvest_estimate"
+      ]
+    }
+  ],
+  "harvestWaste": [
+    {
+      "province": "Jawa Tengah",
+      "regency": null,
+      "biomassaType": "SEKAM_PADI",
+      "volumeTon": 2450000,
+      "year": 2024,
+      "source": "BPS 2024 (estimasi sekam padi)"
+    },
+    {
+      "province": "Jawa Timur",
+      "regency": null,
+      "biomassaType": "SEKAM_PADI",
+      "volumeTon": 2180000,
+      "year": 2024,
+      "source": "BPS 2024 (estimasi sekam padi)"
+    },
+    {
+      "province": "Jawa Barat",
+      "regency": null,
+      "biomassaType": "SEKAM_PADI",
+      "volumeTon": 1620000,
+      "year": 2024,
+      "source": "BPS 2024 (estimasi sekam padi)"
+    },
+    {
+      "province": "Sumatera Selatan",
+      "regency": null,
+      "biomassaType": "SEKAM_PADI",
+      "volumeTon": 980000,
+      "year": 2024,
+      "source": "BPS 2024 (estimasi sekam padi)"
+    },
+    {
+      "province": "Lampung",
+      "regency": null,
+      "biomassaType": "SEKAM_PADI",
+      "volumeTon": 720000,
+      "year": 2024,
+      "source": "BPS 2024 (estimasi sekam padi)"
+    },
+    {
+      "province": "Sulawesi Selatan",
+      "regency": null,
+      "biomassaType": "SEKAM_PADI",
+      "volumeTon": 540000,
+      "year": 2024,
+      "source": "BPS 2024 (estimasi sekam padi)"
+    },
+    {
+      "province": "Jawa Tengah",
+      "regency": null,
+      "biomassaType": "TONGKOL_JAGUNG",
+      "volumeTon": 890000,
+      "year": 2024,
+      "source": "BPS 2024 (estimasi tongkol jagung)"
+    },
+    {
+      "province": "Jawa Timur",
+      "regency": null,
+      "biomassaType": "TONGKOL_JAGUNG",
+      "volumeTon": 760000,
+      "year": 2024,
+      "source": "BPS 2024 (estimasi tongkol jagung)"
+    },
+    {
+      "province": "Nusa Tenggara Timur",
+      "regency": null,
+      "biomassaType": "TONGKOL_JAGUNG",
+      "volumeTon": 410000,
+      "year": 2024,
+      "source": "BPS 2024 (estimasi tongkol jagung)"
+    },
+    {
+      "province": "Riau",
+      "regency": null,
+      "biomassaType": "TEMPURUNG_KELAPA",
+      "volumeTon": 320000,
+      "year": 2024,
+      "source": "Kementan 2024 (estimasi tempurung)"
+    },
+    {
+      "province": "Jawa Tengah",
+      "regency": null,
+      "biomassaType": "TEMPURUNG_KELAPA",
+      "volumeTon": 280000,
+      "year": 2024,
+      "source": "Kementan 2024 (estimasi tempurung)"
+    },
+    {
+      "province": "Kalimantan Selatan",
+      "regency": null,
+      "biomassaType": "TEMPURUNG_KELAPA",
+      "volumeTon": 210000,
+      "year": 2024,
+      "source": "Kementan 2024 (estimasi tempurung)"
+    },
+    {
+      "province": "Jawa Tengah",
+      "regency": null,
+      "biomassaType": "SEKAM_PADI",
+      "volumeTon": 2520000,
+      "year": 2023,
+      "source": "BPS 2023 (hasil panen)"
+    },
+    {
+      "province": "Jawa Timur",
+      "regency": null,
+      "biomassaType": "SEKAM_PADI",
+      "volumeTon": 2240000,
+      "year": 2023,
+      "source": "BPS 2023 (hasil panen)"
+    },
+    {
+      "province": "Jawa Tengah",
+      "regency": null,
+      "biomassaType": "TONGKOL_JAGUNG",
+      "volumeTon": 850000,
+      "year": 2023,
+      "source": "BPS 2023 (hasil panen jagung)"
+    },
+    {
+      "province": "Jawa Timur",
+      "regency": null,
+      "biomassaType": "TONGKOL_JAGUNG",
+      "volumeTon": 730000,
+      "year": 2023,
+      "source": "BPS 2023 (hasil panen jagung)"
+    },
+    {
+      "province": "Jawa Tengah",
+      "regency": null,
+      "biomassaType": "SEKAM_PADI",
+      "volumeTon": 2380000,
+      "year": 2022,
+      "source": "BPS 2022 (hasil panen)"
+    },
+    {
+      "province": "Jawa Timur",
+      "regency": null,
+      "biomassaType": "SEKAM_PADI",
+      "volumeTon": 2110000,
+      "year": 2022,
+      "source": "BPS 2022 (hasil panen)"
+    },
+    {
+      "province": "Jawa Tengah",
+      "regency": null,
+      "biomassaType": "BIOCHAR",
+      "volumeTon": 18500,
+      "year": 2024,
+      "source": "Asumsi kapasitas pirolisis BISA"
+    },
+    {
+      "province": "Jawa Timur",
+      "regency": null,
+      "biomassaType": "BIOCHAR",
+      "volumeTon": 14200,
+      "year": 2024,
+      "source": "Asumsi kapasitas pirolisis BISA"
+    },
+    {
+      "province": "Kalimantan Selatan",
+      "regency": null,
+      "biomassaType": "BIOCHAR",
+      "volumeTon": 9800,
+      "year": 2024,
+      "source": "PUM Pagatan (estimasi produksi)"
+    }
+  ]
+}

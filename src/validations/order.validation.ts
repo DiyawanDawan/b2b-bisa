@@ -64,6 +64,8 @@ export const createDirectOrderSchema = z.object({
     )
     .optional(),
   notes: z.string().max(500, 'Catatan terlalu panjang').optional(),
+  orderType: z.enum(['STANDARD', 'SAMPLE']).optional().default('STANDARD'),
+  voucherCode: z.string().min(2).max(50).optional(),
 });
 
 export const previewDirectOrderFromCartQuerySchema = z.object({
@@ -154,5 +156,14 @@ export const listOrdersSchema = z.object({
     status: z.string().optional(),
     search: z.string().optional(),
     productMode: z.nativeEnum(ProductMode).optional(),
+    orderType: z.enum(['STANDARD', 'SAMPLE']).optional(),
+  }),
+});
+
+export const orderStatusCountsSchema = z.object({
+  query: z.object({
+    search: z.string().optional(),
+    productMode: z.nativeEnum(ProductMode).optional(),
+    orderType: z.enum(['STANDARD', 'SAMPLE']).optional(),
   }),
 });

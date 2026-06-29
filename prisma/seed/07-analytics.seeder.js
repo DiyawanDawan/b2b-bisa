@@ -2,31 +2,16 @@ import logger from '../../src/config/logger.js';
 import { faker } from '@faker-js/faker/locale/id_ID';
 
 export async function seedAnalytics(prisma) {
-  logger.info('🌱 [07] Seeding Market Trends & Waste Data (10+ Data)...');
+  logger.info('🌱 [07] Seeding Waste Data (market trends di 11-market.seeder.js)...');
 
-  await prisma.marketTrend.deleteMany({});
-  await prisma.wasteData.deleteMany({});
+  await prisma.wasteData.deleteMany({
+    where: {
+      NOT: { source: { contains: 'BPS' } },
+    },
+  });
 
-  const categories = ['CARBON', 'BIOMASSA', 'LOGISTICS'];
-  const trendTypes = ['UP', 'DOWN', 'STABLE'];
-
-  // 10 Market Trends
-  for (let i = 0; i < 10; i++) {
-    const history = Array.from({ length: 5 }, () => faker.number.int({ min: 1000, max: 20000 }));
-    await prisma.marketTrend.create({
-      data: {
-        label: `Trend ${faker.commerce.productMaterial()} ${faker.location.city()}`,
-        currentValue: `${faker.number.int({ min: 10, max: 50 })}%`,
-        trendType: faker.helpers.arrayElement(trendTypes),
-        category: faker.helpers.arrayElement(categories),
-        historyData: JSON.stringify(history),
-      },
-    });
-  }
-
-  // 10 Waste Data Records
   const biomassaTypes = ['SEKAM_PADI', 'TONGKOL_JAGUNG', 'TEMPURUNG_KELAPA', 'BIOCHAR'];
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 6; i++) {
     await prisma.wasteData.create({
       data: {
         province: faker.location.state(),

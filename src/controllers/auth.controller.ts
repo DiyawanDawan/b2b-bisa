@@ -7,13 +7,14 @@ import { Response, Request } from 'express';
 import { attachAuthResponseMedia } from '#utils/userMedia.util';
 
 export const registerSupplier = catchAsync(async (req: AuthRequest, res: Response) => {
-  const { email, password, fullName, phone, province, regency } = req.body as {
+  const { email, password, fullName, phone, province, regency, referralCode } = req.body as {
     email: string;
     password: string;
     fullName: string;
     phone?: string;
     province?: string;
     regency?: string;
+    referralCode?: string;
   };
   const result = await authService.register({
     email,
@@ -22,19 +23,21 @@ export const registerSupplier = catchAsync(async (req: AuthRequest, res: Respons
     phone,
     province,
     regency,
+    referralCode,
     role: 'SUPPLIER',
   });
   createdResponse(res, result, 'Supplier berhasil terdaftar. Silakan cek OTP Anda.');
 });
 
 export const registerBuyer = catchAsync(async (req: AuthRequest, res: Response) => {
-  const { email, password, fullName, phone, province, regency } = req.body as {
+  const { email, password, fullName, phone, province, regency, referralCode } = req.body as {
     email: string;
     password: string;
     fullName: string;
     phone: string;
     province?: string;
     regency?: string;
+    referralCode?: string;
   };
   const result = await authService.register({
     email,
@@ -43,6 +46,7 @@ export const registerBuyer = catchAsync(async (req: AuthRequest, res: Response) 
     phone,
     province,
     regency,
+    referralCode,
     role: 'BUYER',
   });
   createdResponse(res, result, 'Buyer berhasil terdaftar. Silakan cek OTP Anda.');

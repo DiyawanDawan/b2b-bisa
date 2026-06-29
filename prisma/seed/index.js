@@ -4,11 +4,13 @@ import { seedTaxonomies } from './01-taxonomies.seeder.js';
 import { seedRegions } from './02b-regions.seeder.js';
 import { seedFinancial } from './03-financial.seeder.js';
 import { seedUsers } from './04-users.seeder.js';
+import { seedVouchers } from './20-vouchers.seeder.js';
 import { seedProducts } from './05-products.seeder.js';
 import { seedIoT } from './06-iot.seeder.js';
 import { seedAnalytics } from './07-analytics.seeder.js';
 import { seedTransactions } from './08-transactions.seeder.js';
 import { seedCommunity } from './09-community.seeder.js';
+import { seedForumGroups } from './09-forum-groups.seeder.js';
 import { seedOperations } from './10-operations.seeder.js';
 import { seedMarket } from './11-market.seeder.js';
 import { seedVerifications } from './12-verifications.seeder.js';
@@ -19,6 +21,7 @@ import { seedFaqs } from './16-faqs.seeder.js';
 import { seedStoreBanners } from './17-store-banners.seeder.js';
 import { seedSummary } from './18-seed-summary.seeder.js';
 import { seedPickupVehicles } from './19-pickup-vehicles.seeder.js';
+import { seedRegionalMarketSales } from './21-regional-market-sales.seeder.js';
 
 async function main() {
   logger.info('🚀 Memulai proses FULL Seeding Database BISA B2B...');
@@ -31,6 +34,7 @@ async function main() {
 
     // Phase 2: Core Entities (Depends on Taxonomies & Finance)
     const users = await seedUsers(prisma);
+    await seedVouchers(prisma, users);
     await seedVerifications(prisma);
 
     // Phase 3: Business Logic (Depends on Users)
@@ -46,6 +50,8 @@ async function main() {
     await seedAnalytics(prisma);
     await seedTransactions(prisma, users);
     await seedOrdersAndNegotiations(prisma, users);
+    await seedRegionalMarketSales(prisma);
+    await seedForumGroups(prisma);
     await seedCommunity(prisma, users);
     await seedOperations(prisma, users);
     await seedMarket(prisma);

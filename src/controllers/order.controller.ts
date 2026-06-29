@@ -134,13 +134,14 @@ export const mockConfirmPayment = catchAsync(async (req: AuthRequest, res: Respo
  * [BUYER] View Purchasing History (Bisa Difilter dengan ?status=SHIPPED)
  */
 export const getMyPurchases = catchAsync(async (req: AuthRequest, res: Response) => {
-  const { page = 1, limit = 20, status, search, productMode } = req.query;
+  const { page = 1, limit = 20, status, search, productMode, orderType } = req.query;
   const purchases = await orderService.listOrdersByRole({
     userId: req.user!.id,
     role: 'BUYER',
     statusFilter: status as OrderStatus,
     search: search as string,
     productMode: productMode as string,
+    orderTypeFilter: orderType as 'STANDARD' | 'SAMPLE' | undefined,
     page: Number(page),
     limit: Number(limit),
   });
@@ -159,13 +160,14 @@ export const getMyPurchases = catchAsync(async (req: AuthRequest, res: Response)
  * [SUPPLIER] View Sales History (Bisa Difilter dengan ?status=PENDING)
  */
 export const getMySales = catchAsync(async (req: AuthRequest, res: Response) => {
-  const { page = 1, limit = 20, status, search, productMode } = req.query;
+  const { page = 1, limit = 20, status, search, productMode, orderType } = req.query;
   const sales = await orderService.listOrdersByRole({
     userId: req.user!.id,
     role: 'SELLER',
     statusFilter: status as string,
     search: search as string,
     productMode: productMode as string,
+    orderTypeFilter: orderType as 'STANDARD' | 'SAMPLE' | undefined,
     page: Number(page),
     limit: Number(limit),
   });
@@ -178,6 +180,32 @@ export const getMySales = catchAsync(async (req: AuthRequest, res: Response) => 
     sales.meta.limit,
     'Daftar Kontrak Penjualan B2B Anda.',
   );
+});
+
+export const getMyPurchasesStatusCounts = catchAsync(async (req: AuthRequest, res: Response) => {
+  const { search, productMode, orderType } = req.query;
+  const counts = await orderService.getOrderStatusCounts({
+    userId: req.user!.id,
+    role: 'BUYER',
+    search: search as string,
+    productMode: productMode as string,
+    orderTypeFilter: orderType as 'STANDARD' | 'SAMPLE' | undefined,
+  });
+
+  successResponse(res, counts, 'Ringkasan jumlah pesanan per status.');
+});
+
+export const getMySalesStatusCounts = catchAsync(async (req: AuthRequest, res: Response) => {
+  const { search, productMode, orderType } = req.query;
+  const counts = await orderService.getOrderStatusCounts({
+    userId: req.user!.id,
+    role: 'SELLER',
+    search: search as string,
+    productMode: productMode as string,
+    orderTypeFilter: orderType as 'STANDARD' | 'SAMPLE' | undefined,
+  });
+
+  successResponse(res, counts, 'Ringkasan jumlah penjualan per status.');
 });
 
 /**
@@ -301,6 +329,11 @@ const formatDisputeForApi = (dispute: {
 /**
  * [PUBLIC] Verify Order / Contract QR
  */
+export const signContract = catchAsync(async (req: AuthRequest, res: Response) => {
+  const result = await orderService.signContract(req.params.id, req.user!.id);
+  successResponse(res, result, 'Tanda tangan digital kontrak tercatat.');
+});
+
 export const verifyOrder = catchAsync(async (req: Request, res: Response) => {
   const { orderNumber } = req.params as any;
 

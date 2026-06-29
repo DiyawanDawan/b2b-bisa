@@ -1,12 +1,22 @@
 import { Router } from 'express';
 import * as forumController from '#controllers/forum.controller';
+import * as forumGroupController from '#controllers/forum-group.controller';
 import { requireAuth, optionalAuth } from '#middlewares/authMiddleware';
 import validate from '#middlewares/validate';
 import * as forumValidation from '#validations/forum.validation';
 
 const router = Router();
 
-// Public routes
+// Public routes — groups must be before /posts/:id
+router.get(
+  '/groups',
+  optionalAuth,
+  validate(forumValidation.listGroupsSchema, 'query'),
+  forumGroupController.listGroups,
+);
+
+router.get('/groups/:id', optionalAuth, forumGroupController.getGroupById);
+
 router.get(
   '/posts',
   optionalAuth,
@@ -28,6 +38,21 @@ router.get('/posts/:id', optionalAuth, forumController.getPostById);
 
 // Protected routes
 router.use(requireAuth);
+
+router.post(
+  '/groups',
+  validate(forumValidation.createGroupSchema, 'body'),
+  forumGroupController.createGroup,
+);
+
+router.patch(
+  '/groups/:id',
+  validate(forumValidation.updateGroupSchema, 'body'),
+  forumGroupController.updateGroup,
+);
+
+router.post('/groups/:id/join', forumGroupController.joinGroup);
+router.post('/groups/:id/leave', forumGroupController.leaveGroup);
 
 router.post(
   '/posts',

@@ -59,6 +59,11 @@ enum OrderStatus {
   DISPUTED
 }
 
+enum OrderType {
+  STANDARD
+  SAMPLE
+}
+
 enum DisputeStatus {
   OPEN
   UNDER_REVIEW
@@ -94,6 +99,7 @@ enum TransactionType {
   REFUND
   PLATFORM_FEE
   SUBSCRIPTION
+  PROMOTION
 }
 
 enum PayoutStatus {
@@ -109,6 +115,36 @@ enum NotificationType {
   IOT_ALERT
   SYSTEM_ANNOUNCEMENT
   DISPUTE
+  RFQ
+}
+
+enum ReferralRewardStatus {
+  PENDING
+  CREDITED
+  CANCELLED
+}
+
+enum LiveSessionStatus {
+  SCHEDULED
+  LIVE
+  ENDED
+}
+
+enum VoucherType {
+  PERCENT
+  FIXED
+}
+
+enum VoucherScope {
+  PLATFORM
+  SUPPLIER
+}
+
+enum RfqStatus {
+  OPEN
+  MATCHED
+  CLOSED
+  EXPIRED
 }
 
 enum NotificationPriority {
@@ -150,6 +186,12 @@ enum VillageType {
 enum VoteType {
   UP
   DOWN
+}
+
+enum ForumGroupRole {
+  OWNER
+  ADMIN
+  MEMBER
 }
 
 enum TrendType {
@@ -287,6 +329,15 @@ model User {
   tier               UserTier           @default(FREE)
   subscriptionExpiresAt DateTime? @map("subscription_expires_at")
 
+  // FB-19 display currency preference (checkout tetap IDR)
+  displayCurrency    String             @default("IDR") @map("display_currency")
+
+  // FB-20 referral program
+  referralCode       String?            @unique @map("referral_code")
+  referredById       String?            @map("referred_by_id")
+  referredBy         User?              @relation("UserReferrals", fields: [referredById], references: [id], onDelete: SetNull)
+  referrals          User[]             @relation("UserReferrals")
+
   status             UserStatus         @default(ACTIVE) @map("status")
   createdAt          DateTime           @default(now())  @map("created_at")
   updatedAt          DateTime @map("updated_at")           @updatedAt
@@ -304,8 +355,11 @@ model User {
   iotDevices         IotDevice[]
   forumPosts         ForumPost[]
   forumComments      ForumComment[]
+  ownedForumGroups   ForumGroup[]       @relation("ForumGroupOwner")
+  forumGroupMembers  ForumGroupMember[]
   notifications      Notification[]
   aiPredictions      AIPrediction[]
+  knowledgeDocuments KnowledgeDocument[] @relation("KnowledgeUploadedBy")
   documents          UserDocument[]
   chatMessages       ChatMessage[]
   forumVotes         ForumVote[]
@@ -315,6 +369,8 @@ model User {
   wallet             Wallet?
   operatingHours     OperatingHour[]
   givenReviews       Review[]           @relation("GivenReviews")
+  productQuestionsAsked ProductQuestion[] @relation("ProductQuestionsAsked")
+  productQuestionsAnswered ProductQuestion[] @relation("ProductQuestionsAnswered")
   articles           Article[]
   auditLogs          AuditLog[]
   buyerNegotiations  Negotiation[]      @relation("BuyerNegotiations")
@@ -326,8 +382,20 @@ model User {
   followingReceived UserFollow[] @relation("FollowingReceived")
   storeBanners      StoreBanner[]
   disputesRaised    OrderDispute[]     @relation("DisputesRaised")
+  rfqsCreated       Rfq[]              @relation("BuyerRfqs")
+  rfqResponses      RfqResponse[]
+  voucherRedemptions VoucherRedemption[]
+  savedPayments     UserSavedPayment[]
+  supplierVouchers  Voucher[]          @relation("SupplierVouchers")
+  referralRewardsEarned ReferralReward[] @relation("ReferrerRewards")
+  referralRewardAsReferred ReferralReward? @relation("ReferredUserReward")
+  supplierApiKeys   SupplierApiKey[]
+  liveSessions      LiveSession[]
+  liveSessionComments LiveSessionComment[]
 
   @@index([role])
+  @@index([referralCode])
+  @@index([referredById])
   @@index([status])
   @@index([createdAt])
   @@index([isPublicInMarketplace])
@@ -451,6 +519,7 @@ model Category {
   products    Product[]
   articles    Article[]
   forumPosts  ForumPost[]
+  rfqs        Rfq[]
 
   @@index([name])
   @@index([categoryType])
@@ -486,6 +555,9 @@ model Product {
   stock         Decimal      @db.Decimal(15, 2) @map("stock") // Changed from Int to support decimal weights (e.g. 1.5 Ton)
   unit          UnitStatus                   @map("unit") // Unit of stock (KG/TON)
   minOrder      Decimal      @db.Decimal(15, 2) @default(100) @map("min_order") // Changed from Int
+  allowsSample  Boolean      @default(true) @map("allows_sample")
+  sampleMaxQty  Decimal      @db.Decimal(15, 2) @default(1) @map("sample_max_qty")
+  samplePricePerUnit Decimal? @db.Decimal(15, 2) @map("sample_price_per_unit")
 
   // Organic Produce Mode fields
   productMode    ProductMode @default(BIOMASS_MATERIAL) @map("product_mode")
@@ -507,6 +579,12 @@ model Product {
   totalSold     Int          @default(0) @map("total_sold")
   viewCount     Int          @default(0) @map("view_count")
 
+  // Sponsored listing (FB-16)
+  isPromoted        Boolean   @default(false) @map("is_promoted")
+  promotedUntil     DateTime? @map("promoted_until")
+  promoImpressions  Int       @default(0) @map("promo_impressions")
+  promoClicks       Int       @default(0) @map("promo_clicks")
+
   createdAt     DateTime     @default(now()) @map("created_at")
   updatedAt     DateTime     @updatedAt @map("updated_at")
 
@@ -517,10 +595,12 @@ model Product {
   negotiations  Negotiation[]
   reviews       Review[]
   images        ProductImage[]
+  video         ProductVideo?
   collections   ProductCollectionItem[]
   cartItems     CartItem[]
   productLikes  ProductLike[]
   specs         ProductSpec[]
+  questions     ProductQuestion[]
 
   @@index([userId])
   @@index([categoryId])
@@ -532,6 +612,7 @@ model Product {
   @@index([name])
   @@index([productMode])
   @@index([cropType])
+  @@index([isPromoted, promotedUntil])
   @@map("products")
 }
 
@@ -595,6 +676,22 @@ model ProductImage {
   @@map("product_images")
 }
 
+model ProductVideo {
+  id           String   @id @default(uuid())
+  productId    String   @unique @map("product_id")
+  url          String   @db.Text
+  thumbnailUrl String?  @db.Text @map("thumbnail_url")
+  title        String?
+  durationSec  Int?     @map("duration_sec")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@map("product_videos")
+}
+
 // =========================================================
 // ORDERS & ESCROW TRANSACTIONS
 // =========================================================
@@ -605,6 +702,7 @@ model Order {
   buyerId       String      @map("buyer_id")
   sellerId      String      @map("seller_id")
   status        OrderStatus @default(PENDING) @map("status")
+  orderType     OrderType   @default(STANDARD) @map("order_type")
 
   // Financial Breakdowns (from Invoice UI)
   subtotal      Decimal     @db.Decimal(15, 2) @map("subtotal")
@@ -616,6 +714,8 @@ model Order {
   totalQuantity Decimal     @db.Decimal(15, 2) @map("total_quantity") // Changed from Int to support decimal weights
   specifications String?    @db.Text @map("specifications") // Agreed final specs (PPM, Moisture, etc.)
   creditsApplied Decimal    @db.Decimal(15, 2) @default(0) @map("credits_applied")
+  voucherCode    String?    @map("voucher_code")
+  voucherDiscount Decimal   @db.Decimal(15, 2) @default(0) @map("voucher_discount")
 
   shippingAddressId String? @map("shipping_address_id")
   shippingAddress Address? @relation("ShippingAddress", fields: [shippingAddressId], references: [id], onDelete: Restrict)
@@ -628,7 +728,13 @@ model Order {
 
   // Status Badges
   isInsured     Boolean     @default(true) @map("is_insured")
-  isDigitalSigned Boolean   @default(true) @map("is_digital_signed")
+  isDigitalSigned Boolean   @default(false) @map("is_digital_signed")
+
+  // FB-22 e-sign kontrak (buyer + seller)
+  buyerSignedAt  DateTime? @map("buyer_signed_at")
+  sellerSignedAt DateTime? @map("seller_signed_at")
+  buyerSignHash  String?   @map("buyer_sign_hash")
+  sellerSignHash String?   @map("seller_sign_hash")
 
   createdAt     DateTime    @default(now()) @map("created_at")
   updatedAt     DateTime    @updatedAt @map("updated_at")
@@ -642,6 +748,8 @@ model Order {
   negotiation   Negotiation?
   review        Review?
   dispute       OrderDispute?
+  voucherRedemption VoucherRedemption?
+  referralReward    ReferralReward?
 
   @@index([buyerId])
   @@index([sellerId])
@@ -651,7 +759,201 @@ model Order {
   @@index([buyerId, status])
   @@index([sellerId, status])
   @@index([checkoutBatchId])
+  @@index([orderType])
   @@map("orders")
+}
+
+model ProductQuestion {
+  id           String    @id @default(uuid())
+  productId    String    @map("product_id")
+  askerId      String    @map("asker_id")
+  question     String    @db.Text
+  answer       String?   @db.Text
+  answeredAt   DateTime? @map("answered_at")
+  answeredById String?   @map("answered_by_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  product    Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  asker      User    @relation("ProductQuestionsAsked", fields: [askerId], references: [id], onDelete: Restrict)
+  answeredBy User?   @relation("ProductQuestionsAnswered", fields: [answeredById], references: [id], onDelete: SetNull)
+
+  @@index([productId, createdAt])
+  @@index([askerId])
+  @@map("product_questions")
+}
+
+model Rfq {
+  id             String       @id @default(uuid())
+  buyerId        String       @map("buyer_id")
+  title          String       @map("title")
+  productMode    ProductMode  @map("product_mode")
+  biomassaType   BiomassaType? @map("biomassa_type")
+  categoryId     String?      @map("category_id")
+  quantity       Decimal      @db.Decimal(15, 2) @map("quantity")
+  specifications String?      @db.Text @map("specifications")
+  deliveryDate   DateTime?    @map("delivery_date")
+  budgetMax      Decimal?     @db.Decimal(15, 2) @map("budget_max")
+  status         RfqStatus    @default(OPEN) @map("status")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  buyer     User          @relation("BuyerRfqs", fields: [buyerId], references: [id], onDelete: Restrict)
+  category  Category?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  responses RfqResponse[]
+
+  @@index([buyerId, status])
+  @@index([productMode, status])
+  @@index([createdAt])
+  @@map("rfqs")
+}
+
+model RfqResponse {
+  id             String   @id @default(uuid())
+  rfqId          String   @map("rfq_id")
+  supplierId     String   @map("supplier_id")
+  negotiationId  String?  @unique @map("negotiation_id")
+  message        String?  @db.Text @map("message")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  rfq         Rfq          @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  supplier    User         @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  negotiation Negotiation? @relation(fields: [negotiationId], references: [id], onDelete: SetNull)
+
+  @@unique([rfqId, supplierId])
+  @@index([supplierId])
+  @@map("rfq_responses")
+}
+
+model Voucher {
+  id             String       @id @default(uuid())
+  code           String       @unique @map("code")
+  type           VoucherType  @map("type")
+  value          Decimal      @db.Decimal(15, 2) @map("value")
+  minOrderAmount Decimal      @db.Decimal(15, 2) @default(0) @map("min_order_amount")
+  maxDiscount    Decimal?     @db.Decimal(15, 2) @map("max_discount")
+  scope          VoucherScope @default(PLATFORM) @map("scope")
+  supplierId     String?      @map("supplier_id")
+  usageLimit     Int?         @map("usage_limit")
+  usagePerUser   Int          @default(1) @map("usage_per_user")
+  usageCount     Int          @default(0) @map("usage_count")
+  startsAt       DateTime?    @map("starts_at")
+  expiresAt      DateTime?    @map("expires_at")
+  isActive       Boolean      @default(true) @map("is_active")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  supplier    User?               @relation("SupplierVouchers", fields: [supplierId], references: [id], onDelete: SetNull)
+  redemptions VoucherRedemption[]
+
+  @@index([isActive, expiresAt])
+  @@index([supplierId])
+  @@map("vouchers")
+}
+
+model VoucherRedemption {
+  id             String   @id @default(uuid())
+  voucherId      String   @map("voucher_id")
+  userId         String   @map("user_id")
+  orderId        String?  @unique @map("order_id")
+  discountAmount Decimal  @db.Decimal(15, 2) @map("discount_amount")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  voucher Voucher @relation(fields: [voucherId], references: [id], onDelete: Restrict)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([voucherId, userId])
+  @@map("voucher_redemptions")
+}
+
+model UserSavedPayment {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  channelCode  String   @map("channel_code")
+  channelName  String   @map("channel_name")
+  channelGroup String   @map("channel_group")
+  isDefault    Boolean  @default(false) @map("is_default")
+  lastUsedAt   DateTime @default(now()) @map("last_used_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, channelCode])
+  @@index([userId, isDefault])
+  @@map("user_saved_payments")
+}
+
+model ReferralReward {
+  id               String               @id @default(uuid())
+  referrerId       String               @map("referrer_id")
+  referredUserId   String               @unique @map("referred_user_id")
+  orderId          String?              @unique @map("order_id")
+  amount           Decimal              @db.Decimal(15, 2) @map("amount")
+  status           ReferralRewardStatus @default(PENDING) @map("status")
+  createdAt        DateTime             @default(now()) @map("created_at")
+  creditedAt       DateTime?            @map("credited_at")
+
+  referrer       User  @relation("ReferrerRewards", fields: [referrerId], references: [id], onDelete: Restrict)
+  referredUser   User  @relation("ReferredUserReward", fields: [referredUserId], references: [id], onDelete: Restrict)
+  order          Order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([referrerId, status])
+  @@map("referral_rewards")
+}
+
+model SupplierApiKey {
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  name       String    @map("name")
+  keyHash    String    @unique @map("key_hash")
+  keyPrefix  String    @map("key_prefix")
+  lastUsedAt DateTime? @map("last_used_at")
+  isActive   Boolean   @default(true) @map("is_active")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isActive])
+  @@map("supplier_api_keys")
+}
+
+model LiveSession {
+  id               String            @id @default(uuid())
+  supplierId       String            @map("supplier_id")
+  title            String            @map("title")
+  description      String?           @db.Text @map("description")
+  status           LiveSessionStatus @default(SCHEDULED) @map("status")
+  streamUrl        String?           @db.Text @map("stream_url")
+  thumbnailUrl     String?           @db.Text @map("thumbnail_url")
+  pinnedProductIds Json?             @map("pinned_product_ids")
+  viewerCount      Int               @default(0) @map("viewer_count")
+  scheduledAt      DateTime?         @map("scheduled_at")
+  startedAt        DateTime?         @map("started_at")
+  endedAt          DateTime?         @map("ended_at")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+
+  supplier User                 @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  comments LiveSessionComment[]
+
+  @@index([supplierId, status])
+  @@index([status, scheduledAt])
+  @@map("live_sessions")
+}
+
+model LiveSessionComment {
+  id        String   @id @default(uuid())
+  sessionId String   @map("session_id")
+  userId    String   @map("user_id")
+  message   String   @db.Text @map("message")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  session LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([sessionId, createdAt])
+  @@map("live_session_comments")
 }
 
 model OrderDispute {
@@ -793,6 +1095,7 @@ model Negotiation {
   seller        User      @relation("SellerNegotiations", fields: [sellerId], references: [id], onDelete: Restrict)
   order         Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
   messages      ChatMessage[]
+  rfqResponse   RfqResponse?
 
   @@index([productId])
   @@index([buyerId])
@@ -900,6 +1203,42 @@ model AIPrediction {
   @@map("ai_predictions")
 }
 
+enum KnowledgeDocStatus {
+  PENDING
+  INDEXED
+  FAILED
+}
+
+enum KnowledgeSourceType {
+  PDF
+  TXT
+  MD
+  TEXT
+  CSV
+}
+
+model KnowledgeDocument {
+  id               String               @id @default(uuid())
+  title            String               @db.VarChar(255)
+  description      String?              @db.Text
+  sourceType       KnowledgeSourceType  @map("source_type")
+  fileName         String?              @map("file_name") @db.VarChar(255)
+  mimeType         String?              @map("mime_type") @db.VarChar(128)
+  storageKey       String?              @map("storage_key") @db.VarChar(512)
+  chromaCollection String               @default("bisa_knowledge") @map("chroma_collection") @db.VarChar(128)
+  chunkCount       Int                  @default(0) @map("chunk_count")
+  status           KnowledgeDocStatus   @default(PENDING)
+  errorMessage     String?              @map("error_message") @db.Text
+  uploadedById     String?              @map("uploaded_by_id")
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+
+  uploadedBy       User?                @relation("KnowledgeUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@map("knowledge_documents")
+}
+
 // =========================================================
 // IoT MONITORING - Tungku Pembakaran Biochar
 // =========================================================
@@ -982,6 +1321,44 @@ model WasteData {
 // FORUM & COMMUNITY
 // =========================================================
 
+model ForumGroup {
+  id          String   @id @default(uuid())
+  name        String   @map("name")
+  slug        String   @unique @map("slug")
+  description String?  @db.Text @map("description")
+  avatarUrl   String?  @map("avatar_url")
+  bannerUrl   String?  @map("banner_url")
+  ownerId     String   @map("owner_id")
+  isPublic    Boolean  @default(true) @map("is_public")
+  memberCount Int      @default(1) @map("member_count")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  owner   User               @relation("ForumGroupOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  members ForumGroupMember[]
+  posts   ForumPost[]
+
+  @@index([ownerId])
+  @@index([isPublic])
+  @@index([createdAt])
+  @@map("forum_groups")
+}
+
+model ForumGroupMember {
+  id       String          @id @default(uuid())
+  groupId  String          @map("group_id")
+  userId   String          @map("user_id")
+  role     ForumGroupRole  @default(MEMBER) @map("role")
+  joinedAt DateTime        @default(now()) @map("joined_at")
+
+  group ForumGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+  @@index([userId])
+  @@map("forum_group_members")
+}
+
 model ForumPost {
   id        String         @id @default(uuid())
   userId    String         @map("user_id")
@@ -997,6 +1374,7 @@ model ForumPost {
   // tanpa harus query produk lagi.
   productMentions Json? @map("product_mentions")
   categoryId String?        @map("category_id")
+  groupId    String?        @map("group_id")
   status    PostStatus     @default(PUBLISHED) @map("status")
   viewCount Int            @default(0) @map("view_count")
   upvotes   Int            @default(0) @map("upvotes")
@@ -1006,11 +1384,13 @@ model ForumPost {
 
   user      User           @relation(fields: [userId], references: [id], onDelete: Restrict)
   category  Category?      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  group     ForumGroup?    @relation(fields: [groupId], references: [id], onDelete: SetNull)
   comments  ForumComment[]
   votes     ForumVote[]    @relation("PostVotes")
 
   @@index([userId])
   @@index([categoryId])
+  @@index([groupId])
   @@index([status])
   @@index([createdAt])
   @@index([updatedAt])
@@ -1248,6 +1628,34 @@ model MarketTrend {
   updatedAt       DateTime @updatedAt @map("updated_at")
 
   @@map("market_trends")
+}
+
+/// Materialized supply/demand per komoditas — di-refresh async saat produk/pesanan berubah.
+model MarketSupplyDemandSnapshot {
+  id                     String   @id @default(uuid())
+  label                  String   @unique @map("label")
+  category               String   @default("BIOMASSA") @map("category")
+  biomassaType           String?  @map("biomassa_type")
+  grade                  String?  @map("grade")
+  productCount           Int      @default(0) @map("product_count")
+  listingCount           Int      @default(0) @map("listing_count")
+  totalStockKg           Int      @default(0) @map("total_stock_kg")
+  totalStockTon          Decimal  @default(0) @db.Decimal(12, 2) @map("total_stock_ton")
+  provinceCount          Int      @default(0) @map("province_count")
+  orderCount30d          Int      @default(0) @map("order_count_30d")
+  orderCount90d          Int      @default(0) @map("order_count_90d")
+  openOrderCount         Int      @default(0) @map("open_order_count")
+  quantityKg30d          Int      @default(0) @map("quantity_kg_30d")
+  quantityKg90d          Int      @default(0) @map("quantity_kg_90d")
+  quantityTon90d         Decimal  @default(0) @db.Decimal(12, 2) @map("quantity_ton_90d")
+  completedQuantityKg90d Int      @default(0) @map("completed_quantity_kg_90d")
+  supplyDemandRatio      Decimal? @db.Decimal(8, 2) @map("supply_demand_ratio")
+  balance                String   @default("unknown") @map("balance")
+  computedAt             DateTime @default(now()) @map("computed_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  @@index([computedAt])
+  @@map("market_supply_demand_snapshots")
 }
 
 // =========================================================

@@ -573,6 +573,16 @@ export const handleXenditPaymentRequestWebhook = async (
 
   if (notifyProcessingOrderId) {
     void notifyOrderProcessingById(notifyProcessingOrderId);
+    const paidOrder = await prisma.transaction.findFirst({
+      where: { orderId: notifyProcessingOrderId, paymentStatus: PaymentStatus.SUCCESS },
+      select: { userId: true, orderId: true },
+    });
+    if (paidOrder?.userId && paidOrder.orderId) {
+      const { creditReferralOnFirstPaidOrder } = await import('#services/referral.service');
+      void creditReferralOnFirstPaidOrder(paidOrder.orderId, paidOrder.userId).catch((err) =>
+        console.error('[REFERRAL] credit failed', err),
+      );
+    }
   }
   for (const batchOrderId of notifyBatchOrderIds) {
     void notifyOrderProcessingById(batchOrderId);

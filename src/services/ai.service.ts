@@ -1,9 +1,112 @@
 import prisma from '#config/prisma';
 import { BiomassaType, BiocharGrade } from '#prisma';
-import { GOOGLE_GEMINI_API_KEY } from '#utils/env.util';
+import { GOOGLE_GEMINI_API_KEY, ML_PREDICT_ENABLED, ML_SERVICE_API_KEY, ML_SERVICE_URL } from '#utils/env.util';
 import fetch from 'node-fetch';
 import { withRetry } from '#utils/retry.util';
 import { GeminiResponse } from '#types/ai.types';
+import { retrieveRagContext } from '#services/knowledge.service';
+import { isChromaConfigured } from '#services/chroma.service';
+
+type MlPredictResponse = {
+  predicted_grade: string;
+  predicted_yield: number;
+  c_organik: number;
+  dosis_ton_ha: number;
+  confidence?: number;
+  model_version?: string;
+  predicted_price_idr_per_ton?: number;
+  price_min_idr_per_ton?: number;
+  price_max_idr_per_ton?: number;
+  predicted_total_idr?: number | null;
+  price_benchmark_source?: string;
+  price_model?: string;
+  price_province?: string;
+  raw_features?: Record<string, unknown>;
+};
+
+const ruleBasedPredict = (
+  data: {
+    suhuPirolisis: number;
+    waktuPembakaran: number;
+  },
+  config: Awaited<ReturnType<typeof getAiRuntimeConfig>>,
+) => {
+  let predictedGrade: BiocharGrade = BiocharGrade.B;
+  let yieldPercent = config.defaultYield;
+  let cOrganik = config.defaultCOrganik;
+
+  if (
+    data.suhuPirolisis >= config.gradeATempMin &&
+    data.waktuPembakaran >= config.gradeABurnTimeMin
+  ) {
+    predictedGrade = BiocharGrade.A;
+    yieldPercent = config.gradeAYield;
+    cOrganik = config.gradeACOrganik;
+  } else if (data.suhuPirolisis < config.gradeCTempMax) {
+    predictedGrade = BiocharGrade.C;
+    yieldPercent = config.gradeCYield;
+    cOrganik = config.gradeCCOrganik;
+  }
+
+  return {
+    predictedGrade,
+    predictedYield: yieldPercent,
+    cOrganik,
+    dosis: config.defaultDosis,
+    rawOutput: JSON.stringify({ model: 'rule-based-fallback', version: '1.0.2' }),
+  };
+};
+
+const callMlPredict = async (data: {
+  biomassaType: BiomassaType;
+  suhuPirolisis: number;
+  waktuPembakaran: number;
+  beratInput: number;
+}): Promise<MlPredictResponse | null> => {
+  if (!ML_PREDICT_ENABLED || !ML_SERVICE_URL) {
+    return null;
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (ML_SERVICE_API_KEY) {
+      headers['X-ML-API-Key'] = ML_SERVICE_API_KEY;
+    }
+
+    const response = await fetch(`${ML_SERVICE_URL.replace(/\/$/, '')}/v1/predict/biochar`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        biomassa_type: data.biomassaType,
+        suhu_pirolisis: Math.min(1000, Math.max(20, data.suhuPirolisis)),
+        waktu_pembakaran: Math.min(1440, Math.max(1, data.waktuPembakaran)),
+        berat_input: Math.min(100000, Math.max(1, data.beratInput)),
+      }),
+      signal: controller.signal as any,
+    });
+
+    if (!response.ok) {
+      console.warn('[AI SERVICE] ML predict failed:', response.status, await response.text());
+      return null;
+    }
+
+    return (await response.json()) as MlPredictResponse;
+  } catch (error) {
+    console.warn('[AI SERVICE] ML service unreachable:', error);
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+const normalizeGrade = (grade: string): BiocharGrade => {
+  const g = grade.trim().toUpperCase();
+  if (g === 'A') return BiocharGrade.A;
+  if (g === 'C') return BiocharGrade.C;
+  return BiocharGrade.B;
+};
 
 const getAiRuntimeConfig = async () => {
   const keys = [
@@ -55,27 +158,47 @@ export const predictBiocharQuality = async (
     waktuPembakaran: number;
     beratInput: number;
   },
+  options: { meta?: Record<string, unknown> } = {},
 ) => {
-  // Logic simulate XGBoost prediction
   const config = await getAiRuntimeConfig();
+  const mlResult = await callMlPredict(data);
 
-  // Factors: High Temp (>450) + Long Time (>120) -> Grade A
-  let predictedGrade: BiocharGrade = BiocharGrade.B;
-  let yieldPercent = config.defaultYield;
-  let cOrganik = config.defaultCOrganik;
+  const resolved = mlResult
+    ? {
+        predictedGrade: normalizeGrade(mlResult.predicted_grade),
+        predictedYield: mlResult.predicted_yield,
+        cOrganik: mlResult.c_organik,
+        dosis: mlResult.dosis_ton_ha ?? config.defaultDosis,
+        rawOutput: JSON.stringify({
+          model: mlResult.model_version ?? 'xgb-biochar-v1.2.0',
+          inference_mode: (mlResult as MlPredictResponse & { inference_mode?: string }).inference_mode ?? 'xgb',
+          models_used: (mlResult as MlPredictResponse & { models_used?: Record<string, boolean> }).models_used ?? null,
+          confidence: mlResult.confidence ?? null,
+          source: options.meta?.source ?? 'ml-service',
+          predicted_price_idr_per_ton: mlResult.predicted_price_idr_per_ton ?? null,
+          price_min_idr_per_ton: mlResult.price_min_idr_per_ton ?? null,
+          price_max_idr_per_ton: mlResult.price_max_idr_per_ton ?? null,
+          predicted_total_idr: mlResult.predicted_total_idr ?? null,
+          price_benchmark_source: mlResult.price_benchmark_source ?? null,
+          price_model: mlResult.price_model ?? null,
+          price_province: mlResult.price_province ?? null,
+          ...(options.meta ?? {}),
+          raw_features: mlResult.raw_features ?? {},
+        }),
+      }
+    : ruleBasedPredict(data, config);
 
-  if (
-    data.suhuPirolisis >= config.gradeATempMin &&
-    data.waktuPembakaran >= config.gradeABurnTimeMin
-  ) {
-    predictedGrade = BiocharGrade.A;
-    yieldPercent = config.gradeAYield; // Higher quality usually means lower yield due to more carbonization
-    cOrganik = config.gradeACOrganik;
-  } else if (data.suhuPirolisis < config.gradeCTempMax) {
-    predictedGrade = BiocharGrade.C;
-    yieldPercent = config.gradeCYield;
-    cOrganik = config.gradeCCOrganik;
-  }
+  const fallbackRaw =
+    resolved.rawOutput != null
+      ? (() => {
+          try {
+            const parsed = JSON.parse(resolved.rawOutput) as Record<string, unknown>;
+            return JSON.stringify({ ...parsed, ...(options.meta ?? {}) });
+          } catch {
+            return resolved.rawOutput;
+          }
+        })()
+      : JSON.stringify({ model: 'rule-based-fallback', ...(options.meta ?? {}) });
 
   const prediction = await prisma.aIPrediction.create({
     data: {
@@ -84,15 +207,56 @@ export const predictBiocharQuality = async (
       suhuPirolisis: data.suhuPirolisis,
       waktuPembakaran: data.waktuPembakaran,
       beratInput: data.beratInput,
-      predictedGrade,
-      predictedYield: yieldPercent,
-      cOrganik,
-      dosis: config.defaultDosis,
-      rawOutput: JSON.stringify({ model: 'XGBoost-V1', version: '1.0.2' }),
+      predictedGrade: resolved.predictedGrade,
+      predictedYield: resolved.predictedYield,
+      cOrganik: resolved.cOrganik,
+      dosis: resolved.dosis,
+      rawOutput: mlResult ? resolved.rawOutput! : fallbackRaw,
     },
   });
 
   return prediction;
+};
+
+export const listRecentPredictions = async (
+  userId: string,
+  options: { limit?: number; iotOnly?: boolean } = {},
+) => {
+  const limit = Math.min(options.limit ?? 20, 50);
+  const rows = await prisma.aIPrediction.findMany({
+    where: { userId },
+    orderBy: { createdAt: 'desc' },
+    take: options.iotOnly ? limit * 3 : limit,
+  });
+
+  const mapped = rows.map((row) => {
+    let meta: Record<string, unknown> = {};
+    try {
+      meta = JSON.parse(row.rawOutput ?? '{}') as Record<string, unknown>;
+    } catch {
+      meta = {};
+    }
+    return {
+      id: row.id,
+      biomassaType: row.biomassaType,
+      suhuPirolisis: row.suhuPirolisis != null ? Number(row.suhuPirolisis) : null,
+      waktuPembakaran: row.waktuPembakaran,
+      beratInput: row.beratInput != null ? Number(row.beratInput) : null,
+      predictedGrade: row.predictedGrade,
+      predictedYield: row.predictedYield != null ? Number(row.predictedYield) : null,
+      cOrganik: row.cOrganik != null ? Number(row.cOrganik) : null,
+      dosis: row.dosis != null ? Number(row.dosis) : null,
+      source: (meta.source as string) ?? 'manual',
+      iotDeviceId: (meta.deviceId as string) ?? null,
+      iotDeviceName: (meta.deviceName as string) ?? null,
+      createdAt: row.createdAt,
+    };
+  });
+
+  if (options.iotOnly) {
+    return mapped.filter((p) => p.source === 'iot-realtime').slice(0, limit);
+  }
+  return mapped.slice(0, limit);
 };
 
 /**
@@ -104,6 +268,18 @@ export const askAssistant = async (question: string): Promise<string> => {
   }
   const config = await getAiRuntimeConfig();
 
+  let ragBlock = '';
+  if (isChromaConfigured()) {
+    try {
+      const context = await retrieveRagContext(question);
+      if (context) {
+        ragBlock = `\n\nKONTEKS DOKUMEN INTERNAL BISA (gunakan sebagai referensi utama, jangan mengarang di luar konteks jika tidak yakin):\n${context}`;
+      }
+    } catch (error) {
+      console.warn('[AI SERVICE] RAG retrieval failed:', error);
+    }
+  }
+
   const systemInstructions = `
     Anda adalah "BISA Assistant", pakar Biochar dan Pertanian Sirkular dari platform BISA (Biochar Indonesia Sirkular Agriculture).
     Tujuan Anda: Membantu pengguna memahami produksi biochar, manajemen limbah organik, dan praktik pertanian berkelanjutan di Indonesia.
@@ -113,6 +289,8 @@ export const askAssistant = async (question: string): Promise<string> => {
     2. Jika pengguna bertanya di luar topik tersebut (seperti politik, hiburan umum, atau teknologi lain), tolak dengan sopan menggunakan gaya bahasa BISA: "Maaf, sebagai asisten pakar biochar, saya hanya dapat membantu Anda dalam topik pertanian sirkular dan pengelolaan limbah organik."
     3. Gunakan Bahasa Indonesia yang ramah, profesional, dan mudah dipahami petani maupun pebisnis.
     4. Jawaban harus ringkas namun informatif.
+    5. Jika ada konteks dokumen internal, prioritaskan informasi dari dokumen tersebut.
+    ${ragBlock}
   `;
 
   const body = {

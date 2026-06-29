@@ -1,5 +1,5 @@
 import prisma from '#config/prisma';
-import { BiomassaType, UserStatus, ProductStatus } from '#prisma';
+import { BiomassaType, UserStatus, ProductStatus, DeviceStatus } from '#prisma';
 import AppError from '#utils/appError';
 import { CACHE_TTL } from '#constants/cache.constants';
 import { cacheAside, cacheKeys } from '#utils/cache.util';
@@ -20,10 +20,145 @@ export const getWasteDistributionMap = async (filters: {
   });
 };
 
+const haversineKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const R = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const normalizeLoc = (s?: string | null) =>
+  (s ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/^(kabupaten|kab\.?|kota)\s+/i, '');
+
+type LocationMatchInput = {
+  lat: number;
+  lng: number;
+  radiusKm?: number;
+  biomassaType?: BiomassaType;
+  regency?: string;
+  province?: string;
+};
+
 /**
- * Supply-Demand Matching Logic
- * Find top suppliers for a specific type/region
+ * Supply-Demand Matching — produk & supplier terdekat (GIS → marketplace).
  */
+export const matchSupplyDemandByLocation = async (input: LocationMatchInput) => {
+  const radius = Math.min(Math.max(input.radiusKm ?? 100, 5), 500);
+  const regencyNorm = normalizeLoc(input.regency);
+  const provinceNorm = normalizeLoc(input.province);
+
+  const products = await prisma.product.findMany({
+    where: {
+      status: ProductStatus.ACTIVE,
+      stock: { gt: 0 },
+      ...(input.biomassaType ? { biomassaType: input.biomassaType } : {}),
+      user: { role: 'SUPPLIER', status: UserStatus.ACTIVE },
+    },
+    select: {
+      id: true,
+      name: true,
+      biomassaType: true,
+      stock: true,
+      pricePerUnit: true,
+      province: true,
+      regency: true,
+      thumbnailUrl: true,
+      userId: true,
+      user: {
+        select: {
+          id: true,
+          fullName: true,
+          province: true,
+          regency: true,
+          profile: { select: { companyName: true } },
+          iotDevices: {
+            where: { status: DeviceStatus.ACTIVE, lat: { not: null }, lng: { not: null } },
+            select: { lat: true, lng: true },
+            take: 3,
+          },
+        },
+      },
+    },
+    take: 120,
+  });
+
+  type MatchRow = {
+    productId: string;
+    productName: string;
+    supplierId: string;
+    supplierName: string;
+    biomassType: string;
+    distance: number;
+    volume: number;
+    pricePerUnit: number;
+    thumbnailUrl: string | null;
+  };
+
+  const matches: MatchRow[] = [];
+
+  for (const p of products) {
+    let distance: number | null = null;
+
+    for (const dev of p.user.iotDevices) {
+      if (dev.lat == null || dev.lng == null) continue;
+      const d = haversineKm(
+        input.lat,
+        input.lng,
+        Number(dev.lat),
+        Number(dev.lng),
+      );
+      distance = distance == null ? d : Math.min(distance, d);
+    }
+
+    const productRegency = normalizeLoc(p.regency ?? p.user.regency);
+    const productProvince = normalizeLoc(p.province ?? p.user.province);
+
+    if (distance == null) {
+      if (regencyNorm && productRegency && productRegency.includes(regencyNorm)) {
+        distance = 25;
+      } else if (
+        provinceNorm &&
+        productProvince &&
+        productProvince.includes(provinceNorm)
+      ) {
+        distance = 60;
+      } else {
+        continue;
+      }
+    }
+
+    if (distance > radius) continue;
+
+    matches.push({
+      productId: p.id,
+      productName: p.name,
+      supplierId: p.userId,
+      supplierName:
+        p.user.profile?.companyName?.trim() || p.user.fullName || 'Supplier',
+      biomassType: p.biomassaType,
+      distance: Math.round(distance * 10) / 10,
+      volume: Number(p.stock),
+      pricePerUnit: Number(p.pricePerUnit),
+      thumbnailUrl: p.thumbnailUrl,
+    });
+  }
+
+  matches.sort((a, b) => a.distance - b.distance);
+
+  return {
+    radius,
+    matches: matches.slice(0, 30),
+  };
+};
+
+/** Legacy: match by biomass type + regency name */
 export const matchSupplyDemand = async (type: BiomassaType, regency?: string) => {
   return prisma.user.findMany({
     where: {
@@ -45,7 +180,7 @@ export const matchSupplyDemand = async (type: BiomassaType, regency?: string) =>
       regency: true,
       products: {
         where: { biomassaType: type, status: ProductStatus.ACTIVE },
-        select: { name: true, stock: true, pricePerUnit: true },
+        select: { id: true, name: true, stock: true, pricePerUnit: true },
       },
     },
   });

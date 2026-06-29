@@ -78,6 +78,8 @@ export const createProductSchema = z.object({
     }
     return val;
   }, z.array(z.string().min(1)).optional()),
+  /** Prediksi IoT/ML yang dipakai supplier saat listing produk B2B */
+  aiPredictionId: z.string().uuid('ID prediksi tidak valid').optional(),
 });
 
 const sanitizeEmptyStrings = (raw: unknown) => {
@@ -131,4 +133,8 @@ export const productFilterSchema = z.object({
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
   page: z.coerce.number().min(1).default(1),
   limit: z.coerce.number().min(1).max(100).default(10),
+});
+
+export const promoteProductSchema = z.object({
+  days: z.coerce.number().int().min(1).max(30).default(7),
 });

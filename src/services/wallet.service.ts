@@ -5,6 +5,7 @@ import { Xendit } from 'xendit-node';
 import { withRetry } from '#utils/retry.util';
 import { resolveXenditPayoutSecretKey } from '#utils/env.util';
 import { notifyOrderStatusChange } from '#services/orderNotification.service';
+import { scheduleSupplyDemandRefresh } from '#services/marketSupplyDemand.service';
 import { revealAccountNumber } from '#utils/payoutAccount.util';
 
 /**
@@ -123,6 +124,8 @@ export const releaseEscrow = async (
         orderNumber: result.order.orderNumber,
         status: 'COMPLETED',
       });
+
+      scheduleSupplyDemandRefresh();
 
       return result;
     } catch (err) {

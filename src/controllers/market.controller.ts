@@ -22,3 +22,13 @@ export const getPrediction = catchAsync(async (req: AuthRequest, res: Response) 
   const result = await marketService.getPrediction(id);
   successResponse(res, result, 'Prediksi dan analisis cerdas berhasil dimuat');
 });
+
+export const getSupplyDemand = catchAsync(async (_req: AuthRequest, res: Response) => {
+  const result = await marketService.getSupplyDemandAnalytics();
+  successResponse(res, result, 'Analitik supply-demand per komoditas berhasil dimuat');
+});
+
+export const syncMarketData = catchAsync(async (_req: AuthRequest, res: Response) => {
+  const result = await marketService.syncMarketData();
+  successResponse(res, result, 'Data pasar BISA berhasil disinkronkan dari database');
+});

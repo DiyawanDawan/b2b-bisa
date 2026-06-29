@@ -1,10 +1,11 @@
 import logger from '../../src/config/logger.js';
 import { faker } from '@faker-js/faker/locale/id_ID';
 import {
-  biomassImagePaths,
-  organicProduceImagePaths,
-  productImageLock,
-} from '../../src/utils/loremFlickrMedia.util.ts';
+  countRegionalSeedR2Paths,
+  getOrResolveBiomassMedia,
+  getOrResolveOrganicMedia,
+} from './utils/seedProductMedia.util.ts';
+import { hasStockPhotoApiKey } from './utils/stockPhotoApi.util.ts';
 
 function buildOrganicSpecs(cropType, fertilizerType, isChemicalFree) {
   return [
@@ -46,12 +47,18 @@ function buildBiomassSpecs(technicalSpec) {
 
 export async function seedProducts(prisma, users) {
   logger.info('🌱 [05] Seeding Products (Hardened Geography)...');
+  if (hasStockPhotoApiKey()) {
+    logger.info('   ↳ Stock photos: Pexels/Pixabay → R2');
+  } else {
+    logger.warn('   ↳ PEXELS_API_KEY / PIXABAY_API_KEY kosong — fallback loremflickr path.');
+  }
 
   // CLEANUP - Delete in correct order (respect FK constraints)
   await prisma.orderItem.deleteMany({});
   await prisma.negotiation.deleteMany({});
   await prisma.review.deleteMany({});
   await prisma.productImage.deleteMany({});
+  await prisma.productVideo.deleteMany({});
   await prisma.productSpec.deleteMany({});
   await prisma.productTechnicalSpec.deleteMany({});
   await prisma.product.deleteMany({});
@@ -78,6 +85,9 @@ export async function seedProducts(prisma, users) {
     logger.warn('⚠️ No suppliers found, skipping product seeding.');
     return;
   }
+
+  /** Satu set gambar R2 per jenis komoditas (bukan per nama produk random). */
+  const mediaCache = new Map();
 
   for (const supplier of users.allSuppliers) {
     // Fetch Organic Categories
@@ -134,10 +144,12 @@ export async function seedProducts(prisma, users) {
           'Kompos Kotoran Kambing + Biochar',
         ]);
 
-        const organicMedia = organicProduceImagePaths(
+        const organicMedia = await getOrResolveOrganicMedia(
+          mediaCache,
           faker,
           selectedProduce.cropType,
-          productImageLock(supplier.id, i),
+          selectedProduce.name,
+          true,
         );
 
         await prisma.product.create({
@@ -164,6 +176,9 @@ export async function seedProducts(prisma, users) {
             regency: supplier.regency || firstRegency?.name,
 
             thumbnailUrl: organicMedia.thumbnailUrl,
+            ...(organicMedia.videoUrl && {
+              video: { create: { url: organicMedia.videoUrl } },
+            }),
             isCertified: true,
             isIotMonitored: faker.datatype.boolean(),
             images: {
@@ -190,7 +205,22 @@ export async function seedProducts(prisma, users) {
           isBiochar ? 'Biochar Aktif' : selectedType.replace('_', ' ')
         } ${faker.location.city()}`;
 
-        const biomassMedia = biomassImagePaths(faker, selectedType, productImageLock(supplier.id, i));
+        const biocharGrade = isBiochar
+          ? faker.helpers.arrayElement(['A', 'B', 'C'])
+          : null;
+
+        const biomassTemplateName = isBiochar
+          ? `Biochar Grade ${biocharGrade}`
+          : selectedType.replace(/_/g, ' ');
+
+        const biomassMedia = await getOrResolveBiomassMedia(
+          mediaCache,
+          faker,
+          selectedType,
+          biomassTemplateName,
+          biocharGrade,
+          true,
+        );
 
         const technicalSpecData = {
           carbonPurity: faker.number.float({ min: 60, max: 95, fractionDigits: 2 }),
@@ -217,7 +247,7 @@ export async function seedProducts(prisma, users) {
             name: productName,
             biomassaType: selectedType,
             productMode: 'BIOMASS_MATERIAL',
-            grade: isBiochar ? faker.helpers.arrayElement(['A', 'B', 'C']) : null,
+            grade: biocharGrade,
             description: faker.commerce.productDescription(),
             pricePerUnit: faker.number.float({ min: 1000, max: 20000, fractionDigits: 2 }),
             originalPrice: faker.datatype.boolean()
@@ -232,6 +262,9 @@ export async function seedProducts(prisma, users) {
             regency: supplier.regency || firstRegency?.name,
 
             thumbnailUrl: biomassMedia.thumbnailUrl,
+            ...(biomassMedia.videoUrl && {
+              video: { create: { url: biomassMedia.videoUrl } },
+            }),
             isCertified: faker.datatype.boolean() || isBiochar, // Biochar often certified
             isIotMonitored: isBiochar || faker.datatype.boolean(),
             images: {
@@ -249,5 +282,7 @@ export async function seedProducts(prisma, users) {
     }
   }
 
-  logger.info('✅ [05] Fully Syncronized Products seeded.');
+  logger.info(
+    `✅ [05] Fully Syncronized Products seeded (${mediaCache.size} set media · ${countRegionalSeedR2Paths()} file R2).`,
+  );
 }

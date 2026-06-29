@@ -18,6 +18,8 @@ import {
 import { IOT_ONLINE_TIMEOUT_MS, IOT_COOLDOWN_MS } from '#utils/env.util';
 import { createPaymentRequest } from '#config/xendit';
 
+const CURRENT_STATUS_WINDOW_MS = 30 * 60 * 1000;
+
 type DeviceWithTelemetry = {
   id: string;
   deviceId: string;
@@ -540,7 +542,7 @@ const defaultLimitForRange = (range: IotDashboardRange): number => {
   }
 };
 
-const assertDeviceAccess = async (deviceId: string, userId: string, userRole: UserRole) => {
+export const assertDeviceAccess = async (deviceId: string, userId: string, userRole: UserRole) => {
   const device = await prisma.iotDevice.findUnique({ where: { id: deviceId } });
   if (!device) throw new AppError('Perangkat tidak ditemukan.', 404);
   if (userRole !== UserRole.ADMIN && device.userId !== userId) {
@@ -583,6 +585,19 @@ export const getDeviceDashboardData = async (
     orderBy: { recordedAt: 'asc' },
   });
 
+  const currentSince = new Date(Date.now() - CURRENT_STATUS_WINDOW_MS);
+  const [currentReadings, latestGlobal] = await Promise.all([
+    prisma.iotReading.findMany({
+      where: { deviceId, recordedAt: { gte: currentSince } },
+      orderBy: { recordedAt: 'desc' },
+      take: 500,
+    }),
+    prisma.iotReading.findFirst({
+      where: { deviceId },
+      orderBy: { recordedAt: 'desc' },
+    }),
+  ]);
+
   const stats = await prisma.iotReading.aggregate({
     where: { deviceId, recordedAt: { gte: since } },
     _avg: { temperature: true, humidity: true, co2Level: true },
@@ -590,6 +605,66 @@ export const getDeviceDashboardData = async (
     _min: { temperature: true, humidity: true, co2Level: true },
     _count: { id: true },
   });
+
+  const currentStats = await prisma.iotReading.aggregate({
+    where: { deviceId, recordedAt: { gte: currentSince } },
+    _avg: { temperature: true, humidity: true, co2Level: true },
+    _max: { temperature: true, humidity: true, co2Level: true },
+    _min: { temperature: true, humidity: true, co2Level: true },
+    _count: { id: true },
+  });
+
+  const buildSummaryStats = (
+    agg: typeof stats,
+    fallbackReading?: (typeof currentReadings)[0] | null,
+  ) => {
+    if (agg._count.id > 0) {
+      return {
+        maxTemp: Number(agg._max.temperature) || 0,
+        minTemp: Number(agg._min.temperature) || 0,
+        avgTemp: Number(agg._avg.temperature?.toFixed(2)) || 0,
+        maxHum: Number(agg._max.humidity) || 0,
+        minHum: Number(agg._min.humidity) || 0,
+        avgHum: Number(agg._avg.humidity?.toFixed(2)) || 0,
+        maxCo2: Number(agg._max.co2Level) || 0,
+        minCo2: Number(agg._min.co2Level) || 0,
+        avgCo2: Number(agg._avg.co2Level?.toFixed(2)) || 0,
+        totalReadings: agg._count.id,
+      };
+    }
+    if (fallbackReading) {
+      const t = Number(fallbackReading.temperature) || 0;
+      const h = fallbackReading.humidity != null ? Number(fallbackReading.humidity) : 0;
+      const c = fallbackReading.co2Level != null ? Number(fallbackReading.co2Level) : 0;
+      return {
+        maxTemp: t,
+        minTemp: t,
+        avgTemp: t,
+        maxHum: h,
+        minHum: h,
+        avgHum: h,
+        maxCo2: c,
+        minCo2: c,
+        avgCo2: c,
+        totalReadings: 1,
+      };
+    }
+    return {
+      maxTemp: 0,
+      minTemp: 0,
+      avgTemp: 0,
+      maxHum: 0,
+      minHum: 0,
+      avgHum: 0,
+      maxCo2: 0,
+      minCo2: 0,
+      avgCo2: 0,
+      totalReadings: 0,
+    };
+  };
+
+  const rangeSummaryStats = buildSummaryStats(stats);
+  const summaryStats = buildSummaryStats(currentStats, latestGlobal);
 
   const series: Record<string, { t: string; v: number }[]> = {};
 
@@ -629,37 +704,28 @@ export const getDeviceDashboardData = async (
     });
   }
 
-  const summaryStats = {
-    maxTemp: Number(stats._max.temperature) || 0,
-    minTemp: Number(stats._min.temperature) || 0,
-    avgTemp: Number(stats._avg.temperature?.toFixed(2)) || 0,
-    maxHum: Number(stats._max.humidity) || 0,
-    minHum: Number(stats._min.humidity) || 0,
-    avgHum: Number(stats._avg.humidity?.toFixed(2)) || 0,
-    maxCo2: Number(stats._max.co2Level) || 0,
-    minCo2: Number(stats._min.co2Level) || 0,
-    avgCo2: Number(stats._avg.co2Level?.toFixed(2)) || 0,
-    totalReadings: stats._count.id,
-  };
-
   const recentAlerts = await prisma.iotAlert.findMany({
     where: { deviceId, isRead: false },
     take: 5,
     orderBy: { createdAt: 'desc' },
   });
 
-  const lastReading = readings.length > 0 ? readings[readings.length - 1] : null;
+  const currentLast = currentReadings[0] ?? latestGlobal;
   const formatted = formatDeviceForClient({
     ...device,
-    readings: lastReading ? [lastReading] : [],
+    readings: currentLast ? [currentLast] : [],
     alerts: recentAlerts.map((a) => ({ id: a.id })),
   });
 
   const expectedIntervalMs = 15 * 60 * 1000;
-  const expectedBuckets = Math.max(1, Math.floor(rangeMs / expectedIntervalMs));
+  const currentExpectedBuckets = Math.max(
+    1,
+    Math.floor(CURRENT_STATUS_WINDOW_MS / expectedIntervalMs),
+  );
+  const currentReadingsCount = currentReadings.length || (latestGlobal ? 1 : 0);
   const uptimePercent = Math.min(
     100,
-    Math.round((readings.length / expectedBuckets) * 1000) / 10,
+    Math.round((currentReadingsCount / currentExpectedBuckets) * 1000) / 10,
   );
 
   return {
@@ -671,12 +737,13 @@ export const getDeviceDashboardData = async (
     thresholdMin: device.thresholdMin != null ? Number(device.thresholdMin) : null,
     thresholdMax: device.thresholdMax != null ? Number(device.thresholdMax) : null,
     range,
-    lastReading: lastReading
+    statusWindow: '30m',
+    lastReading: currentLast
       ? {
-          temperature: Number(lastReading.temperature),
-          humidity: lastReading.humidity != null ? Number(lastReading.humidity) : null,
-          co2Level: lastReading.co2Level != null ? Number(lastReading.co2Level) : null,
-          recordedAt: lastReading.recordedAt,
+          temperature: Number(currentLast.temperature),
+          humidity: currentLast.humidity != null ? Number(currentLast.humidity) : null,
+          co2Level: currentLast.co2Level != null ? Number(currentLast.co2Level) : null,
+          recordedAt: currentLast.recordedAt,
         }
       : null,
     history: readings
@@ -690,9 +757,11 @@ export const getDeviceDashboardData = async (
     series,
     seriesData,
     summaryStats,
+    rangeSummaryStats,
     recentAlerts,
     uptimePercent,
     readingsInRange: readings.length,
+    currentReadingsCount,
   };
 };
 

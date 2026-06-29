@@ -82,6 +82,20 @@ export const buildStorageAssetUrl = (relativePath: string): string => {
 // AI
 export const GOOGLE_GEMINI_API_KEY = optional('GOOGLE_GEMINI_API_KEY');
 
+export const ML_SERVICE_URL = optional('ML_SERVICE_URL');
+export const ML_SERVICE_API_KEY = optional('ML_SERVICE_API_KEY');
+export const ML_PREDICT_ENABLED = optional('ML_PREDICT_ENABLED', 'true') === 'true';
+
+// Chroma Cloud — RAG knowledge base
+export const CHROMA_API_KEY = optional('CHROMA_API_KEY');
+export const CHROMA_TENANT_ID = optional(
+  'CHROMA_TENANT_ID',
+  '5f0969bb-9cbf-43c2-9fb5-130785014b2e',
+);
+export const CHROMA_DATABASE = optional('CHROMA_DATABASE', 'bisa');
+export const CHROMA_COLLECTION = optional('CHROMA_COLLECTION', 'bisa_knowledge');
+export const RAG_ENABLED = optional('RAG_ENABLED', 'true') === 'true';
+
 // Xendit — payment vs payout may use separate API keys in Xendit Dashboard
 export const XENDIT_PAYMENT_SECRET_KEY = optional('XENDIT_PAYMENT_SECRET_KEY');
 export const XENDIT_PAYOUT_SECRET_KEY = optional('XENDIT_PAYOUT_SECRET_KEY');
@@ -181,3 +195,7 @@ export const REDIS_DEFAULT_TTL_SECONDS = parseInt(
 );
 export const REDIS_ENABLED =
   optional('REDIS_ENABLED', 'false') === 'true' && REDIS_URL.length > 0;
+
+// Stock photos untuk seed produk (unduh → R2 → path relatif di DB)
+export const PEXELS_API_KEY = optional('PEXELS_API_KEY');
+export const PIXABAY_API_KEY = optional('PIXABAY_API_KEY');

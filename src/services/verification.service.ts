@@ -18,6 +18,17 @@ export const submitVerification = async (
     throw new AppError('Upload minimal satu dokumen.', 400);
   }
 
+  const existing = await prisma.userVerification.findUnique({ where: { userId } });
+  if (existing?.verificationStatus === VerificationStatus.PENDING) {
+    throw new AppError(
+      'Dokumen verifikasi sedang ditinjau. Tunggu hasil review sebelum mengirim ulang.',
+      409,
+    );
+  }
+  if (existing?.verificationStatus === VerificationStatus.VERIFIED) {
+    throw new AppError('Akun Anda sudah terverifikasi.', 409);
+  }
+
   return prisma.userVerification.upsert({
     where: { userId },
     create: { userId, ...data, verificationStatus: VerificationStatus.PENDING, isVerified: false },

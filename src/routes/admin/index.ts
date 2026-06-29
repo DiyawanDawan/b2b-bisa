@@ -17,6 +17,8 @@ import marketRoutes from '#routes/admin/market.routes';
 import chatRoutes from '#routes/admin/chat.routes';
 import crmRoutes from '#routes/admin/crm.routes';
 import iotRoutes from '#routes/admin/iot.routes';
+import vouchersRoutes from '#routes/admin/vouchers.routes';
+import knowledgeRoutes from '#routes/admin/knowledge.routes';
 
 const router = Router();
 
@@ -40,5 +42,7 @@ router.use('/market', marketRoutes);
 router.use('/chat', chatRoutes);
 router.use('/crm', crmRoutes);
 router.use('/iot', iotRoutes);
+router.use('/vouchers', vouchersRoutes);
+router.use('/knowledge', knowledgeRoutes);
 
 export default router;

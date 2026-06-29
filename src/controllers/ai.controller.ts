@@ -20,3 +20,12 @@ export const chatAssistant = catchAsync(async (req: AuthRequest, res: Response) 
   const answer = await aiService.askAssistant(question);
   successResponse(res, { answer }, 'Jawaban asisten AI');
 });
+
+export const listRecentPredictions = catchAsync(async (req: AuthRequest, res: Response) => {
+  const { limit, iotOnly } = req.query as { limit?: string; iotOnly?: string };
+  const result = await aiService.listRecentPredictions(req.user!.id, {
+    limit: limit ? Number(limit) : 20,
+    iotOnly: iotOnly === 'true',
+  });
+  successResponse(res, { predictions: result }, 'Riwayat prediksi berhasil dimuat');
+});

@@ -28,6 +28,7 @@ const baseRegisterSchema = z.object({
     .optional(),
   province: z.string().min(1, 'Provinsi wajib diisi untuk keperluan logistik').optional(),
   regency: z.string().min(1, 'Kabupaten/Kota wajib diisi untuk keperluan logistik').optional(),
+  referralCode: z.string().min(4).max(32).optional(),
 });
 
 export const registerSupplierSchema = baseRegisterSchema.extend({

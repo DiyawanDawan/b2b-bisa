@@ -2,6 +2,7 @@ import { Response } from 'express';
 import catchAsync from '#utils/catchAsync';
 import { successResponse, paginatedObjectResponse, paginatedResponse } from '#utils/response.util';
 import * as iotService from '#services/iot.service';
+import * as iotRealtimeService from '#services/iotRealtime.service';
 import { AuthRequest, DeviceStatus } from '#types/index';
 import AppError from '#utils/appError';
 
@@ -254,6 +255,50 @@ export const streamDeviceTelemetry = async (req: AuthRequest, res: Response) => 
     res.end();
   });
 };
+
+export const getPyrolysisSession = catchAsync(async (req: AuthRequest, res: Response) => {
+  const { deviceId } = req.params;
+  const session = await iotRealtimeService.getPyrolysisSession(
+    deviceId,
+    req.user!.id,
+    req.user!.role,
+  );
+  successResponse(res, { session }, session ? 'Sesi pirolisis aktif' : 'Tidak ada sesi aktif');
+});
+
+export const startPyrolysisSession = catchAsync(async (req: AuthRequest, res: Response) => {
+  const { deviceId } = req.params;
+  const { biomassaType, beratInput } = req.body;
+  const result = await iotRealtimeService.startPyrolysisSession(
+    deviceId,
+    req.user!.id,
+    req.user!.role,
+    { biomassaType, beratInput },
+  );
+  successResponse(res, result, 'Sesi pirolisis dimulai — waktu pembakaran dihitung otomatis');
+});
+
+export const stopPyrolysisSession = catchAsync(async (req: AuthRequest, res: Response) => {
+  const { deviceId } = req.params;
+  const result = await iotRealtimeService.stopPyrolysisSession(
+    deviceId,
+    req.user!.id,
+    req.user!.role,
+  );
+  successResponse(res, result, 'Sesi pirolisis dihentikan');
+});
+
+export const analyzeDeviceRealtime = catchAsync(async (req: AuthRequest, res: Response) => {
+  const { deviceId } = req.params;
+  const body = req.body ?? {};
+  const result = await iotRealtimeService.analyzeDeviceRealtime(
+    deviceId,
+    req.user!.id,
+    req.user!.role,
+    body,
+  );
+  successResponse(res, result, 'Analisis realtime berhasil');
+});
 
 export const listAdminIotDevices = catchAsync(async (req: AuthRequest, res: Response) => {
   const { page, limit, search } = req.query as PaginationQuery & { search?: string };

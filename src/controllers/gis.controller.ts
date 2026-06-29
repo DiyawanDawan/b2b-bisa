@@ -27,7 +27,32 @@ export const getWasteMap = catchAsync(async (req: Request, res: Response) => {
 });
 
 export const matchSupplyDemand = catchAsync(async (req: Request, res: Response) => {
-  const { type, regency } = req.body;
-  const result = await gisService.matchSupplyDemand(type, regency);
-  successResponse(res, result, 'Daftar penawaran yang sesuai');
+  const { lat, lng, radius, biomassaType, regency, province, type } = req.body as {
+    lat?: number;
+    lng?: number;
+    radius?: number;
+    biomassaType?: BiomassaType;
+    regency?: string;
+    province?: string;
+    type?: BiomassaType;
+  };
+
+  if (lat != null && lng != null) {
+    const result = await gisService.matchSupplyDemandByLocation({
+      lat: Number(lat),
+      lng: Number(lng),
+      radiusKm: radius != null ? Number(radius) : undefined,
+      biomassaType: biomassaType ?? type,
+      regency,
+      province,
+    });
+    return successResponse(res, result, 'Produk & supplier terdekat');
+  }
+
+  if (!type) {
+    return successResponse(res, { radius: 0, matches: [] }, 'Parameter lokasi atau tipe biomass wajib');
+  }
+
+  const legacy = await gisService.matchSupplyDemand(type, regency);
+  return successResponse(res, legacy, 'Daftar penawaran yang sesuai');
 });

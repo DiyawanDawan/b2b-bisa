@@ -20,4 +20,10 @@ router.post(
 
 router.post('/predict', validate(aiValidation.predictSchema, 'body'), aiController.predictQuality);
 
+router.get(
+  '/predictions/recent',
+  validate(aiValidation.recentPredictionsQuerySchema, 'all'),
+  aiController.listRecentPredictions,
+);
+
 export default router;

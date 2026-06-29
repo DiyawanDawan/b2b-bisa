@@ -20,6 +20,6 @@ router.get('/waste', gisController.getWasteMap);
  * @route POST /api/v1/gis/match
  * @desc Match supply and demand - PUBLIC
  */
-router.post('/match', requireAuth, gisController.matchSupplyDemand);
+router.post('/match', gisController.matchSupplyDemand);
 
 export default router;

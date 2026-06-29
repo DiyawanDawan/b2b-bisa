@@ -21,4 +21,13 @@ router.get(
   marketController.getPrediction,
 );
 
+router.get(
+  '/supply-demand',
+  requireAuth,
+  requireTierPro,
+  marketController.getSupplyDemand,
+);
+
+router.post('/sync', requireAuth, requireTierPro, marketController.syncMarketData);
+
 export default router;

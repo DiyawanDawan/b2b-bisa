@@ -1,142 +1,223 @@
 import prisma from '#config/prisma';
 import AppError from '#utils/appError';
 import { TrendCategory } from '#prisma';
-import { GOOGLE_GEMINI_API_KEY, FORECAST_ALPHA, FORECAST_STEPS } from '#utils/env.util';
-import fetch from 'node-fetch';
-import { withRetry } from '#utils/retry.util';
-import { GeminiResponse } from '#types/ai.types';
+import {
+  FORECAST_ALPHA,
+  FORECAST_STEPS,
+  ML_PREDICT_ENABLED,
+  ML_SERVICE_API_KEY,
+  ML_SERVICE_URL,
+} from '#utils/env.util';
+import {
+  ensureMarketDataFresh,
+  getLiveSnapshotForLabel,
+  parseMarketHistory,
+  syncAllMarketTrends,
+} from '#services/marketAggregator.service';
+import {
+  isSupportedMarketTrend,
+  resolveCommoditySpec,
+} from '#config/marketCommodity.config';
+import {
+  resolveMarketInsight,
+  MarketAnalyticsContext,
+  inferProjectionTrendType,
+} from '#utils/marketInsight.util';
+import { getSupplyDemandForLabel, getSupplyDemandOverview } from '#services/marketSupplyDemand.service';
 
-/**
- * Get all market trends, optionally filtered by category
- */
-export const getMarketTrends = async (category?: TrendCategory) => {
-  const where = category ? { category } : {};
-  return prisma.marketTrend.findMany({
-    where,
-    orderBy: { label: 'asc' },
-  });
+type HistoryPoint = { x: string; y: number };
+
+type MlMarketForecastResponse = {
+  projected_data: Array<{ x: string; y: number }>;
+  model_version: string;
+  confidence?: number | null;
 };
 
-/**
- * Calculate Exponential Smoothing Forecasting
- * formula: S_t = alpha * Y_t + (1 - alpha) * S_{t-1}
- */
 const calculateExponentialSmoothing = (data: number[], alpha = 0.5, steps = 3): number[] => {
   if (data.length === 0) return [];
 
   const smoothedData = [data[0]];
   for (let i = 1; i < data.length; i++) {
-    const st = alpha * data[i] + (1 - alpha) * smoothedData[i - 1];
-    smoothedData.push(st);
+    smoothedData.push(alpha * data[i] + (1 - alpha) * smoothedData[i - 1]);
   }
 
   const lastSmoothed = smoothedData[smoothedData.length - 1];
-
-  // Derive a simple trend component for forecasting
   const trend = (data[data.length - 1] - smoothedData[0]) / data.length;
 
-  const forecasts = [];
+  const forecasts: number[] = [];
   for (let i = 1; i <= steps; i++) {
     forecasts.push(lastSmoothed + trend * i);
   }
-
   return forecasts;
 };
 
-/**
- * Generate AI Insight for a market trend
- */
-const generateMarketInsight = async (label: string, dataStr: string, projectionStr: string) => {
-  if (!GOOGLE_GEMINI_API_KEY) {
-    return 'Analisis cerdas tidak tersedia (API Key missing). Secara stastitik, perhatikan arah tren proyeksi nilai.';
-  }
-
-  const prompt = `Anda adalah Analis Pasar di platform BISA (Biochar Indonesia Sustainable Agriculture).
-Kami memiliki komoditas: "${label}".
-Berikut adalah trend data historis harganya dalam 12 bulan terakhir: ${dataStr}.
-Berdasarkan Exponential Smoothing, proyeksi 3 bulan ke depan adalah: ${projectionStr}.
-
-Tugas: Berikan 2-3 kalimat analisis pasar singkat (Bahasa Indonesia) yang profesional. Jelaskan apakah trennya naik/turun/stabil, dan berikan saran singkat kepada supplier/petani apakah mereka harus menahan stok atau segera menjual. Jangan sebutkan "Exponential Smoothing" atau teknis rumit, gunakan bahasa bisnis yang mudah dipahami.`;
-
-  const body = {
-    contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: { temperature: 0.7, maxOutputTokens: 200 },
-  };
-
-  try {
-    const result = await withRetry(async () => {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GOOGLE_GEMINI_API_KEY}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        },
-      );
-
-      const res = (await response.json()) as GeminiResponse;
-      if (!response.ok) {
-        throw new Error(res.error?.message || 'Gagal menganalisis data pasar saat ini.');
-      }
-      return res;
-    });
-
-    return result.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || 'Insight tidak tersedia.';
-  } catch (error) {
-    console.error('[MARKET AI ERROR]', error);
-    return 'Sistem analisis sedang sibuk.';
-  }
-};
-
-/**
- * Get Price Prediction and Insight for a specific trend
- */
-export const getPrediction = async (id: string) => {
-  const trend = await prisma.marketTrend.findUnique({ where: { id } });
-  if (!trend) throw new AppError('Tren pasar tidak ditemukan', 404);
-
-  const historyData = trend.historyData as Array<{ x: string; y: number }> | null;
-  if (!historyData || historyData.length === 0) {
-    throw new AppError('Data historis tidak cukup untuk membuat prediksi', 400);
-  }
-
-  // Extract purely the numerical values
-  const values = historyData.map((d) => d.y);
-
-  // Forecast n periods ahead (dynamic)
-  const rawForecasts = calculateExponentialSmoothing(values, FORECAST_ALPHA, FORECAST_STEPS);
-
-  // Format the forecasts with dummy upcoming months
-  const lastDateStr = historyData[historyData.length - 1].x; // e.g. "2023-12"
+const projectMonths = (lastDateStr: string, steps: number): string[] => {
   const [yearStr, monthStr] = lastDateStr.split('-');
   let currentYear = parseInt(yearStr, 10);
   let currentMonth = parseInt(monthStr, 10);
+  const months: string[] = [];
 
-  const projectedData = rawForecasts.map((val) => {
+  for (let i = 0; i < steps; i++) {
     currentMonth++;
     if (currentMonth > 12) {
       currentMonth = 1;
       currentYear++;
     }
-    const mStr = currentMonth.toString().padStart(2, '0');
+    months.push(`${currentYear}-${String(currentMonth).padStart(2, '0')}`);
+  }
+  return months;
+};
+
+const callMlMarketForecast = async (input: {
+  label: string;
+  history: HistoryPoint[];
+  steps: number;
+}): Promise<MlMarketForecastResponse | null> => {
+  if (!ML_PREDICT_ENABLED || !ML_SERVICE_URL) return null;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (ML_SERVICE_API_KEY) headers['X-ML-API-Key'] = ML_SERVICE_API_KEY;
+
+    const response = await fetch(`${ML_SERVICE_URL.replace(/\/$/, '')}/v1/predict/market`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        label: input.label,
+        history: input.history,
+        steps: input.steps,
+      }),
+      signal: controller.signal as AbortSignal,
+    });
+
+    if (!response.ok) {
+      console.warn('[MARKET] ML forecast failed:', response.status, await response.text());
+      return null;
+    }
+    return (await response.json()) as MlMarketForecastResponse;
+  } catch (error) {
+    console.warn('[MARKET] ML service unreachable:', error);
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+const buildProjectedData = (
+  historyData: HistoryPoint[],
+  steps: number,
+  mlResult: MlMarketForecastResponse | null,
+): { projectedData: HistoryPoint[]; forecastModel: string } => {
+  if (mlResult?.projected_data?.length) {
     return {
-      x: `${currentYear}-${mStr}`,
-      y: Math.round(val), // round to nearest integer for currency
+      projectedData: mlResult.projected_data.map((d) => ({
+        x: d.x,
+        y: Math.round(d.y),
+      })),
+      forecastModel: mlResult.model_version ?? 'market_ml_v1',
     };
-  });
+  }
 
-  // Call Gemini for human-readable insight
-  const historyString = JSON.stringify(values);
-  const projectionString = JSON.stringify(projectedData.map((d) => d.y));
-
-  const aiInsight = await generateMarketInsight(trend.label, historyString, projectionString);
+  const values = historyData.map((d) => d.y);
+  const rawForecasts = calculateExponentialSmoothing(values, FORECAST_ALPHA, steps);
+  const lastDateStr = historyData[historyData.length - 1].x;
+  const monthLabels = projectMonths(lastDateStr, steps);
 
   return {
+    projectedData: rawForecasts.map((val, idx) => ({
+      x: monthLabels[idx],
+      y: Math.round(val),
+    })),
+    forecastModel: 'exponential_smoothing_v1',
+  };
+};
+
+export const getMarketTrends = async (category?: TrendCategory) => {
+  await ensureMarketDataFresh();
+  const where = category ? { category } : {};
+  const rows = await prisma.marketTrend.findMany({
+    where,
+    orderBy: { label: 'asc' },
+  });
+  return rows.filter((t) => isSupportedMarketTrend(t.label));
+};
+
+export const syncMarketData = () => syncAllMarketTrends();
+
+export const getSupplyDemandAnalytics = () => getSupplyDemandOverview();
+
+export const getPrediction = async (id: string) => {
+  await ensureMarketDataFresh();
+
+  const trend = await prisma.marketTrend.findUnique({ where: { id } });
+  if (!trend) throw new AppError('Tren pasar tidak ditemukan', 404);
+  if (!isSupportedMarketTrend(trend.label)) {
+    throw new AppError('Komoditas pasar ini belum didukung untuk prediksi AI', 400);
+  }
+
+  const historyPoints = parseMarketHistory(trend.historyData).filter((p) => p.x);
+  if (historyPoints.length === 0) {
+    throw new AppError('Data historis tidak cukup untuk membuat prediksi', 400);
+  }
+
+  const historyData: HistoryPoint[] = historyPoints.map((p) => ({ x: p.x, y: p.y }));
+  const live = await getLiveSnapshotForLabel(trend.label);
+  const spec = resolveCommoditySpec(trend.label);
+
+  const mlResult = await callMlMarketForecast({
     label: trend.label,
+    history: historyData,
+    steps: FORECAST_STEPS,
+  });
+
+  const { projectedData, forecastModel } = buildProjectedData(historyData, FORECAST_STEPS, mlResult);
+
+  const historyValues = historyData.map((d) => d.y);
+  const projectedValues = projectedData.map((d) => d.y);
+  const projectionTrendType = inferProjectionTrendType(historyValues, projectedValues);
+
+  const insightCtx: MarketAnalyticsContext = {
+    label: trend.label,
+    trendType: projectionTrendType,
+    historyValues,
+    projectedValues,
+    projectedMonths: projectedData.map((d) => d.x),
+    ordersLast30Days: live.ordersLast30Days,
+    ordersLast90Days: live.ordersLast90Days,
+    activeListings: live.activeListings,
+    medianListingPrice: live.medianListingPrice,
+    momGrowthPct: live.momGrowthPct,
+    forecastModel,
+    dataSources: live.dataSources,
+    lastSyncedAt: new Date().toISOString(),
+  };
+
+  const { insight, insightSource } = await resolveMarketInsight(insightCtx, spec.priceDisplay);
+  const supplyDemand = await getSupplyDemandForLabel(trend.label, trend.category);
+
+  return {
+    id: trend.id,
+    label: trend.label,
+    category: trend.category,
     currentValue: trend.currentValue,
-    trendType: trend.trendType,
+    trendType: projectionTrendType,
     historyData,
     projectedData,
-    insight: aiInsight,
+    insight,
+    analytics: {
+      ordersLast30Days: live.ordersLast30Days,
+      ordersLast90Days: live.ordersLast90Days,
+      activeListings: live.activeListings,
+      medianListingPrice: live.medianListingPrice,
+      momGrowthPct: live.momGrowthPct,
+      forecastModel,
+      insightSource,
+      dataSources: live.dataSources,
+      lastSyncedAt: insightCtx.lastSyncedAt,
+      mlConfidence: mlResult?.confidence ?? null,
+      supplyDemand,
+    },
   };
 };

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { DeviceStatus, PaymentMethod } from '#prisma';
+import { BiomassaType, DeviceStatus, PaymentMethod } from '#prisma';
 
 export const registerDeviceSchema = z.object({
   body: z.object({
@@ -96,4 +96,29 @@ export const iotDeviceIdParamsSchema = z.object({
   params: z.object({
     deviceId: z.string().uuid('Invalid Device UUID format'),
   }),
+});
+
+export const iotPyrolysisSessionStartSchema = z.object({
+  params: z.object({
+    deviceId: z.string().uuid('Invalid Device UUID format'),
+  }),
+  body: z.object({
+    biomassaType: z.nativeEnum(BiomassaType).default(BiomassaType.SEKAM_PADI),
+    beratInput: z.number().positive().max(10_000).default(1000),
+  }),
+});
+
+export const iotAnalyzeRealtimeSchema = z.object({
+  params: z.object({
+    deviceId: z.string().uuid('Invalid Device UUID format'),
+  }),
+  body: z
+    .object({
+      biomassaType: z.nativeEnum(BiomassaType).optional(),
+      beratInput: z.number().positive().max(10_000).optional(),
+      waktuPembakaranMin: z.number().int().min(1).max(24 * 60).optional(),
+      windowMinutes: z.number().int().min(5).max(480).optional(),
+      savePrediction: z.boolean().optional(),
+    })
+    .default({}),
 });

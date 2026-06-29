@@ -28,6 +28,24 @@ const corsOrigins = process.env.CORS_ORIGINS
   ? process.env.CORS_ORIGINS.split(',').map((origin) => origin.trim())
   : ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:5173'];
 
+const isDev = process.env.NODE_ENV !== 'production';
+
+/** Flutter web / Vite dev server pakai port acak — izinkan localhost di development. */
+const isLocalDevOrigin = (origin: string) =>
+  /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+
+const corsOriginDelegate: cors.CorsOptions['origin'] = (origin, callback) => {
+  if (!origin) {
+    callback(null, true);
+    return;
+  }
+  if (corsOrigins.includes(origin) || (isDev && isLocalDevOrigin(origin))) {
+    callback(null, true);
+    return;
+  }
+  callback(new Error(`CORS blocked origin: ${origin}`));
+};
+
 import authRoutes from '#routes/auth';
 import usersRoutes from '#routes/users';
 import productsRoutes from '#routes/products';
@@ -59,6 +77,12 @@ import faqsRoutes from '#routes/faqs';
 import storageRoutes from '#routes/storage';
 import pusherRoutes from '#routes/pusher';
 import shippingRoutes from '#routes/shipping';
+import productQuestionsRoutes from '#routes/productQuestions';
+import rfqsRoutes from '#routes/rfqs';
+import commerceRoutes from '#routes/commerce';
+import referralsRoutes from '#routes/referrals';
+import integrationsRoutes from '#routes/integrations';
+import liveSessionsRoutes from '#routes/live-sessions';
 
 const app = express();
 const IGNORED_404_PATHS = new Set([
@@ -72,13 +96,25 @@ const IGNORED_404_PATHS = new Set([
  * ==========================================
  */
 app.set('trust proxy', TRUST_PROXY === 'true');
-app.use(helmet());
+app.use(
+  helmet({
+    // API dipanggil cross-origin dari Flutter web / admin dev
+    crossOriginResourcePolicy: isDev ? { policy: 'cross-origin' } : undefined,
+  }),
+);
 app.use(
   cors({
-    origin: corsOrigins,
+    origin: corsOriginDelegate,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'ngrok-skip-browser-warning', 'Accept'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'ngrok-skip-browser-warning',
+      'Accept',
+      'X-Requested-With',
+      'X-ML-API-Key',
+    ],
   }),
 );
 app.use(express.json());
@@ -153,6 +189,7 @@ app.use('/api/v1/auth', authLimiter, authRoutes);
 app.use('/api/v1/users', usersRoutes);
 app.use('/api/v1/categories', categoriesRoutes);
 app.use('/api/v1/products', productsRoutes);
+app.use('/api/v1/questions', productQuestionsRoutes);
 app.use('/api/v1/negotiations', negotiationsRoutes);
 app.use('/api/v1/suppliers', suppliersRoutes);
 app.use('/api/v1/orders', financialLimiter, ordersRoutes);
@@ -181,6 +218,11 @@ app.use('/api/v1/storage', publicApiLimiter, storageRoutes);
 // SEC-MOB-004: Pusher private channel auth endpoint untuk mobile.
 app.use('/api/v1/pusher', pusherRoutes);
 app.use('/api/v1/shipping', publicApiLimiter, shippingRoutes);
+app.use('/api/v1/rfqs', rfqsRoutes);
+app.use('/api/v1/commerce', commerceRoutes);
+app.use('/api/v1/referrals', referralsRoutes);
+app.use('/api/v1/integrations', integrationsRoutes);
+app.use('/api/v1/live-sessions', liveSessionsRoutes);
 
 // 404
 app.use('*', (req: Request, _res: Response, next: NextFunction) => {

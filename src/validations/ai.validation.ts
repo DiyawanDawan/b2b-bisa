@@ -20,3 +20,13 @@ export const chatbotSchema = z.object({
     .min(5, 'Pertanyaan minimal 5 karakter')
     .max(500, 'Pertanyaan maksimal 500 karakter'),
 });
+
+export const recentPredictionsQuerySchema = z.object({
+  query: z.object({
+    limit: z.coerce.number().int().min(1).max(50).optional().default(20),
+    iotOnly: z.preprocess(
+      (v) => v === 'true' || v === true,
+      z.boolean().optional().default(false),
+    ),
+  }),
+});
