@@ -1,6 +1,6 @@
 import prisma from '#config/prisma';
 import { BiomassaType, BiocharGrade } from '#prisma';
-import { GOOGLE_GEMINI_API_KEY, ML_PREDICT_ENABLED, ML_SERVICE_API_KEY, ML_SERVICE_URL } from '#utils/env.util';
+import { GOOGLE_GEMINI_API_KEY, DEEPSEEK_API_KEY, DEEPSEEK_MODEL, ML_PREDICT_ENABLED, ML_SERVICE_API_KEY, ML_SERVICE_URL } from '#utils/env.util';
 import fetch from 'node-fetch';
 import { withRetry } from '#utils/retry.util';
 import { GeminiResponse } from '#types/ai.types';
@@ -260,10 +260,24 @@ export const listRecentPredictions = async (
 };
 
 /**
+ * Strip markdown formatting characters from AI response
+ * so the mobile app receives clean plain text.
+ */
+const stripMarkdown = (text: string): string => {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '$1')   // **bold** → bold
+    .replace(/\*(.+?)\*/g, '$1')        // *italic* → italic
+    .replace(/^#{1,6}\s+/gm, '')        // ### heading → heading
+    .replace(/^[-*]\s+/gm, '• ')        // - bullet → • bullet
+    .replace(/`(.+?)`/g, '$1')          // `code` → code
+    .trim();
+};
+
+/**
  * AI Assistant for Biomass queries using Google Gemini API
  */
 export const askAssistant = async (question: string): Promise<string> => {
-  if (!GOOGLE_GEMINI_API_KEY) {
+  if (!DEEPSEEK_API_KEY && !GOOGLE_GEMINI_API_KEY) {
     return 'Maaf, asisten AI sedang tidak aktif. Mohon hubungi administrator (API Key missing).';
   }
   const config = await getAiRuntimeConfig();
@@ -281,18 +295,79 @@ export const askAssistant = async (question: string): Promise<string> => {
   }
 
   const systemInstructions = `
-    Anda adalah "BISA Assistant", pakar Biochar dan Pertanian Sirkular dari platform BISA (Biochar Indonesia Sirkular Agriculture).
-    Tujuan Anda: Membantu pengguna memahami produksi biochar, manajemen limbah organik, dan praktik pertanian berkelanjutan di Indonesia.
-    
-    ATURAN KETAT:
-    1. HANYA jawab pertanyaan seputar Biochar, Pertanian, Limbah Biomassa, dan Ekosistem BISA.
-    2. Jika pengguna bertanya di luar topik tersebut (seperti politik, hiburan umum, atau teknologi lain), tolak dengan sopan menggunakan gaya bahasa BISA: "Maaf, sebagai asisten pakar biochar, saya hanya dapat membantu Anda dalam topik pertanian sirkular dan pengelolaan limbah organik."
-    3. Gunakan Bahasa Indonesia yang ramah, profesional, dan mudah dipahami petani maupun pebisnis.
-    4. Jawaban harus ringkas namun informatif.
-    5. Jika ada konteks dokumen internal, prioritaskan informasi dari dokumen tersebut.
+    Anda adalah "Asisten BISA", asisten ramah dari platform BISA (Biochar Indonesia Sirkular Agriculture).
+
+    ATURAN FORMAT (WAJIB DIPATUHI):
+    - DILARANG KERAS menggunakan format Markdown apapun. Tidak boleh ada tanda **, *, #, ##, - (bullet), atau formatting lainnya.
+    - Tulis jawaban sebagai teks biasa (plain text) saja.
+    - Gunakan kalimat pendek dan sederhana.
+    - Maksimal 3-4 kalimat per jawaban. Langsung ke inti.
+
+    ATURAN ISI:
+    1. Hanya jawab tentang Biochar, Pertanian, Limbah Biomassa, dan platform BISA.
+    2. Jika pertanyaan di luar topik, jawab singkat: "Maaf, saya hanya bisa bantu soal biochar dan pertanian ya."
+    3. Pakai Bahasa Indonesia sederhana yang mudah dipahami semua orang.
+    4. JANGAN mengarang jawaban. Jika ada KONTEKS DOKUMEN di bawah, jawab hanya berdasarkan dokumen itu.
+    5. Jika informasi tidak ditemukan di dokumen, jawab singkat: "Maaf, info itu belum ada di panduan BISA. Coba hubungi tim BISA langsung ya."
+    6. Jangan ulangi pertanyaan pengguna di jawaban.
     ${ragBlock}
   `;
 
+  // Try DeepSeek first if API key is provided
+  if (DEEPSEEK_API_KEY) {
+    try {
+      const result = await withRetry(async () => {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), config.assistantTimeoutMs);
+        try {
+          const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
+            },
+            body: JSON.stringify({
+              model: DEEPSEEK_MODEL || 'deepseek-chat',
+              messages: [
+                {
+                  role: 'system',
+                  content: systemInstructions,
+                },
+                {
+                  role: 'user',
+                  content: question,
+                },
+              ],
+              stream: false,
+            }),
+            signal: controller.signal as any,
+          });
+
+          const res = (await response.json()) as any;
+
+          if (!response.ok) {
+            console.error('[AI SERVICE] DeepSeek API Error:', res);
+            throw new Error(res.error?.message || 'Gagal terhubung ke DeepSeek API');
+          }
+          return res;
+        } finally {
+          clearTimeout(timeout);
+        }
+      });
+
+      const aiResponse = result.choices?.[0]?.message?.content;
+      if (aiResponse) return stripMarkdown(aiResponse);
+    } catch (error: unknown) {
+      const errMsg = error instanceof Error ? error.message : 'Unknown error';
+      console.error('[AI SERVICE] DeepSeek Assistant Error:', errMsg);
+      if (!GOOGLE_GEMINI_API_KEY) {
+        return 'Maaf, terjadi gangguan saat menghubungi asisten AI DeepSeek kami.';
+      }
+      console.log('[AI SERVICE] Falling back to Gemini...');
+    }
+  }
+
+  // Fallback / Default to Google Gemini API
   const body = {
     contents: [
       {
@@ -333,10 +408,10 @@ export const askAssistant = async (question: string): Promise<string> => {
     });
 
     const aiResponse = result.candidates?.[0]?.content?.parts?.[0]?.text;
-    return aiResponse || 'Maaf, saya tidak dapat memproses jawaban saat ini.';
+    return aiResponse ? stripMarkdown(aiResponse) : 'Maaf, saya tidak bisa proses jawaban sekarang. Coba lagi ya.';
   } catch (error: unknown) {
     const errMsg = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[AI SERVICE] Assistant Error:', errMsg);
+    console.error('[AI SERVICE] Gemini Assistant Error:', errMsg);
     return 'Maaf, terjadi gangguan saat menghubungi asisten AI kami.';
   }
 };

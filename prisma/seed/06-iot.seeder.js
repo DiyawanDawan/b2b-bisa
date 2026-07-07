@@ -114,12 +114,14 @@ export async function seedIoT(prisma, users) {
         data: {
           userId: supplier.id,
           deviceId: plan.deviceId,
+          deviceSecret: faker.string.hexadecimal({ length: 64, prefix: '' }).toLowerCase(),
           name: plan.name,
           status: plan.status,
           thresholdMin: 200,
           thresholdMax: 600,
           lat: faker.location.latitude(),
           lng: faker.location.longitude(),
+          ownedAt: faker.date.recent({ days: 30 }),
         },
       });
       deviceTotal++;

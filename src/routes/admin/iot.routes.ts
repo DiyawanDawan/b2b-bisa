@@ -6,8 +6,18 @@ import * as deviceValidation from '#validations/device.validation';
 const router = Router();
 
 /**
+ * POST /api/v1/admin/iot/devices
+ * Provision device + generate secret + return QR payload.
+ */
+router.post(
+  '/devices',
+  validate(deviceValidation.adminCreateIotDeviceSchema, 'all'),
+  iotController.createAdminIotDevice,
+);
+
+/**
  * GET /api/v1/admin/iot/devices
- * Read-only fleet monitoring for admins.
+ * Fleet monitoring for admins, including unclaimed inventory.
  */
 router.get(
   '/devices',

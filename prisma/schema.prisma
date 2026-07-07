@@ -1244,22 +1244,25 @@ model KnowledgeDocument {
 // =========================================================
 
 model IotDevice {
-  id          String       @id @default(uuid())
-  userId      String       @map("user_id")
-  deviceId    String       @unique   @map("device_id") // Hardware device ID
-  name        String?                @map("name") // Custom name e.g. "Tungku Desa Masbagek"
-  status      DeviceStatus @default(ACTIVE) @map("status")
-  lat         Decimal?     @db.Decimal(10,7) @map("lat") // GPS coordinates
-  lng         Decimal?     @db.Decimal(10,7) @map("lng")
-  thresholdMin Decimal?     @default(200) @db.Decimal(15,2) @map("threshold_min")
-  thresholdMax Decimal?     @default(600) @db.Decimal(15,2) @map("threshold_max")
-  createdAt   DateTime     @default(now()) @map("created_at")
-  updatedAt   DateTime     @updatedAt @map("updated_at")
+  id            String       @id @default(uuid())
+  userId        String?      @map("user_id")                     // Nullable — null = belum di-claim oleh petani
+  deviceId      String       @unique   @map("device_id")         // Serial number hardware (e.g. ESP32-LOMBOK-001)
+  deviceSecret  String       @unique   @map("device_secret")     // X-Device-Token untuk autentikasi hardware (permanen)
+  name          String?                @map("name")              // Nama alias (e.g. "Tungku Desa Masbagek")
+  status        DeviceStatus @default(ACTIVE) @map("status")
+  lat           Decimal?     @db.Decimal(10,7) @map("lat")
+  lng           Decimal?     @db.Decimal(10,7) @map("lng")
+  thresholdMin  Decimal?     @default(200) @db.Decimal(15,2) @map("threshold_min")
+  thresholdMax  Decimal?     @default(600) @db.Decimal(15,2) @map("threshold_max")
+  ownedAt       DateTime?    @map("owned_at")                    // Kapan petani scan QR & claim perangkat
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
 
-  user        User         @relation(fields: [userId], references: [id], onDelete: Restrict)
-  readings    IotReading[]
-  alerts      IotAlert[]
+  user          User?        @relation(fields: [userId], references: [id], onDelete: Restrict)
+  readings      IotReading[]
+  alerts        IotAlert[]
 
+  @@index([deviceSecret])
   @@map("iot_devices")
 }
 

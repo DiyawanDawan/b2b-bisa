@@ -17,11 +17,7 @@ type ChromaCollectionLike = {
     documents: string[];
     metadatas?: Record<string, string | number | boolean>[];
   }) => Promise<void>;
-  query: (args: {
-    queryTexts: string[];
-    nResults: number;
-    include?: string[];
-  }) => Promise<{
+  query: (args: { queryTexts: string[]; nResults: number; include?: string[] }) => Promise<{
     documents?: (string[] | null)[];
     metadatas?: (Record<string, unknown>[] | null)[];
     distances?: (number[] | null)[];
@@ -124,7 +120,11 @@ export const deleteDocumentChunks = async (
 ): Promise<void> => {
   const col = await getCollection(collection);
   if (!col) return;
-  await col.delete({ where: { documentId } });
+  try {
+    await col.delete({ where: { documentId } });
+  } catch (error) {
+    throw toChromaUserError(error);
+  }
 };
 
 export type RagHit = {

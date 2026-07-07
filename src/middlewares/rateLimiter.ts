@@ -21,6 +21,14 @@ const compositeKey = (req: Request): string => {
   return `${uid}:${req.ip || 'unknown'}`;
 };
 
+const iotIngestKey = (req: Request): string => {
+  const deviceToken = req.header('X-Device-Token')?.trim();
+  if (deviceToken) {
+    return `device:${deviceToken}`;
+  }
+  return `ip:${req.ip || 'unknown'}`;
+};
+
 export const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 300,
@@ -264,8 +272,8 @@ export const uploadLimiter = rateLimit({
  * 30 req/menit per IP — sah untuk pelanggan, ketat untuk bot.
  */
 /**
- * IoT ingest: POST /iot/data — cegah flood telemetry dari gateway rusak.
- * 120 req/menit per user (≈2 detik interval).
+ * IoT ingest: POST /iot/data — cegah flood telemetry dari device rusak.
+ * 120 req/menit per device token (fallback IP jika header belum ada).
  */
 export const iotIngestLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -273,7 +281,7 @@ export const iotIngestLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skip: () => NODE_ENV === 'development',
-  keyGenerator: compositeKey,
+  keyGenerator: iotIngestKey,
   message: {
     meta: {
       success: false,

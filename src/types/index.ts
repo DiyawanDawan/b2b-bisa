@@ -167,12 +167,14 @@ export interface AIPredictionResponse {
 
 export interface IoTDeviceResponse {
   id: string;
-  userId: string;
+  userId?: string | null;
   deviceId: string;
+  deviceSecret?: string;
   name?: string | null;
   status: DeviceStatus;
   lat?: number | null;
   lng?: number | null;
+  ownedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }

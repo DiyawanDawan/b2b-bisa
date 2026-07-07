@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto';
 import prisma from '#config/prisma';
 import AppError from '#utils/appError';
 import { sealProviderActions } from '#utils/encryption.util';
@@ -19,6 +20,14 @@ import { IOT_ONLINE_TIMEOUT_MS, IOT_COOLDOWN_MS } from '#utils/env.util';
 import { createPaymentRequest } from '#config/xendit';
 
 const CURRENT_STATUS_WINDOW_MS = 30 * 60 * 1000;
+const DEVICE_SECRET_BYTES = 32;
+
+const generateDeviceSecret = () => randomBytes(DEVICE_SECRET_BYTES).toString('hex');
+
+const buildDeviceQrPayload = (serialNumber: string, deviceSecret: string) => ({
+  serialNumber,
+  deviceSecret,
+});
 
 type DeviceWithTelemetry = {
   id: string;
@@ -75,44 +84,102 @@ export const formatDeviceForClient = (device: DeviceWithTelemetry) => {
 };
 
 /**
- * Register a new IoT device for a Supplier (Farmer)
+ * Admin: provision a new IoT device before shipment.
  */
-export const registerDevice = async (userId: string, deviceId: string, name?: string) => {
-  const existing = await prisma.iotDevice.findUnique({ where: { deviceId } });
-  if (existing) throw new AppError('Device ID sudah terdaftar.', 409);
+export const createAdminIotDevice = async (serialNumber: string, name?: string) => {
+  const normalizedSerialNumber = serialNumber.trim();
+  const existing = await prisma.iotDevice.findUnique({
+    where: { deviceId: normalizedSerialNumber },
+  });
+  if (existing) throw new AppError('Serial number sudah terdaftar.', 409);
 
-  return prisma.iotDevice
-    .create({
-      data: {
-        userId,
-        deviceId,
-        name,
-      },
-      select: {
-        id: true,
-        deviceId: true,
-        name: true,
-        status: true,
-        thresholdMin: true,
-        thresholdMax: true,
-        readings: { orderBy: { recordedAt: 'desc' }, take: 1 },
-        alerts: { where: { isRead: false }, take: 1, select: { id: true } },
-      },
-    })
-    .then(formatDeviceForClient);
+  const deviceSecret = generateDeviceSecret();
+  const device = await prisma.iotDevice.create({
+    data: {
+      deviceId: normalizedSerialNumber,
+      deviceSecret,
+      name: name?.trim() || null,
+      userId: null,
+      ownedAt: null,
+    },
+    select: {
+      id: true,
+      deviceId: true,
+      name: true,
+      deviceSecret: true,
+      createdAt: true,
+    },
+  });
+
+  const qrPayload = buildDeviceQrPayload(device.deviceId, device.deviceSecret);
+
+  return {
+    id: device.id,
+    serialNumber: device.deviceId,
+    name: device.name,
+    deviceSecret: device.deviceSecret,
+    qrPayload,
+    qrData: JSON.stringify(qrPayload),
+    createdAt: device.createdAt,
+  };
 };
 
 /**
- * Log reading from IoT Device (Temperature/Humidity)
+ * Supplier: claim a provisioned device by scanning QR payload.
+ */
+export const claimDevice = async (userId: string, deviceSecret: string, name?: string) => {
+  const device = await prisma.iotDevice.findUnique({
+    where: { deviceSecret },
+    select: {
+      id: true,
+      userId: true,
+      deviceId: true,
+      name: true,
+      status: true,
+      thresholdMin: true,
+      thresholdMax: true,
+      readings: { orderBy: { recordedAt: 'desc' }, take: 1 },
+      alerts: { where: { isRead: false }, take: 1, select: { id: true } },
+    },
+  });
+
+  if (!device)
+    throw new AppError('QR perangkat tidak valid atau deviceSecret tidak ditemukan.', 404);
+  if (device.userId) {
+    throw new AppError('Perangkat ini sudah di-claim oleh pengguna lain.', 409);
+  }
+
+  const claimedDevice = await prisma.iotDevice.update({
+    where: { id: device.id },
+    data: {
+      userId,
+      ownedAt: new Date(),
+      ...(name?.trim() ? { name: name.trim() } : {}),
+    },
+    select: {
+      id: true,
+      deviceId: true,
+      name: true,
+      status: true,
+      thresholdMin: true,
+      thresholdMax: true,
+      readings: { orderBy: { recordedAt: 'desc' }, take: 1 },
+      alerts: { where: { isRead: false }, take: 1, select: { id: true } },
+    },
+  });
+
+  return formatDeviceForClient(claimedDevice);
+};
+
+/**
+ * Log reading from IoT Device using permanent X-Device-Token.
  */
 export const logReading = async (
-  deviceIdStr: string,
-  userId: string,
-  userRole: UserRole,
+  deviceSecret: string,
   data: { temp: number; hum?: number; co2?: number },
 ) => {
   const device = await prisma.iotDevice.findUnique({
-    where: { deviceId: deviceIdStr },
+    where: { deviceSecret },
     select: {
       id: true,
       userId: true,
@@ -123,9 +190,9 @@ export const logReading = async (
       thresholdMin: true,
     },
   });
-  if (!device) throw new AppError('Device tidak ditemukan.', 404);
-  if (userRole !== UserRole.ADMIN && device.userId !== userId) {
-    throw new AppError('Perangkat bukan milik Anda.', 403);
+  if (!device) throw new AppError('X-Device-Token tidak valid.', 401);
+  if (!device.userId) {
+    throw new AppError('Perangkat belum di-claim oleh petani. Telemetri ditolak.', 409);
   }
   if (device.status !== DeviceStatus.ACTIVE) {
     throw new AppError(
@@ -674,14 +741,10 @@ export const getDeviceDashboardData = async (
     );
   }
   if (metricSet.has('humidity') && readings.some((r) => r.humidity != null)) {
-    series.humidity = readings.map((r) =>
-      buildSeriesPoint(r.recordedAt, Number(r.humidity) || 0),
-    );
+    series.humidity = readings.map((r) => buildSeriesPoint(r.recordedAt, Number(r.humidity) || 0));
   }
   if (metricSet.has('co2') && readings.some((r) => r.co2Level != null)) {
-    series.co2 = readings.map((r) =>
-      buildSeriesPoint(r.recordedAt, Number(r.co2Level) || 0),
-    );
+    series.co2 = readings.map((r) => buildSeriesPoint(r.recordedAt, Number(r.co2Level) || 0));
   }
 
   const temperatureSeries = readings.map((r) => ({
@@ -746,14 +809,12 @@ export const getDeviceDashboardData = async (
           recordedAt: currentLast.recordedAt,
         }
       : null,
-    history: readings
-      .slice(-10)
-      .map((r) => ({
-        temperature: Number(r.temperature),
-        humidity: r.humidity != null ? Number(r.humidity) : null,
-        co2Level: r.co2Level != null ? Number(r.co2Level) : null,
-        recordedAt: r.recordedAt,
-      })),
+    history: readings.slice(-10).map((r) => ({
+      temperature: Number(r.temperature),
+      humidity: r.humidity != null ? Number(r.humidity) : null,
+      co2Level: r.co2Level != null ? Number(r.co2Level) : null,
+      recordedAt: r.recordedAt,
+    })),
     series,
     seriesData,
     summaryStats,
@@ -773,7 +834,8 @@ export const getFleetAnalytics = async (
   userRole: UserRole,
   range: string = '24h',
 ) => {
-  const rangeKey = (range as IotDashboardRange) in IOT_RANGE_MS ? (range as IotDashboardRange) : '24h';
+  const rangeKey =
+    (range as IotDashboardRange) in IOT_RANGE_MS ? (range as IotDashboardRange) : '24h';
   const since = new Date(Date.now() - (IOT_RANGE_MS[rangeKey] ?? IOT_RANGE_MS['24h']));
 
   const where =
@@ -933,7 +995,8 @@ export const exportDeviceReadingsCsv = async (
 ) => {
   await assertDeviceAccess(deviceId, userId, userRole);
 
-  const rangeKey = (range as IotDashboardRange) in IOT_RANGE_MS ? (range as IotDashboardRange) : '24h';
+  const rangeKey =
+    (range as IotDashboardRange) in IOT_RANGE_MS ? (range as IotDashboardRange) : '24h';
   const since = new Date(Date.now() - (IOT_RANGE_MS[rangeKey] ?? IOT_RANGE_MS['24h']));
 
   const readings = await prisma.iotReading.findMany({
@@ -964,11 +1027,13 @@ export const exportDeviceReadingsCsv = async (
 /**
  * Admin: list all IoT devices (read-only monitoring).
  */
-export const listAdminIotDevices = async (options: {
-  page?: number;
-  limit?: number;
-  search?: string;
-} = {}) => {
+export const listAdminIotDevices = async (
+  options: {
+    page?: number;
+    limit?: number;
+    search?: string;
+  } = {},
+) => {
   const page = Math.max(1, options.page ?? 1);
   const limit = Math.min(50, Math.max(1, options.limit ?? 20));
   const skip = (page - 1) * limit;
@@ -1008,8 +1073,10 @@ export const listAdminIotDevices = async (options: {
         name: d.name || d.deviceId,
         liveStatus: formatted.status,
         isMonitoringEnabled: d.status === DeviceStatus.ACTIVE,
-        ownerName: d.user.fullName,
-        ownerEmail: d.user.email,
+        ownerName: d.user?.fullName ?? null,
+        ownerEmail: d.user?.email ?? null,
+        isClaimed: !!d.userId,
+        ownedAt: d.ownedAt,
         lastTemp: last ? Number(last.temperature) : null,
         lastSeen: last?.recordedAt ?? null,
         hasUnreadAlert: d.alerts.length > 0,

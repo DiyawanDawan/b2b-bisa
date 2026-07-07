@@ -174,7 +174,13 @@ export const deleteKnowledgeDocument = async (id: string) => {
   const doc = await prisma.knowledgeDocument.findUnique({ where: { id } });
   if (!doc) throw new AppError('Dokumen knowledge tidak ditemukan.', 404);
 
-  await deleteDocumentChunks(id, doc.chromaCollection);
+  try {
+    await deleteDocumentChunks(id, doc.chromaCollection);
+  } catch (chromaErr) {
+    // Non-blocking: log Chroma error but continue deleting from DB
+    const msg = chromaErr instanceof Error ? chromaErr.message : 'Unknown Chroma error';
+    console.warn(`[knowledge] Failed to delete Chroma chunks for doc ${id}: ${msg}`);
+  }
 
   if (doc.storageKey) {
     try {

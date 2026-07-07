@@ -81,6 +81,8 @@ export const buildStorageAssetUrl = (relativePath: string): string => {
 // Platform settings
 // AI
 export const GOOGLE_GEMINI_API_KEY = optional('GOOGLE_GEMINI_API_KEY');
+export const DEEPSEEK_API_KEY = optional('DEEPSEEK_API_KEY') || optional('DEEPSHEEK_API_KEY');
+export const DEEPSEEK_MODEL = optional('DEEPSEEK_MODEL') || optional('DEEPSHEEK_MODEL') || 'deepseek-chat';
 
 export const ML_SERVICE_URL = optional('ML_SERVICE_URL');
 export const ML_SERVICE_API_KEY = optional('ML_SERVICE_API_KEY');
@@ -88,10 +90,7 @@ export const ML_PREDICT_ENABLED = optional('ML_PREDICT_ENABLED', 'true') === 'tr
 
 // Chroma Cloud — RAG knowledge base
 export const CHROMA_API_KEY = optional('CHROMA_API_KEY');
-export const CHROMA_TENANT_ID = optional(
-  'CHROMA_TENANT_ID',
-  '5f0969bb-9cbf-43c2-9fb5-130785014b2e',
-);
+export const CHROMA_TENANT_ID = optional('CHROMA_TENANT_ID') || optional('CHROMA_TENANT') || '5f0969bb-9cbf-43c2-9fb5-130785014b2e';
 export const CHROMA_DATABASE = optional('CHROMA_DATABASE', 'bisa');
 export const CHROMA_COLLECTION = optional('CHROMA_COLLECTION', 'bisa_knowledge');
 export const RAG_ENABLED = optional('RAG_ENABLED', 'true') === 'true';

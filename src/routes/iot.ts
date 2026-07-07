@@ -8,11 +8,21 @@ import { iotIngestLimiter } from '#middlewares/rateLimiter';
 
 const router = Router();
 
+/**
+ * 📡 Hardware Endpoint (Telemetry ingest)
+ * Auth via X-Device-Token only.
+ */
+router.post(
+  '/data',
+  iotIngestLimiter,
+  validate(deviceValidation.logReadingSchema, 'all'),
+  iotController.logReading,
+);
+
 router.use(requireAuth);
 
 /**
- * 🔓 PUBLIC (Authenticated but not necessarily PRO)
- * For upgrading to PRO
+ * 🔓 AUTHENTICATED (not necessarily PRO)
  */
 router.post(
   '/subscribe',
@@ -26,6 +36,13 @@ router.post(
  */
 router.use(requireTierPro);
 
+router.post(
+  '/devices/claim',
+  requireRole(UserRole.SUPPLIER, UserRole.ADMIN),
+  validate(deviceValidation.claimIotDeviceSchema, 'all'),
+  iotController.claimDevice,
+);
+
 // Device management
 router.get(
   '/devices',
@@ -38,13 +55,6 @@ router.get(
   '/status-summary',
   requireRole(UserRole.SUPPLIER, UserRole.ADMIN),
   iotController.getDeviceStatusSummary,
-);
-
-router.post(
-  '/devices',
-  requireRole(UserRole.SUPPLIER, UserRole.ADMIN),
-  validate(deviceValidation.registerDeviceSchema, 'all'),
-  iotController.registerDevice,
 );
 
 router.patch(
@@ -146,17 +156,6 @@ router.patch(
   '/alerts/:alertId/read',
   requireRole(UserRole.SUPPLIER, UserRole.ADMIN),
   iotController.markAlertAsRead,
-);
-
-/**
- * 📡 Hardware Endpoint (Telemetry ingest)
- */
-router.post(
-  '/data',
-  iotIngestLimiter,
-  requireRole(UserRole.SUPPLIER, UserRole.ADMIN),
-  validate(deviceValidation.logReadingSchema, 'all'),
-  iotController.logReading,
 );
 
 export default router;

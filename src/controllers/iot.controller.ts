@@ -11,21 +11,29 @@ interface PaginationQuery {
   limit?: string;
 }
 
-/**
- * Register a new device for the certified farmer (Supplier)
- */
-export const registerDevice = catchAsync(async (req: AuthRequest, res: Response) => {
-  const { deviceId, name } = req.body;
-  const result = await iotService.registerDevice(req.user!.id, deviceId, name);
-  successResponse(res, result, 'Device IoT berhasil didaftarkan');
+export const createAdminIotDevice = catchAsync(async (req: AuthRequest, res: Response) => {
+  const { serialNumber, name } = req.body;
+  const result = await iotService.createAdminIotDevice(serialNumber, name);
+  successResponse(res, result, 'Perangkat IoT berhasil dibuat dan QR siap dicetak');
+});
+
+export const claimDevice = catchAsync(async (req: AuthRequest, res: Response) => {
+  const { deviceSecret, name } = req.body;
+  const result = await iotService.claimDevice(req.user!.id, deviceSecret, name);
+  successResponse(res, result, 'Perangkat IoT berhasil di-claim');
 });
 
 /**
  * Log reading (called by hardware/gateway)
  */
 export const logReading = catchAsync(async (req: AuthRequest, res: Response) => {
-  const { deviceId, temp, hum, co2 } = req.body;
-  const result = await iotService.logReading(deviceId, req.user!.id, req.user!.role, {
+  const deviceToken = req.header('X-Device-Token')?.trim();
+  if (!deviceToken) {
+    throw new AppError('Header X-Device-Token wajib dikirim.', 401);
+  }
+
+  const { temp, hum, co2 } = req.body;
+  const result = await iotService.logReading(deviceToken, {
     temp,
     hum,
     co2,
@@ -157,16 +165,11 @@ export const getDeviceDashboard = catchAsync(async (req: AuthRequest, res: Respo
     limit?: string;
     metrics?: string;
   };
-  const result = await iotService.getDeviceDashboardData(
-    deviceId,
-    req.user!.id,
-    req.user!.role,
-    {
-      range,
-      limit: limit ? Number(limit) : undefined,
-      metrics,
-    },
-  );
+  const result = await iotService.getDeviceDashboardData(deviceId, req.user!.id, req.user!.role, {
+    range,
+    limit: limit ? Number(limit) : undefined,
+    metrics,
+  });
   successResponse(res, result, 'Data dashboard IoT berhasil dimuat');
 });
 
@@ -193,11 +196,7 @@ export const getDeviceAlerts = catchAsync(async (req: AuthRequest, res: Response
 
 export const getDeviceLatest = catchAsync(async (req: AuthRequest, res: Response) => {
   const { deviceId } = req.params;
-  const result = await iotService.getDeviceLatestReading(
-    deviceId,
-    req.user!.id,
-    req.user!.role,
-  );
+  const result = await iotService.getDeviceLatestReading(deviceId, req.user!.id, req.user!.role);
   successResponse(res, result, 'Data sensor terbaru berhasil dimuat');
 });
 

@@ -1,16 +1,25 @@
 import { z } from 'zod';
 import { BiomassaType, DeviceStatus, PaymentMethod } from '#prisma';
 
-export const registerDeviceSchema = z.object({
+export const adminCreateIotDeviceSchema = z.object({
   body: z.object({
-    deviceId: z.string().min(3, 'Device ID minimal 3 karakter'),
-    name: z.string().optional(),
+    serialNumber: z.string().trim().min(3, 'Serial number minimal 3 karakter'),
+    name: z.string().trim().min(1, 'Nama tidak boleh kosong').optional(),
+  }),
+});
+
+export const claimIotDeviceSchema = z.object({
+  body: z.object({
+    deviceSecret: z
+      .string()
+      .trim()
+      .regex(/^[a-fA-F0-9]{64}$/, 'deviceSecret harus berupa 64 karakter hex'),
+    name: z.string().trim().min(1, 'Nama tidak boleh kosong').optional(),
   }),
 });
 
 export const logReadingSchema = z.object({
   body: z.object({
-    deviceId: z.string(),
     temp: z.number(),
     hum: z.number().optional(),
     co2: z.number().optional(),
@@ -116,7 +125,12 @@ export const iotAnalyzeRealtimeSchema = z.object({
     .object({
       biomassaType: z.nativeEnum(BiomassaType).optional(),
       beratInput: z.number().positive().max(10_000).optional(),
-      waktuPembakaranMin: z.number().int().min(1).max(24 * 60).optional(),
+      waktuPembakaranMin: z
+        .number()
+        .int()
+        .min(1)
+        .max(24 * 60)
+        .optional(),
       windowMinutes: z.number().int().min(5).max(480).optional(),
       savePrediction: z.boolean().optional(),
     })
