@@ -112,10 +112,10 @@ jobs:
 
       - name: Deploy to developer server
         env:
-          DEPLOY_HOST: ${{ vars.DEPLOY_HOST || '' }}
-          DEPLOY_USER: ${{ vars.DEPLOY_USER || '' }}
-          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '' }}
-          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || '' }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER || '' }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '' }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
         run: |
           if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_USER" ] || [ -z "$DEPLOY_PATH" ]; then
             echo "Deployment target variables not configured. Skipping remote deployment."
