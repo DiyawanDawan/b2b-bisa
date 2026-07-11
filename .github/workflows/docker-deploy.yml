@@ -105,122 +105,122 @@ jobs:
             # Ensure docker-compose file exists
             if [ ! -f docker-compose.prod.yml ]; then
               echo "Creating docker-compose.prod.yml..."
-              cat > docker-compose.prod.yml << 'ComposeEOF'
-version: '3.8'
-
-services:
-  app:
-    image: ghcr.io/diyawandawan/b2b-bisa:latest
-    pull_policy: always
-    container_name: bisa-app
-    ports:
-      - "$${APP_PORT:-3000}:3000"
-    env_file:
-      - .env
-    environment:
-      NODE_ENV: production
-      DATABASE_URL: $${DATABASE_URL}
-      PORT: $${PORT:-3000}
-      JWT_SECRET: $${JWT_SECRET}
-      JWT_EXPIRES_IN: $${JWT_EXPIRES_IN:-7d}
-      JWT_REFRESH_EXPIRES_IN: $${JWT_REFRESH_EXPIRES_IN:-30d}
-      ENCRYPTION_KEY: $${ENCRYPTION_KEY}
-      ENCRYPTION_KEY_V2: $${ENCRYPTION_KEY_V2:-}
-      CLIENT_HOST: $${CLIENT_HOST:-http://localhost:3000}
-      CORS_ORIGINS: $${CORS_ORIGINS:-http://localhost:3000}
-      REDIS_URL: $${REDIS_URL:-redis://redis:6379}
-      REDIS_ENABLED: $${REDIS_ENABLED:-true}
-      REDIS_HOST: $${REDIS_HOST:-redis}
-      REDIS_PORT: $${REDIS_PORT:-6379}
-      R2_ACCOUNT_ID: $${R2_ACCOUNT_ID}
-      R2_ACCESS_KEY_ID: $${R2_ACCESS_KEY_ID}
-      R2_SECRET_ACCESS_KEY: $${R2_SECRET_ACCESS_KEY}
-      R2_BUCKET_NAME: $${R2_BUCKET_NAME:-bisa}
-      R2_PUBLIC_URL: $${R2_PUBLIC_URL}
-      API_PUBLIC_URL: $${API_PUBLIC_URL}
-      MEDIA_BASE_URL: $${MEDIA_BASE_URL}
-      EMAIL_SMTP_HOST: $${EMAIL_SMTP_HOST}
-      EMAIL_SMTP_PORT: $${EMAIL_SMTP_PORT:-587}
-      EMAIL_SMTP_SECURE: $${EMAIL_SMTP_SECURE:-false}
-      EMAIL_SMTP_USER: $${EMAIL_SMTP_USER}
-      EMAIL_SMTP_PASS: $${EMAIL_SMTP_PASS}
-      EMAIL_FROM: $${EMAIL_FROM}
-      EMAIL_SENDER_NAME: $${EMAIL_SENDER_NAME:-BISA Platform}
-      XENDIT_PAYMENT_SECRET_KEY: $${XENDIT_PAYMENT_SECRET_KEY}
-      XENDIT_PAYOUT_SECRET_KEY: $${XENDIT_PAYOUT_SECRET_KEY}
-      XENDIT_REPORT_SECRET_KEY: $${XENDIT_REPORT_SECRET_KEY}
-      XENDIT_WEBHOOK_TOKEN: $${XENDIT_WEBHOOK_TOKEN}
-      XENDIT_PUBLIC_KEY: $${XENDIT_PUBLIC_KEY}
-      PUSHER_APP_ID: $${PUSHER_APP_ID}
-      PUSHER_KEY: $${PUSHER_KEY}
-      PUSHER_SECRET: $${PUSHER_SECRET}
-      PUSHER_CLUSTER: $${PUSHER_CLUSTER}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    depends_on:
-      - redis
-      - mysql
-    restart: unless-stopped
-    networks:
-      - bisa-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://127.0.0.1:3000/health"]
-      interval: 15s
-      timeout: 10s
-      retries: 5
-      start_period: 90s
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: '0.5'
-      restart_policy:
-        condition: on-failure
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  redis:
-    image: redis:7-alpine
-    container_name: backend-redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    restart: unless-stopped
-    networks:
-      - bisa-network
-  mysql:
-    image: mysql:8.0
-    container_name: bisa-mysql
-    environment:
-      MYSQL_ROOT_PASSWORD: $${DATABASE_PASSWORD}
-      MYSQL_DATABASE: $${DATABASE_NAME}
-      MYSQL_USER: $${DATABASE_USER}
-      DATABASE_PASSWORD: $${DATABASE_PASSWORD}
-    ports:
-      - "3306:3306"
-    volumes:
-      - mysql_data:/var/lib/mysql
-    networks:
-      - bisa-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      timeout: 20s
-      interval: 30s
-      retries: 3
-
-networks:
-  bisa-network:
-    driver: bridge
-
-volumes:
-  redis_data:
-  mysql_data:
-ComposeEOF
+              sed 's/^            //'> docker-compose.prod.yml  << '            ComposeEOF'
+            version: '3.8'
+            
+            services:
+              app:
+                image: ghcr.io/diyawandawan/b2b-bisa:latest
+                pull_policy: always
+                container_name: bisa-app
+                ports:
+                  - "$${APP_PORT:-3000}:3000"
+                env_file:
+                  - .env
+                environment:
+                  NODE_ENV: production
+                  DATABASE_URL: $${DATABASE_URL}
+                  PORT: $${PORT:-3000}
+                  JWT_SECRET: $${JWT_SECRET}
+                  JWT_EXPIRES_IN: $${JWT_EXPIRES_IN:-7d}
+                  JWT_REFRESH_EXPIRES_IN: $${JWT_REFRESH_EXPIRES_IN:-30d}
+                  ENCRYPTION_KEY: $${ENCRYPTION_KEY}
+                  ENCRYPTION_KEY_V2: $${ENCRYPTION_KEY_V2:-}
+                  CLIENT_HOST: $${CLIENT_HOST:-http://localhost:3000}
+                  CORS_ORIGINS: $${CORS_ORIGINS:-http://localhost:3000}
+                  REDIS_URL: $${REDIS_URL:-redis://redis:6379}
+                  REDIS_ENABLED: $${REDIS_ENABLED:-true}
+                  REDIS_HOST: $${REDIS_HOST:-redis}
+                  REDIS_PORT: $${REDIS_PORT:-6379}
+                  R2_ACCOUNT_ID: $${R2_ACCOUNT_ID}
+                  R2_ACCESS_KEY_ID: $${R2_ACCESS_KEY_ID}
+                  R2_SECRET_ACCESS_KEY: $${R2_SECRET_ACCESS_KEY}
+                  R2_BUCKET_NAME: $${R2_BUCKET_NAME:-bisa}
+                  R2_PUBLIC_URL: $${R2_PUBLIC_URL}
+                  API_PUBLIC_URL: $${API_PUBLIC_URL}
+                  MEDIA_BASE_URL: $${MEDIA_BASE_URL}
+                  EMAIL_SMTP_HOST: $${EMAIL_SMTP_HOST}
+                  EMAIL_SMTP_PORT: $${EMAIL_SMTP_PORT:-587}
+                  EMAIL_SMTP_SECURE: $${EMAIL_SMTP_SECURE:-false}
+                  EMAIL_SMTP_USER: $${EMAIL_SMTP_USER}
+                  EMAIL_SMTP_PASS: $${EMAIL_SMTP_PASS}
+                  EMAIL_FROM: $${EMAIL_FROM}
+                  EMAIL_SENDER_NAME: $${EMAIL_SENDER_NAME:-BISA Platform}
+                  XENDIT_PAYMENT_SECRET_KEY: $${XENDIT_PAYMENT_SECRET_KEY}
+                  XENDIT_PAYOUT_SECRET_KEY: $${XENDIT_PAYOUT_SECRET_KEY}
+                  XENDIT_REPORT_SECRET_KEY: $${XENDIT_REPORT_SECRET_KEY}
+                  XENDIT_WEBHOOK_TOKEN: $${XENDIT_WEBHOOK_TOKEN}
+                  XENDIT_PUBLIC_KEY: $${XENDIT_PUBLIC_KEY}
+                  PUSHER_APP_ID: $${PUSHER_APP_ID}
+                  PUSHER_KEY: $${PUSHER_KEY}
+                  PUSHER_SECRET: $${PUSHER_SECRET}
+                  PUSHER_CLUSTER: $${PUSHER_CLUSTER}
+                extra_hosts:
+                  - "host.docker.internal:host-gateway"
+                depends_on:
+                  - redis
+                  - mysql
+                restart: unless-stopped
+                networks:
+                  - bisa-network
+                healthcheck:
+                  test: ["CMD", "curl", "-f", "http://127.0.0.1:3000/health"]
+                  interval: 15s
+                  timeout: 10s
+                  retries: 5
+                  start_period: 90s
+                deploy:
+                  resources:
+                    limits:
+                      memory: 512M
+                      cpus: '0.5'
+                  restart_policy:
+                    condition: on-failure
+                logging:
+                  driver: "json-file"
+                  options:
+                    max-size: "10m"
+                    max-file: "3"
+            
+              redis:
+                image: redis:7-alpine
+                container_name: backend-redis
+                ports:
+                  - "6379:6379"
+                volumes:
+                  - redis_data:/data
+                restart: unless-stopped
+                networks:
+                  - bisa-network
+              mysql:
+                image: mysql:8.0
+                container_name: bisa-mysql
+                environment:
+                  MYSQL_ROOT_PASSWORD: $${DATABASE_PASSWORD}
+                  MYSQL_DATABASE: $${DATABASE_NAME}
+                  MYSQL_USER: $${DATABASE_USER}
+                  DATABASE_PASSWORD: $${DATABASE_PASSWORD}
+                ports:
+                  - "3306:3306"
+                volumes:
+                  - mysql_data:/var/lib/mysql
+                networks:
+                  - bisa-network
+                restart: unless-stopped
+                healthcheck:
+                  test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+                  timeout: 20s
+                  interval: 30s
+                  retries: 3
+            
+            networks:
+              bisa-network:
+                driver: bridge
+            
+            volumes:
+              redis_data:
+              mysql_data:
+            ComposeEOF
               echo "✅ docker-compose.prod.yml created"
             else
               echo "✅ docker-compose.prod.yml already exists"
@@ -278,122 +278,122 @@ ComposeEOF
             # Ensure docker-compose file exists
             if [ ! -f docker-compose.prod.yml ]; then
               echo "Creating docker-compose.prod.yml..."
-              cat > docker-compose.prod.yml << 'ComposeEOF'
-version: '3.8'
-
-services:
-  app:
-    image: ghcr.io/diyawandawan/b2b-bisa:latest
-    pull_policy: always
-    container_name: bisa-app
-    ports:
-      - "$${APP_PORT:-3000}:3000"
-    env_file:
-      - .env
-    environment:
-      NODE_ENV: production
-      DATABASE_URL: $${DATABASE_URL}
-      PORT: $${PORT:-3000}
-      JWT_SECRET: $${JWT_SECRET}
-      JWT_EXPIRES_IN: $${JWT_EXPIRES_IN:-7d}
-      JWT_REFRESH_EXPIRES_IN: $${JWT_REFRESH_EXPIRES_IN:-30d}
-      ENCRYPTION_KEY: $${ENCRYPTION_KEY}
-      ENCRYPTION_KEY_V2: $${ENCRYPTION_KEY_V2:-}
-      CLIENT_HOST: $${CLIENT_HOST:-http://localhost:3000}
-      CORS_ORIGINS: $${CORS_ORIGINS:-http://localhost:3000}
-      REDIS_URL: $${REDIS_URL:-redis://redis:6379}
-      REDIS_ENABLED: $${REDIS_ENABLED:-true}
-      REDIS_HOST: $${REDIS_HOST:-redis}
-      REDIS_PORT: $${REDIS_PORT:-6379}
-      R2_ACCOUNT_ID: $${R2_ACCOUNT_ID}
-      R2_ACCESS_KEY_ID: $${R2_ACCESS_KEY_ID}
-      R2_SECRET_ACCESS_KEY: $${R2_SECRET_ACCESS_KEY}
-      R2_BUCKET_NAME: $${R2_BUCKET_NAME:-bisa}
-      R2_PUBLIC_URL: $${R2_PUBLIC_URL}
-      API_PUBLIC_URL: $${API_PUBLIC_URL}
-      MEDIA_BASE_URL: $${MEDIA_BASE_URL}
-      EMAIL_SMTP_HOST: $${EMAIL_SMTP_HOST}
-      EMAIL_SMTP_PORT: $${EMAIL_SMTP_PORT:-587}
-      EMAIL_SMTP_SECURE: $${EMAIL_SMTP_SECURE:-false}
-      EMAIL_SMTP_USER: $${EMAIL_SMTP_USER}
-      EMAIL_SMTP_PASS: $${EMAIL_SMTP_PASS}
-      EMAIL_FROM: $${EMAIL_FROM}
-      EMAIL_SENDER_NAME: $${EMAIL_SENDER_NAME:-BISA Platform}
-      XENDIT_PAYMENT_SECRET_KEY: $${XENDIT_PAYMENT_SECRET_KEY}
-      XENDIT_PAYOUT_SECRET_KEY: $${XENDIT_PAYOUT_SECRET_KEY}
-      XENDIT_REPORT_SECRET_KEY: $${XENDIT_REPORT_SECRET_KEY}
-      XENDIT_WEBHOOK_TOKEN: $${XENDIT_WEBHOOK_TOKEN}
-      XENDIT_PUBLIC_KEY: $${XENDIT_PUBLIC_KEY}
-      PUSHER_APP_ID: $${PUSHER_APP_ID}
-      PUSHER_KEY: $${PUSHER_KEY}
-      PUSHER_SECRET: $${PUSHER_SECRET}
-      PUSHER_CLUSTER: $${PUSHER_CLUSTER}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    depends_on:
-      - redis
-      - mysql
-    restart: unless-stopped
-    networks:
-      - bisa-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://127.0.0.1:3000/health"]
-      interval: 15s
-      timeout: 10s
-      retries: 5
-      start_period: 90s
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: '0.5'
-      restart_policy:
-        condition: on-failure
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  redis:
-    image: redis:7-alpine
-    container_name: backend-redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    restart: unless-stopped
-    networks:
-      - bisa-network
-  mysql:
-    image: mysql:8.0
-    container_name: bisa-mysql
-    environment:
-      MYSQL_ROOT_PASSWORD: $${DATABASE_PASSWORD}
-      MYSQL_DATABASE: $${DATABASE_NAME}
-      MYSQL_USER: $${DATABASE_USER}
-      DATABASE_PASSWORD: $${DATABASE_PASSWORD}
-    ports:
-      - "3306:3306"
-    volumes:
-      - mysql_data:/var/lib/mysql
-    networks:
-      - bisa-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      timeout: 20s
-      interval: 30s
-      retries: 3
-
-networks:
-  bisa-network:
-    driver: bridge
-
-volumes:
-  redis_data:
-  mysql_data:
-ComposeEOF
+              sed 's/^            //'> docker-compose.prod.yml  << '            ComposeEOF'
+            version: '3.8'
+            
+            services:
+              app:
+                image: ghcr.io/diyawandawan/b2b-bisa:latest
+                pull_policy: always
+                container_name: bisa-app
+                ports:
+                  - "$${APP_PORT:-3000}:3000"
+                env_file:
+                  - .env
+                environment:
+                  NODE_ENV: production
+                  DATABASE_URL: $${DATABASE_URL}
+                  PORT: $${PORT:-3000}
+                  JWT_SECRET: $${JWT_SECRET}
+                  JWT_EXPIRES_IN: $${JWT_EXPIRES_IN:-7d}
+                  JWT_REFRESH_EXPIRES_IN: $${JWT_REFRESH_EXPIRES_IN:-30d}
+                  ENCRYPTION_KEY: $${ENCRYPTION_KEY}
+                  ENCRYPTION_KEY_V2: $${ENCRYPTION_KEY_V2:-}
+                  CLIENT_HOST: $${CLIENT_HOST:-http://localhost:3000}
+                  CORS_ORIGINS: $${CORS_ORIGINS:-http://localhost:3000}
+                  REDIS_URL: $${REDIS_URL:-redis://redis:6379}
+                  REDIS_ENABLED: $${REDIS_ENABLED:-true}
+                  REDIS_HOST: $${REDIS_HOST:-redis}
+                  REDIS_PORT: $${REDIS_PORT:-6379}
+                  R2_ACCOUNT_ID: $${R2_ACCOUNT_ID}
+                  R2_ACCESS_KEY_ID: $${R2_ACCESS_KEY_ID}
+                  R2_SECRET_ACCESS_KEY: $${R2_SECRET_ACCESS_KEY}
+                  R2_BUCKET_NAME: $${R2_BUCKET_NAME:-bisa}
+                  R2_PUBLIC_URL: $${R2_PUBLIC_URL}
+                  API_PUBLIC_URL: $${API_PUBLIC_URL}
+                  MEDIA_BASE_URL: $${MEDIA_BASE_URL}
+                  EMAIL_SMTP_HOST: $${EMAIL_SMTP_HOST}
+                  EMAIL_SMTP_PORT: $${EMAIL_SMTP_PORT:-587}
+                  EMAIL_SMTP_SECURE: $${EMAIL_SMTP_SECURE:-false}
+                  EMAIL_SMTP_USER: $${EMAIL_SMTP_USER}
+                  EMAIL_SMTP_PASS: $${EMAIL_SMTP_PASS}
+                  EMAIL_FROM: $${EMAIL_FROM}
+                  EMAIL_SENDER_NAME: $${EMAIL_SENDER_NAME:-BISA Platform}
+                  XENDIT_PAYMENT_SECRET_KEY: $${XENDIT_PAYMENT_SECRET_KEY}
+                  XENDIT_PAYOUT_SECRET_KEY: $${XENDIT_PAYOUT_SECRET_KEY}
+                  XENDIT_REPORT_SECRET_KEY: $${XENDIT_REPORT_SECRET_KEY}
+                  XENDIT_WEBHOOK_TOKEN: $${XENDIT_WEBHOOK_TOKEN}
+                  XENDIT_PUBLIC_KEY: $${XENDIT_PUBLIC_KEY}
+                  PUSHER_APP_ID: $${PUSHER_APP_ID}
+                  PUSHER_KEY: $${PUSHER_KEY}
+                  PUSHER_SECRET: $${PUSHER_SECRET}
+                  PUSHER_CLUSTER: $${PUSHER_CLUSTER}
+                extra_hosts:
+                  - "host.docker.internal:host-gateway"
+                depends_on:
+                  - redis
+                  - mysql
+                restart: unless-stopped
+                networks:
+                  - bisa-network
+                healthcheck:
+                  test: ["CMD", "curl", "-f", "http://127.0.0.1:3000/health"]
+                  interval: 15s
+                  timeout: 10s
+                  retries: 5
+                  start_period: 90s
+                deploy:
+                  resources:
+                    limits:
+                      memory: 512M
+                      cpus: '0.5'
+                  restart_policy:
+                    condition: on-failure
+                logging:
+                  driver: "json-file"
+                  options:
+                    max-size: "10m"
+                    max-file: "3"
+            
+              redis:
+                image: redis:7-alpine
+                container_name: backend-redis
+                ports:
+                  - "6379:6379"
+                volumes:
+                  - redis_data:/data
+                restart: unless-stopped
+                networks:
+                  - bisa-network
+              mysql:
+                image: mysql:8.0
+                container_name: bisa-mysql
+                environment:
+                  MYSQL_ROOT_PASSWORD: $${DATABASE_PASSWORD}
+                  MYSQL_DATABASE: $${DATABASE_NAME}
+                  MYSQL_USER: $${DATABASE_USER}
+                  DATABASE_PASSWORD: $${DATABASE_PASSWORD}
+                ports:
+                  - "3306:3306"
+                volumes:
+                  - mysql_data:/var/lib/mysql
+                networks:
+                  - bisa-network
+                restart: unless-stopped
+                healthcheck:
+                  test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+                  timeout: 20s
+                  interval: 30s
+                  retries: 3
+            
+            networks:
+              bisa-network:
+                driver: bridge
+            
+            volumes:
+              redis_data:
+              mysql_data:
+            ComposeEOF
               echo "✅ docker-compose.prod.yml created"
             else
               echo "✅ docker-compose.prod.yml already exists"
@@ -416,104 +416,104 @@ ComposeEOF
             echo ""
             echo "⚙️ PHASE 1.5: CREATING ENVIRONMENT FILE"
             echo "=========================================="
-            cat > .env << 'EOF'
-            DEPLOYMENT_TIMESTAMP=$(date)
-            GIT_COMMIT=${{ github.sha }}
-            DEPLOYED_BY=GitHub Actions
-
-            DATABASE_URL=${{ secrets.DATABASE_URL }}
-            DATABASE_NAME=${{ secrets.DATABASE_NAME }}
-            DATABASE_PORT=${{ secrets.DATABASE_PORT }}
-            DATABASE_PASSWORD=${{ secrets.DATABASE_PASSWORD }}
-            DATABASE_USER=${{ secrets.DATABASE_USER }}
-            DATABASE_HOST=${{ secrets.DATABASE_HOST }}
-
-            NODE_ENV=production
-            PORT=3000
-            CORS_ORIGINS=${{ secrets.CORS_ORIGINS }}
-
-            JWT_SECRET=${{ secrets.JWT_SECRET }}
-            JWT_EXPIRES_IN=${{ secrets.JWT_EXPIRES_IN || '1d' }}
-            JWT_REFRESH_EXPIRES_IN=${{ secrets.JWT_REFRESH_EXPIRES_IN || '30d' }}
-            ENCRYPTION_KEY=${{ secrets.ENCRYPTION_KEY }}
-            ENCRYPTION_KEY_V2=${{ secrets.ENCRYPTION_KEY_V2 }}
-
-            CLIENT_HOST=${{ secrets.CLIENT_HOST }}
-
-            EMAIL_SMTP_SECURE=${{ secrets.EMAIL_SMTP_SECURE }}
-            EMAIL_SMTP_USER=${{ secrets.EMAIL_SMTP_USER }}
-            EMAIL_SMTP_PASS=${{ secrets.EMAIL_SMTP_PASS }}
-            EMAIL_SMTP_PORT=${{ secrets.EMAIL_SMTP_PORT }}
-            EMAIL_SMTP_HOST=${{ secrets.EMAIL_SMTP_HOST }}
-            EMAIL_FROM=${{ secrets.EMAIL_FROM }}
-            EMAIL_SENDER_NAME=${{ secrets.EMAIL_SENDER_NAME }}
-
-            PUSHER_APP_ID=${{ secrets.PUSHER_APP_ID }}
-            PUSHER_KEY=${{ secrets.PUSHER_KEY }}
-            PUSHER_SECRET=${{ secrets.PUSHER_SECRET }}
-            PUSHER_CLUSTER=${{ secrets.PUSHER_CLUSTER }}
-
-            R2_ACCOUNT_ID=${{ secrets.R2_ACCOUNT_ID }}
-            R2_ACCESS_KEY_ID=${{ secrets.R2_ACCESS_KEY_ID }}
-            R2_SECRET_ACCESS_KEY=${{ secrets.R2_SECRET_ACCESS_KEY }}
-            R2_BUCKET_NAME=${{ secrets.R2_BUCKET_NAME }}
-            R2_PUBLIC_URL=${{ secrets.R2_PUBLIC_URL }}
-
-            API_PUBLIC_URL=${{ secrets.API_PUBLIC_URL }}
-            MEDIA_BASE_URL=${{ secrets.MEDIA_BASE_URL }}
-
-            XENDIT_PAYMENT_SECRET_KEY=${{ secrets.XENDIT_PAYMENT_SECRET_KEY }}
-            XENDIT_PAYOUT_SECRET_KEY=${{ secrets.XENDIT_PAYOUT_SECRET_KEY }}
-            XENDIT_REPORT_SECRET_KEY=${{ secrets.XENDIT_REPORT_SECRET_KEY }}
-            XENDIT_PUBLIC_KEY=${{ secrets.XENDIT_PUBLIC_KEY }}
-            XENDIT_WEBHOOK_TOKEN=${{ secrets.XENDIT_WEBHOOK_TOKEN }}
-
-            REDIS_URL=${{ secrets.REDIS_URL }}
-            REDIS_ENABLED=${{ secrets.REDIS_ENABLED || 'false' }}
-            REDIS_KEY_PREFIX=${{ secrets.REDIS_KEY_PREFIX || 'bisa:v1' }}
-            REDIS_DEFAULT_TTL_SECONDS=${{ secrets.REDIS_DEFAULT_TTL_SECONDS || '3600' }}
-
-            ML_SERVICE_URL=${{ secrets.ML_SERVICE_URL }}
-            ML_PREDICT_ENABLED=${{ secrets.ML_PREDICT_ENABLED || 'true' }}
-            LOG_LEVEL=${{ secrets.LOG_LEVEL || 'info' }}
-
-            CHROMA_HOST=${{ secrets.CHROMA_HOST }}
-            CHROMA_API_KEY=${{ secrets.CHROMA_API_KEY }}
-            CHROMA_TENANT=${{ secrets.CHROMA_TENANT }}
-            CHROMA_DATABASE=${{ secrets.CHROMA_DATABASE }}
-            CHROMA_COLLECTION=${{ secrets.CHROMA_COLLECTION }}
-            DEEPSHEEK_API_KEY=${{ secrets.DEEPSHEEK_API_KEY }}
-            DEEPSHEEK_MODEL=${{ secrets.DEEPSHEEK_MODEL }}
-
-            USER_ID_RAJA_ONGKIR=${{ secrets.USER_ID_RAJA_ONGKIR }}
-            SECRET_KEY_RAJA_ONGKIR=${{ secrets.SECRET_KEY_RAJA_ONGKIR }}
-            SHIPPING_COST_API_KEY=${{ secrets.SHIPPING_COST_API_KEY }}
-            PAYMENT_API_KEY=${{ secrets.PAYMENT_API_KEY }}
-            QRISLY_API_KEY=${{ secrets.QRISLY_API_KEY }}
-
-            PEXELS_API_KEY=${{ secrets.PEXELS_API_KEY }}
-            PIXABAY_API_KEY=${{ secrets.PIXABAY_API_KEY }}
-
-            FIREBASE_SERVICE_ACCOUNT=${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-            FIREBASE_SERVICE_ACCOUNT_PATH=${{ secrets.FIREBASE_SERVICE_ACCOUNT_PATH }}
-
-            READINESS_GATES_ENABLED=${{ secrets.READINESS_GATES_ENABLED || 'true' }}
-            READINESS_ENFORCE_ADMIN=${{ secrets.READINESS_ENFORCE_ADMIN || 'false' }}
-            REQUIRE_KYC_FOR_ACTIVE_PRODUCT=${{ secrets.REQUIRE_KYC_FOR_ACTIVE_PRODUCT || 'false' }}
-
-            MEDIA_CHUNK_SIZE_BYTES=${{ secrets.MEDIA_CHUNK_SIZE_BYTES || '5242880' }}
-            MEDIA_UPLOAD_SESSION_TTL_HOURS=${{ secrets.MEDIA_UPLOAD_SESSION_TTL_HOURS || '24' }}
-            MEDIA_MAX_IMAGE_BYTES=${{ secrets.MEDIA_MAX_IMAGE_BYTES || '52428800' }}
-            MEDIA_MAX_PDF_BYTES=${{ secrets.MEDIA_MAX_PDF_BYTES || '20971520' }}
-            MEDIA_UPLOAD_PROXY_MODE=${{ secrets.MEDIA_UPLOAD_PROXY_MODE || 'true' }}
-
-            PUBLIC_VERIFY_BASE_URL=${{ secrets.PUBLIC_VERIFY_BASE_URL }}
-            SUPPORT_WHATSAPP=${{ secrets.SUPPORT_WHATSAPP }}
-            SUPPORT_EMAIL=${{ secrets.SUPPORT_EMAIL }}
-
-            RAJAONGKIR_BASE_URL=${{ secrets.RAJAONGKIR_BASE_URL }}
-            RAJAONGKIR_DEFAULT_COURIERS=${{ secrets.RAJAONGKIR_DEFAULT_COURIERS }}
-            RAG_ENABLED=${{ secrets.RAG_ENABLED || 'true' }}
+            sed 's/^            //'> .env  << '            EOF'
+                        DEPLOYMENT_TIMESTAMP=$(date)
+                        GIT_COMMIT=${{ github.sha }}
+                        DEPLOYED_BY=GitHub Actions
+            
+                        DATABASE_URL=${{ secrets.DATABASE_URL }}
+                        DATABASE_NAME=${{ secrets.DATABASE_NAME }}
+                        DATABASE_PORT=${{ secrets.DATABASE_PORT }}
+                        DATABASE_PASSWORD=${{ secrets.DATABASE_PASSWORD }}
+                        DATABASE_USER=${{ secrets.DATABASE_USER }}
+                        DATABASE_HOST=${{ secrets.DATABASE_HOST }}
+            
+                        NODE_ENV=production
+                        PORT=3000
+                        CORS_ORIGINS=${{ secrets.CORS_ORIGINS }}
+            
+                        JWT_SECRET=${{ secrets.JWT_SECRET }}
+                        JWT_EXPIRES_IN=${{ secrets.JWT_EXPIRES_IN || '1d' }}
+                        JWT_REFRESH_EXPIRES_IN=${{ secrets.JWT_REFRESH_EXPIRES_IN || '30d' }}
+                        ENCRYPTION_KEY=${{ secrets.ENCRYPTION_KEY }}
+                        ENCRYPTION_KEY_V2=${{ secrets.ENCRYPTION_KEY_V2 }}
+            
+                        CLIENT_HOST=${{ secrets.CLIENT_HOST }}
+            
+                        EMAIL_SMTP_SECURE=${{ secrets.EMAIL_SMTP_SECURE }}
+                        EMAIL_SMTP_USER=${{ secrets.EMAIL_SMTP_USER }}
+                        EMAIL_SMTP_PASS=${{ secrets.EMAIL_SMTP_PASS }}
+                        EMAIL_SMTP_PORT=${{ secrets.EMAIL_SMTP_PORT }}
+                        EMAIL_SMTP_HOST=${{ secrets.EMAIL_SMTP_HOST }}
+                        EMAIL_FROM=${{ secrets.EMAIL_FROM }}
+                        EMAIL_SENDER_NAME=${{ secrets.EMAIL_SENDER_NAME }}
+            
+                        PUSHER_APP_ID=${{ secrets.PUSHER_APP_ID }}
+                        PUSHER_KEY=${{ secrets.PUSHER_KEY }}
+                        PUSHER_SECRET=${{ secrets.PUSHER_SECRET }}
+                        PUSHER_CLUSTER=${{ secrets.PUSHER_CLUSTER }}
+            
+                        R2_ACCOUNT_ID=${{ secrets.R2_ACCOUNT_ID }}
+                        R2_ACCESS_KEY_ID=${{ secrets.R2_ACCESS_KEY_ID }}
+                        R2_SECRET_ACCESS_KEY=${{ secrets.R2_SECRET_ACCESS_KEY }}
+                        R2_BUCKET_NAME=${{ secrets.R2_BUCKET_NAME }}
+                        R2_PUBLIC_URL=${{ secrets.R2_PUBLIC_URL }}
+            
+                        API_PUBLIC_URL=${{ secrets.API_PUBLIC_URL }}
+                        MEDIA_BASE_URL=${{ secrets.MEDIA_BASE_URL }}
+            
+                        XENDIT_PAYMENT_SECRET_KEY=${{ secrets.XENDIT_PAYMENT_SECRET_KEY }}
+                        XENDIT_PAYOUT_SECRET_KEY=${{ secrets.XENDIT_PAYOUT_SECRET_KEY }}
+                        XENDIT_REPORT_SECRET_KEY=${{ secrets.XENDIT_REPORT_SECRET_KEY }}
+                        XENDIT_PUBLIC_KEY=${{ secrets.XENDIT_PUBLIC_KEY }}
+                        XENDIT_WEBHOOK_TOKEN=${{ secrets.XENDIT_WEBHOOK_TOKEN }}
+            
+                        REDIS_URL=${{ secrets.REDIS_URL }}
+                        REDIS_ENABLED=${{ secrets.REDIS_ENABLED || 'false' }}
+                        REDIS_KEY_PREFIX=${{ secrets.REDIS_KEY_PREFIX || 'bisa:v1' }}
+                        REDIS_DEFAULT_TTL_SECONDS=${{ secrets.REDIS_DEFAULT_TTL_SECONDS || '3600' }}
+            
+                        ML_SERVICE_URL=${{ secrets.ML_SERVICE_URL }}
+                        ML_PREDICT_ENABLED=${{ secrets.ML_PREDICT_ENABLED || 'true' }}
+                        LOG_LEVEL=${{ secrets.LOG_LEVEL || 'info' }}
+            
+                        CHROMA_HOST=${{ secrets.CHROMA_HOST }}
+                        CHROMA_API_KEY=${{ secrets.CHROMA_API_KEY }}
+                        CHROMA_TENANT=${{ secrets.CHROMA_TENANT }}
+                        CHROMA_DATABASE=${{ secrets.CHROMA_DATABASE }}
+                        CHROMA_COLLECTION=${{ secrets.CHROMA_COLLECTION }}
+                        DEEPSHEEK_API_KEY=${{ secrets.DEEPSHEEK_API_KEY }}
+                        DEEPSHEEK_MODEL=${{ secrets.DEEPSHEEK_MODEL }}
+            
+                        USER_ID_RAJA_ONGKIR=${{ secrets.USER_ID_RAJA_ONGKIR }}
+                        SECRET_KEY_RAJA_ONGKIR=${{ secrets.SECRET_KEY_RAJA_ONGKIR }}
+                        SHIPPING_COST_API_KEY=${{ secrets.SHIPPING_COST_API_KEY }}
+                        PAYMENT_API_KEY=${{ secrets.PAYMENT_API_KEY }}
+                        QRISLY_API_KEY=${{ secrets.QRISLY_API_KEY }}
+            
+                        PEXELS_API_KEY=${{ secrets.PEXELS_API_KEY }}
+                        PIXABAY_API_KEY=${{ secrets.PIXABAY_API_KEY }}
+            
+                        FIREBASE_SERVICE_ACCOUNT=${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+                        FIREBASE_SERVICE_ACCOUNT_PATH=${{ secrets.FIREBASE_SERVICE_ACCOUNT_PATH }}
+            
+                        READINESS_GATES_ENABLED=${{ secrets.READINESS_GATES_ENABLED || 'true' }}
+                        READINESS_ENFORCE_ADMIN=${{ secrets.READINESS_ENFORCE_ADMIN || 'false' }}
+                        REQUIRE_KYC_FOR_ACTIVE_PRODUCT=${{ secrets.REQUIRE_KYC_FOR_ACTIVE_PRODUCT || 'false' }}
+            
+                        MEDIA_CHUNK_SIZE_BYTES=${{ secrets.MEDIA_CHUNK_SIZE_BYTES || '5242880' }}
+                        MEDIA_UPLOAD_SESSION_TTL_HOURS=${{ secrets.MEDIA_UPLOAD_SESSION_TTL_HOURS || '24' }}
+                        MEDIA_MAX_IMAGE_BYTES=${{ secrets.MEDIA_MAX_IMAGE_BYTES || '52428800' }}
+                        MEDIA_MAX_PDF_BYTES=${{ secrets.MEDIA_MAX_PDF_BYTES || '20971520' }}
+                        MEDIA_UPLOAD_PROXY_MODE=${{ secrets.MEDIA_UPLOAD_PROXY_MODE || 'true' }}
+            
+                        PUBLIC_VERIFY_BASE_URL=${{ secrets.PUBLIC_VERIFY_BASE_URL }}
+                        SUPPORT_WHATSAPP=${{ secrets.SUPPORT_WHATSAPP }}
+                        SUPPORT_EMAIL=${{ secrets.SUPPORT_EMAIL }}
+            
+                        RAJAONGKIR_BASE_URL=${{ secrets.RAJAONGKIR_BASE_URL }}
+                        RAJAONGKIR_DEFAULT_COURIERS=${{ secrets.RAJAONGKIR_DEFAULT_COURIERS }}
+                        RAG_ENABLED=${{ secrets.RAG_ENABLED || 'true' }}
             EOF
             chmod 600 .env
             echo "✅ .env file automatically created from GitHub Secrets!"
@@ -699,122 +699,122 @@ ComposeEOF
             # Ensure docker-compose file exists
             if [ ! -f docker-compose.prod.yml ]; then
               echo "Creating docker-compose.prod.yml..."
-              cat > docker-compose.prod.yml << 'ComposeEOF'
-version: '3.8'
-
-services:
-  app:
-    image: ghcr.io/diyawandawan/b2b-bisa:latest
-    pull_policy: always
-    container_name: bisa-app
-    ports:
-      - "$${APP_PORT:-3000}:3000"
-    env_file:
-      - .env
-    environment:
-      NODE_ENV: production
-      DATABASE_URL: $${DATABASE_URL}
-      PORT: $${PORT:-3000}
-      JWT_SECRET: $${JWT_SECRET}
-      JWT_EXPIRES_IN: $${JWT_EXPIRES_IN:-7d}
-      JWT_REFRESH_EXPIRES_IN: $${JWT_REFRESH_EXPIRES_IN:-30d}
-      ENCRYPTION_KEY: $${ENCRYPTION_KEY}
-      ENCRYPTION_KEY_V2: $${ENCRYPTION_KEY_V2:-}
-      CLIENT_HOST: $${CLIENT_HOST:-http://localhost:3000}
-      CORS_ORIGINS: $${CORS_ORIGINS:-http://localhost:3000}
-      REDIS_URL: $${REDIS_URL:-redis://redis:6379}
-      REDIS_ENABLED: $${REDIS_ENABLED:-true}
-      REDIS_HOST: $${REDIS_HOST:-redis}
-      REDIS_PORT: $${REDIS_PORT:-6379}
-      R2_ACCOUNT_ID: $${R2_ACCOUNT_ID}
-      R2_ACCESS_KEY_ID: $${R2_ACCESS_KEY_ID}
-      R2_SECRET_ACCESS_KEY: $${R2_SECRET_ACCESS_KEY}
-      R2_BUCKET_NAME: $${R2_BUCKET_NAME:-bisa}
-      R2_PUBLIC_URL: $${R2_PUBLIC_URL}
-      API_PUBLIC_URL: $${API_PUBLIC_URL}
-      MEDIA_BASE_URL: $${MEDIA_BASE_URL}
-      EMAIL_SMTP_HOST: $${EMAIL_SMTP_HOST}
-      EMAIL_SMTP_PORT: $${EMAIL_SMTP_PORT:-587}
-      EMAIL_SMTP_SECURE: $${EMAIL_SMTP_SECURE:-false}
-      EMAIL_SMTP_USER: $${EMAIL_SMTP_USER}
-      EMAIL_SMTP_PASS: $${EMAIL_SMTP_PASS}
-      EMAIL_FROM: $${EMAIL_FROM}
-      EMAIL_SENDER_NAME: $${EMAIL_SENDER_NAME:-BISA Platform}
-      XENDIT_PAYMENT_SECRET_KEY: $${XENDIT_PAYMENT_SECRET_KEY}
-      XENDIT_PAYOUT_SECRET_KEY: $${XENDIT_PAYOUT_SECRET_KEY}
-      XENDIT_REPORT_SECRET_KEY: $${XENDIT_REPORT_SECRET_KEY}
-      XENDIT_WEBHOOK_TOKEN: $${XENDIT_WEBHOOK_TOKEN}
-      XENDIT_PUBLIC_KEY: $${XENDIT_PUBLIC_KEY}
-      PUSHER_APP_ID: $${PUSHER_APP_ID}
-      PUSHER_KEY: $${PUSHER_KEY}
-      PUSHER_SECRET: $${PUSHER_SECRET}
-      PUSHER_CLUSTER: $${PUSHER_CLUSTER}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    depends_on:
-      - redis
-      - mysql
-    restart: unless-stopped
-    networks:
-      - bisa-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://127.0.0.1:3000/health"]
-      interval: 15s
-      timeout: 10s
-      retries: 5
-      start_period: 90s
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: '0.5'
-      restart_policy:
-        condition: on-failure
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  redis:
-    image: redis:7-alpine
-    container_name: backend-redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    restart: unless-stopped
-    networks:
-      - bisa-network
-  mysql:
-    image: mysql:8.0
-    container_name: bisa-mysql
-    environment:
-      MYSQL_ROOT_PASSWORD: $${DATABASE_PASSWORD}
-      MYSQL_DATABASE: $${DATABASE_NAME}
-      MYSQL_USER: $${DATABASE_USER}
-      DATABASE_PASSWORD: $${DATABASE_PASSWORD}
-    ports:
-      - "3306:3306"
-    volumes:
-      - mysql_data:/var/lib/mysql
-    networks:
-      - bisa-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      timeout: 20s
-      interval: 30s
-      retries: 3
-
-networks:
-  bisa-network:
-    driver: bridge
-
-volumes:
-  redis_data:
-  mysql_data:
-ComposeEOF
+              sed 's/^            //'> docker-compose.prod.yml  << '            ComposeEOF'
+            version: '3.8'
+            
+            services:
+              app:
+                image: ghcr.io/diyawandawan/b2b-bisa:latest
+                pull_policy: always
+                container_name: bisa-app
+                ports:
+                  - "$${APP_PORT:-3000}:3000"
+                env_file:
+                  - .env
+                environment:
+                  NODE_ENV: production
+                  DATABASE_URL: $${DATABASE_URL}
+                  PORT: $${PORT:-3000}
+                  JWT_SECRET: $${JWT_SECRET}
+                  JWT_EXPIRES_IN: $${JWT_EXPIRES_IN:-7d}
+                  JWT_REFRESH_EXPIRES_IN: $${JWT_REFRESH_EXPIRES_IN:-30d}
+                  ENCRYPTION_KEY: $${ENCRYPTION_KEY}
+                  ENCRYPTION_KEY_V2: $${ENCRYPTION_KEY_V2:-}
+                  CLIENT_HOST: $${CLIENT_HOST:-http://localhost:3000}
+                  CORS_ORIGINS: $${CORS_ORIGINS:-http://localhost:3000}
+                  REDIS_URL: $${REDIS_URL:-redis://redis:6379}
+                  REDIS_ENABLED: $${REDIS_ENABLED:-true}
+                  REDIS_HOST: $${REDIS_HOST:-redis}
+                  REDIS_PORT: $${REDIS_PORT:-6379}
+                  R2_ACCOUNT_ID: $${R2_ACCOUNT_ID}
+                  R2_ACCESS_KEY_ID: $${R2_ACCESS_KEY_ID}
+                  R2_SECRET_ACCESS_KEY: $${R2_SECRET_ACCESS_KEY}
+                  R2_BUCKET_NAME: $${R2_BUCKET_NAME:-bisa}
+                  R2_PUBLIC_URL: $${R2_PUBLIC_URL}
+                  API_PUBLIC_URL: $${API_PUBLIC_URL}
+                  MEDIA_BASE_URL: $${MEDIA_BASE_URL}
+                  EMAIL_SMTP_HOST: $${EMAIL_SMTP_HOST}
+                  EMAIL_SMTP_PORT: $${EMAIL_SMTP_PORT:-587}
+                  EMAIL_SMTP_SECURE: $${EMAIL_SMTP_SECURE:-false}
+                  EMAIL_SMTP_USER: $${EMAIL_SMTP_USER}
+                  EMAIL_SMTP_PASS: $${EMAIL_SMTP_PASS}
+                  EMAIL_FROM: $${EMAIL_FROM}
+                  EMAIL_SENDER_NAME: $${EMAIL_SENDER_NAME:-BISA Platform}
+                  XENDIT_PAYMENT_SECRET_KEY: $${XENDIT_PAYMENT_SECRET_KEY}
+                  XENDIT_PAYOUT_SECRET_KEY: $${XENDIT_PAYOUT_SECRET_KEY}
+                  XENDIT_REPORT_SECRET_KEY: $${XENDIT_REPORT_SECRET_KEY}
+                  XENDIT_WEBHOOK_TOKEN: $${XENDIT_WEBHOOK_TOKEN}
+                  XENDIT_PUBLIC_KEY: $${XENDIT_PUBLIC_KEY}
+                  PUSHER_APP_ID: $${PUSHER_APP_ID}
+                  PUSHER_KEY: $${PUSHER_KEY}
+                  PUSHER_SECRET: $${PUSHER_SECRET}
+                  PUSHER_CLUSTER: $${PUSHER_CLUSTER}
+                extra_hosts:
+                  - "host.docker.internal:host-gateway"
+                depends_on:
+                  - redis
+                  - mysql
+                restart: unless-stopped
+                networks:
+                  - bisa-network
+                healthcheck:
+                  test: ["CMD", "curl", "-f", "http://127.0.0.1:3000/health"]
+                  interval: 15s
+                  timeout: 10s
+                  retries: 5
+                  start_period: 90s
+                deploy:
+                  resources:
+                    limits:
+                      memory: 512M
+                      cpus: '0.5'
+                  restart_policy:
+                    condition: on-failure
+                logging:
+                  driver: "json-file"
+                  options:
+                    max-size: "10m"
+                    max-file: "3"
+            
+              redis:
+                image: redis:7-alpine
+                container_name: backend-redis
+                ports:
+                  - "6379:6379"
+                volumes:
+                  - redis_data:/data
+                restart: unless-stopped
+                networks:
+                  - bisa-network
+              mysql:
+                image: mysql:8.0
+                container_name: bisa-mysql
+                environment:
+                  MYSQL_ROOT_PASSWORD: $${DATABASE_PASSWORD}
+                  MYSQL_DATABASE: $${DATABASE_NAME}
+                  MYSQL_USER: $${DATABASE_USER}
+                  DATABASE_PASSWORD: $${DATABASE_PASSWORD}
+                ports:
+                  - "3306:3306"
+                volumes:
+                  - mysql_data:/var/lib/mysql
+                networks:
+                  - bisa-network
+                restart: unless-stopped
+                healthcheck:
+                  test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+                  timeout: 20s
+                  interval: 30s
+                  retries: 3
+            
+            networks:
+              bisa-network:
+                driver: bridge
+            
+            volumes:
+              redis_data:
+              mysql_data:
+            ComposeEOF
               echo "✅ docker-compose.prod.yml created"
             else
               echo "✅ docker-compose.prod.yml already exists"
@@ -837,104 +837,104 @@ ComposeEOF
             echo ""
             echo "⚙️ PHASE 1.5: CREATING ENVIRONMENT FILE"
             echo "=========================================="
-            cat > .env << 'EOF'
-            DEPLOYMENT_TIMESTAMP=$(date)
-            GIT_COMMIT=${{ github.sha }}
-            DEPLOYED_BY=GitHub Actions
-
-            DATABASE_URL=${{ secrets.DATABASE_URL }}
-            DATABASE_NAME=${{ secrets.DATABASE_NAME }}
-            DATABASE_PORT=${{ secrets.DATABASE_PORT }}
-            DATABASE_PASSWORD=${{ secrets.DATABASE_PASSWORD }}
-            DATABASE_USER=${{ secrets.DATABASE_USER }}
-            DATABASE_HOST=${{ secrets.DATABASE_HOST }}
-
-            NODE_ENV=production
-            PORT=3000
-            CORS_ORIGINS=${{ secrets.CORS_ORIGINS }}
-
-            JWT_SECRET=${{ secrets.JWT_SECRET }}
-            JWT_EXPIRES_IN=${{ secrets.JWT_EXPIRES_IN || '1d' }}
-            JWT_REFRESH_EXPIRES_IN=${{ secrets.JWT_REFRESH_EXPIRES_IN || '30d' }}
-            ENCRYPTION_KEY=${{ secrets.ENCRYPTION_KEY }}
-            ENCRYPTION_KEY_V2=${{ secrets.ENCRYPTION_KEY_V2 }}
-
-            CLIENT_HOST=${{ secrets.CLIENT_HOST }}
-
-            EMAIL_SMTP_SECURE=${{ secrets.EMAIL_SMTP_SECURE }}
-            EMAIL_SMTP_USER=${{ secrets.EMAIL_SMTP_USER }}
-            EMAIL_SMTP_PASS=${{ secrets.EMAIL_SMTP_PASS }}
-            EMAIL_SMTP_PORT=${{ secrets.EMAIL_SMTP_PORT }}
-            EMAIL_SMTP_HOST=${{ secrets.EMAIL_SMTP_HOST }}
-            EMAIL_FROM=${{ secrets.EMAIL_FROM }}
-            EMAIL_SENDER_NAME=${{ secrets.EMAIL_SENDER_NAME }}
-
-            PUSHER_APP_ID=${{ secrets.PUSHER_APP_ID }}
-            PUSHER_KEY=${{ secrets.PUSHER_KEY }}
-            PUSHER_SECRET=${{ secrets.PUSHER_SECRET }}
-            PUSHER_CLUSTER=${{ secrets.PUSHER_CLUSTER }}
-
-            R2_ACCOUNT_ID=${{ secrets.R2_ACCOUNT_ID }}
-            R2_ACCESS_KEY_ID=${{ secrets.R2_ACCESS_KEY_ID }}
-            R2_SECRET_ACCESS_KEY=${{ secrets.R2_SECRET_ACCESS_KEY }}
-            R2_BUCKET_NAME=${{ secrets.R2_BUCKET_NAME }}
-            R2_PUBLIC_URL=${{ secrets.R2_PUBLIC_URL }}
-
-            API_PUBLIC_URL=${{ secrets.API_PUBLIC_URL }}
-            MEDIA_BASE_URL=${{ secrets.MEDIA_BASE_URL }}
-
-            XENDIT_PAYMENT_SECRET_KEY=${{ secrets.XENDIT_PAYMENT_SECRET_KEY }}
-            XENDIT_PAYOUT_SECRET_KEY=${{ secrets.XENDIT_PAYOUT_SECRET_KEY }}
-            XENDIT_REPORT_SECRET_KEY=${{ secrets.XENDIT_REPORT_SECRET_KEY }}
-            XENDIT_PUBLIC_KEY=${{ secrets.XENDIT_PUBLIC_KEY }}
-            XENDIT_WEBHOOK_TOKEN=${{ secrets.XENDIT_WEBHOOK_TOKEN }}
-
-            REDIS_URL=${{ secrets.REDIS_URL }}
-            REDIS_ENABLED=${{ secrets.REDIS_ENABLED || 'false' }}
-            REDIS_KEY_PREFIX=${{ secrets.REDIS_KEY_PREFIX || 'bisa:v1' }}
-            REDIS_DEFAULT_TTL_SECONDS=${{ secrets.REDIS_DEFAULT_TTL_SECONDS || '3600' }}
-
-            ML_SERVICE_URL=${{ secrets.ML_SERVICE_URL }}
-            ML_PREDICT_ENABLED=${{ secrets.ML_PREDICT_ENABLED || 'true' }}
-            LOG_LEVEL=${{ secrets.LOG_LEVEL || 'info' }}
-
-            CHROMA_HOST=${{ secrets.CHROMA_HOST }}
-            CHROMA_API_KEY=${{ secrets.CHROMA_API_KEY }}
-            CHROMA_TENANT=${{ secrets.CHROMA_TENANT }}
-            CHROMA_DATABASE=${{ secrets.CHROMA_DATABASE }}
-            CHROMA_COLLECTION=${{ secrets.CHROMA_COLLECTION }}
-            DEEPSHEEK_API_KEY=${{ secrets.DEEPSHEEK_API_KEY }}
-            DEEPSHEEK_MODEL=${{ secrets.DEEPSHEEK_MODEL }}
-
-            USER_ID_RAJA_ONGKIR=${{ secrets.USER_ID_RAJA_ONGKIR }}
-            SECRET_KEY_RAJA_ONGKIR=${{ secrets.SECRET_KEY_RAJA_ONGKIR }}
-            SHIPPING_COST_API_KEY=${{ secrets.SHIPPING_COST_API_KEY }}
-            PAYMENT_API_KEY=${{ secrets.PAYMENT_API_KEY }}
-            QRISLY_API_KEY=${{ secrets.QRISLY_API_KEY }}
-
-            PEXELS_API_KEY=${{ secrets.PEXELS_API_KEY }}
-            PIXABAY_API_KEY=${{ secrets.PIXABAY_API_KEY }}
-
-            FIREBASE_SERVICE_ACCOUNT=${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-            FIREBASE_SERVICE_ACCOUNT_PATH=${{ secrets.FIREBASE_SERVICE_ACCOUNT_PATH }}
-
-            READINESS_GATES_ENABLED=${{ secrets.READINESS_GATES_ENABLED || 'true' }}
-            READINESS_ENFORCE_ADMIN=${{ secrets.READINESS_ENFORCE_ADMIN || 'false' }}
-            REQUIRE_KYC_FOR_ACTIVE_PRODUCT=${{ secrets.REQUIRE_KYC_FOR_ACTIVE_PRODUCT || 'false' }}
-
-            MEDIA_CHUNK_SIZE_BYTES=${{ secrets.MEDIA_CHUNK_SIZE_BYTES || '5242880' }}
-            MEDIA_UPLOAD_SESSION_TTL_HOURS=${{ secrets.MEDIA_UPLOAD_SESSION_TTL_HOURS || '24' }}
-            MEDIA_MAX_IMAGE_BYTES=${{ secrets.MEDIA_MAX_IMAGE_BYTES || '52428800' }}
-            MEDIA_MAX_PDF_BYTES=${{ secrets.MEDIA_MAX_PDF_BYTES || '20971520' }}
-            MEDIA_UPLOAD_PROXY_MODE=${{ secrets.MEDIA_UPLOAD_PROXY_MODE || 'true' }}
-
-            PUBLIC_VERIFY_BASE_URL=${{ secrets.PUBLIC_VERIFY_BASE_URL }}
-            SUPPORT_WHATSAPP=${{ secrets.SUPPORT_WHATSAPP }}
-            SUPPORT_EMAIL=${{ secrets.SUPPORT_EMAIL }}
-
-            RAJAONGKIR_BASE_URL=${{ secrets.RAJAONGKIR_BASE_URL }}
-            RAJAONGKIR_DEFAULT_COURIERS=${{ secrets.RAJAONGKIR_DEFAULT_COURIERS }}
-            RAG_ENABLED=${{ secrets.RAG_ENABLED || 'true' }}
+            sed 's/^            //'> .env  << '            EOF'
+                        DEPLOYMENT_TIMESTAMP=$(date)
+                        GIT_COMMIT=${{ github.sha }}
+                        DEPLOYED_BY=GitHub Actions
+            
+                        DATABASE_URL=${{ secrets.DATABASE_URL }}
+                        DATABASE_NAME=${{ secrets.DATABASE_NAME }}
+                        DATABASE_PORT=${{ secrets.DATABASE_PORT }}
+                        DATABASE_PASSWORD=${{ secrets.DATABASE_PASSWORD }}
+                        DATABASE_USER=${{ secrets.DATABASE_USER }}
+                        DATABASE_HOST=${{ secrets.DATABASE_HOST }}
+            
+                        NODE_ENV=production
+                        PORT=3000
+                        CORS_ORIGINS=${{ secrets.CORS_ORIGINS }}
+            
+                        JWT_SECRET=${{ secrets.JWT_SECRET }}
+                        JWT_EXPIRES_IN=${{ secrets.JWT_EXPIRES_IN || '1d' }}
+                        JWT_REFRESH_EXPIRES_IN=${{ secrets.JWT_REFRESH_EXPIRES_IN || '30d' }}
+                        ENCRYPTION_KEY=${{ secrets.ENCRYPTION_KEY }}
+                        ENCRYPTION_KEY_V2=${{ secrets.ENCRYPTION_KEY_V2 }}
+            
+                        CLIENT_HOST=${{ secrets.CLIENT_HOST }}
+            
+                        EMAIL_SMTP_SECURE=${{ secrets.EMAIL_SMTP_SECURE }}
+                        EMAIL_SMTP_USER=${{ secrets.EMAIL_SMTP_USER }}
+                        EMAIL_SMTP_PASS=${{ secrets.EMAIL_SMTP_PASS }}
+                        EMAIL_SMTP_PORT=${{ secrets.EMAIL_SMTP_PORT }}
+                        EMAIL_SMTP_HOST=${{ secrets.EMAIL_SMTP_HOST }}
+                        EMAIL_FROM=${{ secrets.EMAIL_FROM }}
+                        EMAIL_SENDER_NAME=${{ secrets.EMAIL_SENDER_NAME }}
+            
+                        PUSHER_APP_ID=${{ secrets.PUSHER_APP_ID }}
+                        PUSHER_KEY=${{ secrets.PUSHER_KEY }}
+                        PUSHER_SECRET=${{ secrets.PUSHER_SECRET }}
+                        PUSHER_CLUSTER=${{ secrets.PUSHER_CLUSTER }}
+            
+                        R2_ACCOUNT_ID=${{ secrets.R2_ACCOUNT_ID }}
+                        R2_ACCESS_KEY_ID=${{ secrets.R2_ACCESS_KEY_ID }}
+                        R2_SECRET_ACCESS_KEY=${{ secrets.R2_SECRET_ACCESS_KEY }}
+                        R2_BUCKET_NAME=${{ secrets.R2_BUCKET_NAME }}
+                        R2_PUBLIC_URL=${{ secrets.R2_PUBLIC_URL }}
+            
+                        API_PUBLIC_URL=${{ secrets.API_PUBLIC_URL }}
+                        MEDIA_BASE_URL=${{ secrets.MEDIA_BASE_URL }}
+            
+                        XENDIT_PAYMENT_SECRET_KEY=${{ secrets.XENDIT_PAYMENT_SECRET_KEY }}
+                        XENDIT_PAYOUT_SECRET_KEY=${{ secrets.XENDIT_PAYOUT_SECRET_KEY }}
+                        XENDIT_REPORT_SECRET_KEY=${{ secrets.XENDIT_REPORT_SECRET_KEY }}
+                        XENDIT_PUBLIC_KEY=${{ secrets.XENDIT_PUBLIC_KEY }}
+                        XENDIT_WEBHOOK_TOKEN=${{ secrets.XENDIT_WEBHOOK_TOKEN }}
+            
+                        REDIS_URL=${{ secrets.REDIS_URL }}
+                        REDIS_ENABLED=${{ secrets.REDIS_ENABLED || 'false' }}
+                        REDIS_KEY_PREFIX=${{ secrets.REDIS_KEY_PREFIX || 'bisa:v1' }}
+                        REDIS_DEFAULT_TTL_SECONDS=${{ secrets.REDIS_DEFAULT_TTL_SECONDS || '3600' }}
+            
+                        ML_SERVICE_URL=${{ secrets.ML_SERVICE_URL }}
+                        ML_PREDICT_ENABLED=${{ secrets.ML_PREDICT_ENABLED || 'true' }}
+                        LOG_LEVEL=${{ secrets.LOG_LEVEL || 'info' }}
+            
+                        CHROMA_HOST=${{ secrets.CHROMA_HOST }}
+                        CHROMA_API_KEY=${{ secrets.CHROMA_API_KEY }}
+                        CHROMA_TENANT=${{ secrets.CHROMA_TENANT }}
+                        CHROMA_DATABASE=${{ secrets.CHROMA_DATABASE }}
+                        CHROMA_COLLECTION=${{ secrets.CHROMA_COLLECTION }}
+                        DEEPSHEEK_API_KEY=${{ secrets.DEEPSHEEK_API_KEY }}
+                        DEEPSHEEK_MODEL=${{ secrets.DEEPSHEEK_MODEL }}
+            
+                        USER_ID_RAJA_ONGKIR=${{ secrets.USER_ID_RAJA_ONGKIR }}
+                        SECRET_KEY_RAJA_ONGKIR=${{ secrets.SECRET_KEY_RAJA_ONGKIR }}
+                        SHIPPING_COST_API_KEY=${{ secrets.SHIPPING_COST_API_KEY }}
+                        PAYMENT_API_KEY=${{ secrets.PAYMENT_API_KEY }}
+                        QRISLY_API_KEY=${{ secrets.QRISLY_API_KEY }}
+            
+                        PEXELS_API_KEY=${{ secrets.PEXELS_API_KEY }}
+                        PIXABAY_API_KEY=${{ secrets.PIXABAY_API_KEY }}
+            
+                        FIREBASE_SERVICE_ACCOUNT=${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+                        FIREBASE_SERVICE_ACCOUNT_PATH=${{ secrets.FIREBASE_SERVICE_ACCOUNT_PATH }}
+            
+                        READINESS_GATES_ENABLED=${{ secrets.READINESS_GATES_ENABLED || 'true' }}
+                        READINESS_ENFORCE_ADMIN=${{ secrets.READINESS_ENFORCE_ADMIN || 'false' }}
+                        REQUIRE_KYC_FOR_ACTIVE_PRODUCT=${{ secrets.REQUIRE_KYC_FOR_ACTIVE_PRODUCT || 'false' }}
+            
+                        MEDIA_CHUNK_SIZE_BYTES=${{ secrets.MEDIA_CHUNK_SIZE_BYTES || '5242880' }}
+                        MEDIA_UPLOAD_SESSION_TTL_HOURS=${{ secrets.MEDIA_UPLOAD_SESSION_TTL_HOURS || '24' }}
+                        MEDIA_MAX_IMAGE_BYTES=${{ secrets.MEDIA_MAX_IMAGE_BYTES || '52428800' }}
+                        MEDIA_MAX_PDF_BYTES=${{ secrets.MEDIA_MAX_PDF_BYTES || '20971520' }}
+                        MEDIA_UPLOAD_PROXY_MODE=${{ secrets.MEDIA_UPLOAD_PROXY_MODE || 'true' }}
+            
+                        PUBLIC_VERIFY_BASE_URL=${{ secrets.PUBLIC_VERIFY_BASE_URL }}
+                        SUPPORT_WHATSAPP=${{ secrets.SUPPORT_WHATSAPP }}
+                        SUPPORT_EMAIL=${{ secrets.SUPPORT_EMAIL }}
+            
+                        RAJAONGKIR_BASE_URL=${{ secrets.RAJAONGKIR_BASE_URL }}
+                        RAJAONGKIR_DEFAULT_COURIERS=${{ secrets.RAJAONGKIR_DEFAULT_COURIERS }}
+                        RAG_ENABLED=${{ secrets.RAG_ENABLED || 'true' }}
             EOF
             chmod 600 .env
             echo "✅ .env file automatically created from GitHub Secrets!"
