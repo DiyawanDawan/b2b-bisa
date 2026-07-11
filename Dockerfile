@@ -19,7 +19,7 @@ COPY . .
 
 # Generate Prisma client. Prisma 7 validates DATABASE_URL while loading
 # prisma.config.ts, so provide a harmless build-time placeholder for this command.
-RUN DATABASE_URL=mysql://user:password@localhost:3306/buka_lombok npx prisma generate
+RUN DATABASE_URL=mysql://user:password@localhost:3306/bisa npx prisma generate
 
 # Build TypeScript code
 RUN npm run build
