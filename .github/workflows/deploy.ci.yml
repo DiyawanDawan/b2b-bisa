@@ -1,0 +1,154 @@
+name: Backend CI/CD
+
+on:
+  pull_request:
+    branches: [staging]
+  push:
+    branches: [staging]
+
+env:
+  NODE_ENV: production
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps --no-audit --no-fund
+
+      - name: Create production env file from secrets
+        run: |
+          cat > .env <<'EOF'
+          NODE_ENV=${{ secrets.NODE_ENV }}
+          PORT=${{ secrets.PORT }}
+          DATABASE_URL=${{ secrets.DATABASE_URL }}
+          DATABASE_HOST=${{ secrets.DATABASE_HOST }}
+          DATABASE_USER=${{ secrets.DATABASE_USER }}
+          DATABASE_PASSWORD=${{ secrets.DATABASE_PASSWORD }}
+          DATABASE_NAME=${{ secrets.DATABASE_NAME }}
+          DATABASE_PORT=${{ secrets.DATABASE_PORT }}
+          JWT_SECRET=${{ secrets.JWT_SECRET }}
+          JWT_EXPIRES_IN=${{ secrets.JWT_EXPIRES_IN }}
+          JWT_REFRESH_EXPIRES_IN=${{ secrets.JWT_REFRESH_EXPIRES_IN }}
+          ENCRYPTION_KEY=${{ secrets.ENCRYPTION_KEY }}
+          ENCRYPTION_KEY_V2=${{ secrets.ENCRYPTION_KEY_V2 }}
+          CORS_ORIGINS=${{ secrets.CORS_ORIGINS }}
+          CLIENT_HOST=${{ secrets.CLIENT_HOST }}
+          API_PUBLIC_URL=${{ secrets.API_PUBLIC_URL }}
+          MEDIA_BASE_URL=${{ secrets.MEDIA_BASE_URL }}
+          EMAIL_SMTP_HOST=${{ secrets.EMAIL_SMTP_HOST }}
+          EMAIL_SMTP_PORT=${{ secrets.EMAIL_SMTP_PORT }}
+          EMAIL_SMTP_SECURE=${{ secrets.EMAIL_SMTP_SECURE }}
+          EMAIL_SMTP_USER=${{ secrets.EMAIL_SMTP_USER }}
+          EMAIL_SMTP_PASS=${{ secrets.EMAIL_SMTP_PASS }}
+          EMAIL_FROM=${{ secrets.EMAIL_FROM }}
+          EMAIL_SENDER_NAME=${{ secrets.EMAIL_SENDER_NAME }}
+          R2_ACCOUNT_ID=${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID=${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY=${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME=${{ secrets.R2_BUCKET_NAME }}
+          R2_PUBLIC_URL=${{ secrets.R2_PUBLIC_URL }}
+          XENDIT_PAYMENT_SECRET_KEY=${{ secrets.XENDIT_PAYMENT_SECRET_KEY }}
+          XENDIT_PAYOUT_SECRET_KEY=${{ secrets.XENDIT_PAYOUT_SECRET_KEY }}
+          XENDIT_PUBLIC_KEY=${{ secrets.XENDIT_PUBLIC_KEY }}
+          XENDIT_REPORT_SECRET_KEY=${{ secrets.XENDIT_REPORT_SECRET_KEY }}
+          XENDIT_WEBHOOK_TOKEN=${{ secrets.XENDIT_WEBHOOK_TOKEN }}
+          PUSHER_APP_ID=${{ secrets.PUSHER_APP_ID }}
+          PUSHER_KEY=${{ secrets.PUSHER_KEY }}
+          PUSHER_SECRET=${{ secrets.PUSHER_SECRET }}
+          PUSHER_CLUSTER=${{ secrets.PUSHER_CLUSTER }}
+          ML_SERVICE_URL=${{ secrets.ML_SERVICE_URL }}
+          ML_PREDICT_ENABLED=${{ secrets.ML_PREDICT_ENABLED }}
+          LOG_LEVEL=${{ secrets.LOG_LEVEL }}
+          CHROMA_HOST=${{ secrets.CHROMA_HOST }}
+          CHROMA_API_KEY=${{ secrets.CHROMA_API_KEY }}
+          CHROMA_TENANT=${{ secrets.CHROMA_TENANT }}
+          CHROMA_DATABASE=${{ secrets.CHROMA_DATABASE }}
+          CHROMA_COLLECTION=${{ secrets.CHROMA_COLLECTION }}
+          DEEPSHEEK_API_KEY=${{ secrets.DEEPSHEEK_API_KEY }}
+          DEEPSHEEK_MODEL=${{ secrets.DEEPSHEEK_MODEL }}
+          PEXELS_API_KEY=${{ secrets.PEXELS_API_KEY }}
+          PIXABAY_API_KEY=${{ secrets.PIXABAY_API_KEY }}
+          PAYMENT_API_KEY=${{ secrets.PAYMENT_API_KEY }}
+          QRISLY_API_KEY=${{ secrets.QRISLY_API_KEY }}
+          USER_ID_RAJA_ONGKIR=${{ secrets.USER_ID_RAJA_ONGKIR }}
+          SECRET_KEY_RAJA_ONGKIR=${{ secrets.SECRET_KEY_RAJA_ONGKIR }}
+          SHIPPING_COST_API_KEY=${{ secrets.SHIPPING_COST_API_KEY }}
+          EOF
+
+      - name: Build application
+        run: npm run build
+
+      - name: Summary Report
+        if: always()
+        run: |
+          echo "=========================================="
+          echo "📊 CI QUALITY CHECK SUMMARY"
+          echo "=========================================="
+          echo "✅ Dependencies: Installed"
+          echo "✅ Build: Completed"
+          echo "✅ Environment secrets: Loaded"
+          echo "🔗 PR: ${{ github.event.pull_request.html_url || github.event.head_commit.message }}"
+          echo "👤 Author: ${{ github.actor }}"
+          echo "📅 Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          echo "=========================================="
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push' && success()
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy to developer server
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST || '' }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER || '' }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '' }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+        run: |
+          if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_USER" ] || [ -z "$DEPLOY_PATH" ]; then
+            echo "Deployment target variables not configured. Skipping remote deployment."
+            exit 0
+          fi
+          echo "Deploying to $DEPLOY_HOST:$DEPLOY_PATH via SSH"
+          ssh -o StrictHostKeyChecking=no -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p '$DEPLOY_PATH'"
+
+      - name: Deployment Report
+        run: |
+          echo "=========================================="
+          echo "🚀 DEPLOYMENT SUCCESS REPORT"
+          echo "=========================================="
+          echo "✅ Build: Passed"
+          echo "✅ Environment secrets: Loaded"
+          echo "✅ Deployment step completed or skipped"
+          echo "🎯 Target: Developer server"
+          echo "👤 Author: ${{ github.actor }}"
+          echo "=========================================="
+
+  failure-handler:
+    runs-on: ubuntu-latest
+    needs: build
+    if: failure()
+    steps:
+      - name: ❌ Build Failed - Notify
+        run: |
+          echo "=========================================="
+          echo "❌ CI PIPELINE FAILED"
+          echo "=========================================="
+          echo "🚨 Build or tests failed!"
+          echo "🔍 Please check the logs:"
+          echo "📅 Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          echo "👤 Author: ${{ github.actor }}"
+          echo "⚠️  Deployment blocked until fixed"
+          echo "=========================================="

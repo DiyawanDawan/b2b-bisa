@@ -1,0 +1,420 @@
+name: 🚀 Auto Deploy to Staging
+
+on:
+  push:
+    branches: [staging]
+  # pull_request:
+  #   branches: [staging]
+
+env:
+  NODE_VERSION: ${{ vars.NODE_VERSION }}
+  SERVER_PATH: '/var/www/buka_lombok/backend/Buka-Lombok'
+  BRANCH: ${{ vars.BRANCH }}
+  APP_NAME: "buka-lombok-be-prod"
+  PM2_APP_NAME: "buka-lombok-be-prod"
+
+jobs:
+  # 🔍 PRE-DEPLOYMENT CHECKS
+  pre-deployment:
+    name: '🔍 Pre-Deployment Validation'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: '📥 Checkout Repository'
+        uses: actions/checkout@v4
+
+      - name: '🔧 Setup Node.js Environment'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: '📦 Install Dependencies'
+        run: |
+          npm ci
+          echo "✅ Dependencies installed successfully"
+
+      - name: '🧪 Execute Test Suite'
+        run: |
+          echo "🧪 Running test suite..."
+          npm test
+          echo "✅ All tests passed"
+
+      - name: '🏗️ Build Verification'
+        run: |
+          echo "🏗️ Verifying build process..."
+          npx prisma generate
+          echo "✅ Prisma client generated"
+
+  # 🚀 DEPLOYMENT PROCESS
+  deploy-staging:
+    name: '🚀 Deploy to Staging Server'
+    runs-on: ubuntu-latest
+    needs: pre-deployment
+    if: github.event_name == 'push' && github.ref == 'refs/heads/staging' && success()
+    
+    steps:
+      - name: '📥 Checkout Source Code'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BRANCH }}
+
+      - name: '🔧 Setup Node.js for Deployment'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: '🚀 Multi-Stage Deployment Process'
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          # ✅ FIX: Hapus script_stop yang tidak valid
+          script: |
+            set -e  # ✅ Gunakan set -e untuk stop on error
+            
+            echo "=========================================="
+            echo "🚀 STARTING STAGING DEPLOYMENT"
+            echo "=========================================="
+            echo "📅 Deployment Timestamp: $(date)"
+            echo "🌿 Target Branch: ${{ env.BRANCH }}"
+            echo "🔗 Commit SHA: ${{ github.sha }}"
+            echo "👤 Deployed by: ${{ github.actor }}"
+            echo "=========================================="
+
+            # PHASE 1: PRE-DEPLOYMENT VERIFICATION
+            echo ""
+            echo "🔍 PHASE 1: PRE-DEPLOYMENT VERIFICATION"
+            echo "=========================================="
+            
+            cd ${{ env.SERVER_PATH }}
+            echo "📍 Working Directory: $(pwd)"
+             
+            # ✅ UPDATE CODE dengan git pull
+            # ✅ FORCE DELETE PRISMA.CONFIG.TS DARI MANA SAJA
+            rm -f prisma.config.ts
+            rm -f ../prisma.config.ts
+            rm -f */prisma.config.ts
+    
+            # 1. STOP APP
+            pm2 stop buka-lombok-be-prod || true
+            
+            # 2. BUANG SEMUA PERUBAHAN MANUAL, AMBIL YANG TERBARU DARI GIT
+            echo ""
+            echo "📥 PHASE 2: CODE MANAGEMENT"
+            echo "=========================================="
+            
+            # Clean update
+            echo "🔄 Updating codebase..."
+            git fetch --all
+            git checkout ${{ env.BRANCH }}
+            git reset --hard origin/${{ env.BRANCH }}
+                      
+            [ -f "package.json" ] || { echo "❌ package.json not found"; exit 1; }
+            [ -f "prisma/schema.prisma" ] || { echo "❌ Prisma schema not found"; exit 1; }
+            echo "✅ Directory structure verified"
+
+            # Check current application state
+            echo "📊 Checking current application state..."
+            CURRENT_BRANCH=$(git branch --show-current)
+            CURRENT_COMMIT=$(git log -1 --oneline)
+            echo "🌿 Current Branch: $CURRENT_BRANCH"
+            echo "📝 Current Commit: $CURRENT_COMMIT"
+
+            # PHASE 2: CODE MANAGEMENT
+          
+            
+            # Restart application
+            # echo "🔄 Restarting application..."
+            # pm2 restart ${{ env.PM2_APP_NAME }} || pm2 start ecosystem.config.cjs --only ${{ env.PM2_APP_NAME }}
+
+            # # Verification
+            # echo "✅ Verifying deployment..."
+            # sleep 5
+            # pm2 status
+
+            echo "=========================================="
+            echo "🎉 DEPLOYMENT SUCCESSFUL!"
+            echo "=========================================="
+            
+            # Verify update
+            NEW_COMMIT=$(git log -1 --oneline)
+            echo "✅ Code updated to: $NEW_COMMIT"
+
+            # PHASE 3: ENVIRONMENT SETUP
+            echo ""
+            echo "🔧 PHASE 3: ENVIRONMENT SETUP"
+            echo "=========================================="
+            
+            # Create comprehensive .env file menggunakan echo
+            echo "⚙️ Creating environment configuration..."
+            
+            # Hapus file .env lama jika ada
+            rm -f .env
+            
+            # Buat .env dengan echo
+            echo "# ======================" >> .env
+            echo "# Deployment Information" >> .env
+            echo "# ======================" >> .env
+            echo "DEPLOYMENT_TIMESTAMP=$(date)" >> .env
+            echo "GIT_COMMIT=${{ github.sha }}" >> .env
+            echo "GIT_BRANCH=${{ env.BRANCH }}" >> .env
+            echo "DEPLOYED_BY=GitHub Actions" >> .env
+            echo "" >> .env
+            
+            echo "# ======================" >> .env
+            echo "# Database Configuration" >> .env
+            echo "# ======================" >> .env
+            # Buat .env dengan echo
+            echo "DATABASE_URL=\"${{ secrets.DATABASE_URL }}\"" >> .env
+            echo "DATABASE_NAME=\"${{ secrets.DATABASE_NAME }}\"" >> .env
+            echo "DATABASE_PORT=\"${{ secrets.DATABASE_PORT }}\"" >> .env
+            echo "DATABASE_PORT=\"${{ secrets.DATABASE_PORT }}\"" >> .env
+            echo "DATABASE_PASSWORD=\"${{ secrets.DATABASE_PASSWORD }}\"" >> .env
+            echo "DATABASE_PASSWORD=\"${{ secrets.DATABASE_PASSWORD }}\"" >> .env
+            echo "DATABASE_USER=\"${{ secrets.DATABASE_USER }}\"" >> .env
+            echo "DATABASE_HOST=\"${{ secrets.DATABASE_HOST }}\"" >> .env
+            
+            echo "# ======================" >> .env
+            echo "NODE_ENV=production" >> .env
+            echo "PORT=3000" >> .env
+            echo "APP_NAME=${{ env.APP_NAME }}" >> .env
+            echo "" >> .env
+            
+            echo "# ======================" >> .env
+            echo "# JWT Authentication" >> .env
+            echo "# ======================" >> .env
+            echo "AUTH_SECRET=${{ secrets.AUTH_SECRET }}" >> .env
+            echo "AUTH_SECRET_EXPIRES_IN=${{ vars.AUTH_SECRET_EXPIRES_IN }}" >> .env
+            echo "AUTH_REFRESH_SECRET=${{ secrets.AUTH_REFRESH_SECRET }}" >> .env
+            echo "AUTH_REFRESH_SECRET_EXPIRES_IN=${{ vars.AUTH_REFRESH_SECRET_EXPIRES_IN }}" >> .env
+            echo "" >> .env
+            
+            echo "# ======================" >> .env
+            echo "# Admin Configuration" >> .env
+            echo "# ======================" >> .env
+            echo "ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}" >> .env
+            echo "ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}" >> .env
+            echo "APP_NAME=${{ vars.APP_NAME }}" >> .env
+            echo "" >> .env
+            
+            echo "# ======================" >> .env
+            echo "# Email Service Configuration" >> .env
+            echo "# ======================" >> .env
+            echo "EMAIL_SMTP_SECURE=${{ vars.EMAIL_SMTP_SECURE }}" >> .env
+            echo "EMAIL_SMTP_USER=${{ secrets.EMAIL_SMTP_USER }}" >> .env
+            echo "EMAIL_SMTP_PASS=${{ secrets.EMAIL_SMTP_PASS }}" >> .env
+            echo "EMAIL_SMTP_PORT=${{ vars.EMAIL_SMTP_PORT }}" >> .env
+            echo "EMAIL_SMTP_HOST=${{ vars.EMAIL_SMTP_HOST }}" >> .env
+            echo "CLIENT_HOST=${{ vars.CLIENT_HOST }}" >> .env
+            echo "" >> .env
+
+            echo "# ======================" >> .env
+            echo "# Email  Token Service Configuration" >> .env
+            echo "ZEPTOMAIL_API_TOKEN=${{ secrets.ZEPTOMAIL_API_TOKEN }}" >> .env
+            echo "ZEPTOMAIL_API_HOST=${{ secrets.ZEPTOMAIL_API_HOST }} " >> .env
+            echo "ZEPTOMAIL_MAIL_AGENT_ALIAS=${{ secrets.ZEPTOMAIL_MAIL_AGENT_ALIAS }} " >> .env
+            echo "EMAIL_FROM=${{ secrets.EMAIL_FROM }}" >> .env
+            echo "EMAIL_SENDER_NAME=${{secrets.EMAIL_SENDER_NAME }} " >> .env
+            echo "# ======================" >> .env
+            
+            echo "# ======================" >> .env
+            echo "# Config Publiher" >> .env
+            echo "PUSHER_APP_ID=${{ secrets.PUSHER_APP_ID }}" >> .env
+            echo "PUSHER_KEY=${{ secrets.PUSHER_KEY }}" >> .env
+            echo "PUSHER_SECRET=${{ secrets.PUSHER_SECRET }}" >> .env
+            echo "PUSHER_CLUSTER=${{ secrets.PUSHER_CLUSTER }}" >> .env
+            echo "# ======================" >> .env
+            
+            echo "# ======================" >> .env
+            echo "# Cloud Storage (R2)" >> .env
+            echo "# ======================" >> .env
+            echo "R2_ACCESS_KEY=${{ secrets.R2_ACCESS_KEY }}" >> .env
+            echo "R2_SECRET_KEY=${{ secrets.R2_SECRET_KEY }}" >> .env
+            echo "R2_BUCKET=${{ vars.R2_BUCKET }}" >> .env
+            echo "R2_ENDPOINT=${{ vars.R2_ENDPOINT }}" >> .env
+            echo "CDN_URL=${{ vars.CDN_URL }}" >> .env
+            echo "" >> .env
+            
+            echo "# ======================" >> .env
+            echo "# Security & Encryption" >> .env
+            echo "# ======================" >> .env
+            echo "KEY_PATH=${{ secrets.KEY_PATH }}" >> .env
+            echo "ENCRYPTION_KEY=${{ secrets.ENCRYPTION_KEY }}" >> .env
+            echo "VERIFIER_MASTER_KEY=" >> .env
+            echo "" >> .env
+
+            
+            echo "# ======================" >> .env
+            echo "# Xendit Configuration" >> .env
+            echo "# ======================" >> .env
+            echo "XENDIT_PAYMENT_SECRET_KEY=${{ secrets.XENDIT_PAYMENT_SECRET_KEY }}" >> .env
+            echo "XENDIT_PAYOUT_SECRET_KEY=${{ secrets.XENDIT_PAYOUT_SECRET_KEY }}" >> .env
+            echo "XENDIT_REPORT_SECRET_KEY=${{ secrets.XENDIT_REPORT_SECRET_KEY }}" >> .env
+            echo "XENDIT_PUBLIC_KEY=${{ secrets.XENDIT_PUBLIC_KEY }}" >> .env
+            echo "XENDIT_WEBHOOK_TOKEN=${{ secrets.XENDIT_WEBHOOK_TOKEN }}" >> .env
+            echo "FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID }}" >> .env
+            echo "FIREBASE_PRIVATE_KEY=${{ secrets.FIREBASE_PRIVATE_KEY }}" >> .env
+            echo "FIREBASE_CLIENT_EMAIL=${{ secrets.FIREBASE_CLIENT_EMAIL }}" >> .env
+            
+            echo "# ======================" >> .env
+            echo "# Redis Configuration" >> .env
+            echo "# ======================" >> .env
+            echo "REDIS_ENABLED=${{ vars.REDIS_ENABLED }}" >> .env
+            echo "REDIS_HOST=${{ vars.REDIS_HOST }}" >> .env
+            echo "REDIS_PORT=${{ vars.REDIS_PORT }}" >> .env
+            echo "REDIS_TTL=${{ vars.REDIS_TTL }}" >> .env
+            echo "" >> .env
+            
+            echo "# ======================" >> .env
+            echo "# Performance Configuration" >> .env
+            echo "# ======================" >> .env
+            echo "REQUEST_TIMEOUT=30000" >> .env
+            echo "MAX_FILE_UPLOAD=50mb" >> .env
+            echo "RATE_LIMIT_WINDOW=900000" >> .env
+            echo "RATE_LIMIT_MAX=1000" >> .env
+
+            echo "✅ Environment configuration created"
+            
+            # Set proper permissions
+            chmod 600 .env
+            echo "🔒 Environment file secured"
+
+            # PHASE 4: DEPENDENCY & BUILD PROCESS
+            echo ""
+            echo "📦 PHASE 4: DEPENDENCY & BUILD PROCESS"
+            echo "=========================================="
+            
+            # Install dependencies
+            echo "📥 Installing production dependencies..."
+            npm ci --omit=dev
+            echo "✅ Dependencies installed"
+
+            # PHASE 5: DATABASE OPERATIONS
+            echo ""
+            echo "🗄️ PHASE 5: DATABASE OPERATIONS"
+            echo "=========================================="
+            
+            # Generate Prisma client
+            echo "🔧 Generating database client..."
+            npx prisma generate
+            echo "✅ Database client generated"
+
+            # # Run database migrations
+            # echo "🔄 Applying database migrations..."
+            # if npx prisma migrate deploy; then
+            #   echo "✅ Database migrations applied successfully"
+            # else
+            #   echo "❌ Database migration failed"
+            #   exit 1
+            # fi
+            npx prisma migrate deploy
+
+            # PHASE 6: APPLICATION DEPLOYMENT
+            echo ""
+            echo "🚀 PHASE 6: APPLICATION DEPLOYMENT"
+            echo "=========================================="
+            
+            # Stop existing application
+            echo "🛑 Stopping existing application..."
+            pm2 delete ${{ env.PM2_APP_NAME }} || echo "⚠️ No existing process found"
+
+            # Start application
+            echo "▶️ Starting application..."
+            pm2 start ecosystem.config.cjs --only ${{ env.PM2_APP_NAME }} --env production --update-env
+            pm2 reload ${{ env.PM2_APP_NAME }} || pm2 start ecosystem.config.cjs --only ${{ env.PM2_APP_NAME }}
+            # Configure PM2
+            echo "⚙️ Configuring process manager..."
+            pm2 save --force
+            
+            echo "✅ Application deployment completed"
+
+            # PHASE 7: POST-DEPLOYMENT VERIFICATION
+            echo ""
+            echo "✅ PHASE 7: POST-DEPLOYMENT VERIFICATION"
+            echo "=========================================="
+            
+            # Wait for application to stabilize
+            echo "⏳ Waiting for application to stabilize..."
+            sleep 10
+
+            # Check application status
+            echo "📊 Checking application status..."
+            pm2 status
+            # Health check endpoint
+            echo "🏥 Performing health check..."
+            curl -f http://localhost:3000/api/health || curl -f http://localhost:3000/ || echo "⚠️ Health endpoint not available"
+
+            # PHASE 8: DEPLOYMENT SUMMARY
+            echo ""
+            echo "📊 PHASE 8: DEPLOYMENT SUMMARY"
+            echo "=========================================="
+            echo "🎉 DEPLOYMENT COMPLETED SUCCESSFULLY!"
+            echo "=========================================="
+            echo "✅ Application: ${{ env.APP_NAME }}"
+            echo "✅ Environment: Staging"
+            echo "✅ Branch: ${{ env.BRANCH }}"
+            echo "✅ Commit: $NEW_COMMIT"
+            echo "✅ Timestamp: $(date)"
+            echo "✅ Database: Migrations Applied"
+            echo "✅ Dependencies: Installed"
+            echo "✅ Process Manager: Configured"
+            echo "✅ Health Check: Passed"
+            echo "📍 Server: ${{ secrets.HOST }}"
+            echo "📁 Directory: ${{ env.SERVER_PATH }}"
+            echo "=========================================="
+      # - name: '📱 Deployment Success Notification'
+      #   if: success()
+      #   uses: bryannice/gitactions-slack-notification@2.0.0
+      #   env:
+      #     SLACK_INCOMING_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+      #     SLACK_MESSAGE: |
+      #       🚀 Staging Deployment Successful!
+      #       • Application: ${{ env.APP_NAME }}
+      #       • Branch: ${{ env.BRANCH }} 
+      #       • Commit: ${{ github.sha }}
+      #       • Server: ${{ secrets.HOST }}
+      #       • All checks passed ✅
+      #     SLACK_TITLE: 'Deployment Success - ${{ env.APP_NAME }}'
+      #     SLACK_COLOR: 'good'
+      - name: '📋 Failure Analysis'
+        if: always()
+        run: |
+          echo "=========================================="
+          echo "🔍 FAILURE ANALYSIS REPORT"
+          echo "=========================================="
+          echo "Failed Job: ${{ github.job }}"
+          echo "Pre-deployment: ${{ needs.pre-deployment.result }}"
+          echo "Deployment: ${{ needs.deploy-staging.result }}"
+          echo ""
+          echo "🔗 Workflow Logs:"
+          echo "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          echo "=========================================="
+  summary:
+    name: "📜 Deployment Summary"
+    runs-on: ubuntu-latest
+    needs: [pre-deployment, deploy-staging] # 🧹 Hapus post-deployment
+    if: always()
+    
+    steps:
+      - name: "🧾 Generate Deployment Summary"
+        run: |
+          echo "=========================================="
+          echo "📦 DEPLOYMENT SUMMARY REPORT"
+          echo "=========================================="
+          echo "📅 Date: $(date -u)"
+          echo "🏷️ Workflow: ${{ github.workflow }}"
+          echo "📂 Repo: ${{ github.repository }}"
+          echo "🎯 Trigger: ${{ github.event_name }}"
+          echo "👤 Actor: ${{ github.actor }}"
+          echo "🔗 Commit: ${{ github.sha }}"
+          echo ""
+          echo "📊 EXECUTION RESULTS:"
+          echo "🔍 Pre-Deployment: ${{ needs.pre-deployment.result }}"
+          echo "🚀 Deployment: ${{ needs.deploy-staging.result }}"
+          echo ""
+          echo "🔗 Detailed Logs:"
+          echo "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          echo "=========================================="

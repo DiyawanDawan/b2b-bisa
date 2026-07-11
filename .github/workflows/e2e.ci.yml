@@ -1,0 +1,115 @@
+# E2E-507 / E2E-508 — API unit tests, seed smoke, and sharded E2E journeys
+name: API Tests & E2E
+
+on:
+  pull_request:
+    branches: [staging, main, develop]
+  push:
+    branches: [staging]
+
+concurrency:
+  group: e2e-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_ENV: test
+  DATABASE_URL: mysql://root:test@127.0.0.1:3306/buka_lombok_test
+  AUTH_SECRET: e2e-ci-auth-secret-min-32-chars-long
+  AUTH_REFRESH_SECRET: e2e-ci-refresh-secret-min-32-chars
+  AUTH_SECRET_EXPIRES_IN: 1h
+  AUTH_REFRESH_SECRET_EXPIRES_IN: 7d
+  REDIS_ENABLED: 'false'
+  E2E_SKIP_FIREBASE: '1'
+  E2E_MOCK_PAYMENT: '1'
+  XENDIT_WEBHOOK_TOKEN: e2e-xendit-webhook-token
+  ADMIN_EMAIL: admin@example.com
+  ADMIN_PASSWORD: supersecretpassword
+  SEED_SCALE: small
+  SKIP_E2E: '0'
+  FRONTEND_URL: http://localhost:3001
+
+jobs:
+  unit-and-smoke:
+    name: Unit + seed smoke + E2E smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: test
+          MYSQL_DATABASE: buka_lombok_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -ptest"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: E2E prep (migrate + seed)
+        run: npm run test:e2e:prep
+
+      - name: Unit tests
+        run: npm run test:unit
+
+      - name: Seed smoke
+        run: npm run test:seed
+
+      - name: E2E smoke
+        run: npm run test:e2e:smoke
+
+  e2e-shard:
+    name: E2E ${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: unit-and-smoke
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [sprint1, sprint2, sprint3, sprint4]
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: test
+          MYSQL_DATABASE: buka_lombok_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -ptest"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: E2E prep (migrate + seed)
+        run: npm run test:e2e:prep
+
+      - name: Run E2E shard
+        run: npm run test:e2e:shard
+        env:
+          E2E_SHARD: ${{ matrix.shard }}
