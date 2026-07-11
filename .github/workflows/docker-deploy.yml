@@ -83,7 +83,7 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || secrets.DEVELOPMENT_HOST_IP }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER || secrets.DEVELOPMENT_USERNAME }}
           DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY || secrets.DEVELOPMENT_SSH_PRIVATE_KEY }}
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/var/www/app/bisa-backend' }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/var/www/app/bisa-backend/b2b-bisa' }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
         with:
           host: ${{ env.DEPLOY_HOST }}
@@ -125,7 +125,7 @@ jobs:
       DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || secrets.STAGING_HOST_IP }}
       DEPLOY_USER: ${{ secrets.DEPLOY_USER || secrets.STAGING_USERNAME }}
       DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY || secrets.STAGING_SSH_PRIVATE_KEY }}
-      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/var/www/app/bisa-backend' }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/var/www/app/bisa-backend/b2b-bisa' }}
       DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
 
     steps:
@@ -394,7 +394,7 @@ jobs:
       DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || secrets.HOST }}
       DEPLOY_USER: ${{ secrets.DEPLOY_USER || secrets.USERNAME }}
       DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY || secrets.SSH_PRIVATE_KEY }}
-      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/var/www/app/bisa-backend' }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/var/www/app/bisa-backend/b2b-bisa' }}
       DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
 
     steps:
