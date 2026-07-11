@@ -8,7 +8,7 @@ on:
 
 env:
   NODE_VERSION: ${{ vars.NODE_VERSION }}
-  SERVER_PATH: '/var/www/buka_lombok/backend/Buka-Lombok'
+  SERVER_PATH: '/var/www/app/bisa-backend'
   BRANCH: ${{ vars.BRANCH }}
   APP_NAME: "buka-lombok-be-prod"
   PM2_APP_NAME: "buka-lombok-be-prod"
