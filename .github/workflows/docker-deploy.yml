@@ -440,7 +440,7 @@ jobs:
             DEPLOYMENT_TIMESTAMP=$(date)
             GIT_COMMIT=${{ github.sha }}
             DEPLOYED_BY=GitHub Actions
-            
+            SERVER_HOST = ${{ env.DEPLOY_HOST }}
             DATABASE_URL=${{ secrets.DATABASE_URL }}
             DATABASE_NAME=${{ secrets.DATABASE_NAME }}
             DATABASE_PORT=${{ secrets.DATABASE_PORT }}
