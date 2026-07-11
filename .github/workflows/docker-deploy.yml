@@ -101,12 +101,12 @@ jobs:
 
             cd "$DEPLOY_PATH"
             echo "Using deploy path: $DEPLOY_PATH"
-            docker compose -f docker-compose.prod.yml pull || true
-            docker compose -f docker-compose.prod.yml up -d app || true
+            docker-compose -f docker-compose.prod.yml pull || true
+            docker-compose -f docker-compose.prod.yml up -d app || true
             sleep 20
             docker exec backend-app npx prisma migrate deploy || echo "⚠️ Migration failed or no migrations pending"
-            docker compose -f docker-compose.prod.yml down || true
-            docker compose -f docker-compose.prod.yml up -d || true
+            docker-compose -f docker-compose.prod.yml down || true
+            docker-compose -f docker-compose.prod.yml up -d || true
             sleep 15
             docker exec backend-app curl -f http://localhost:3000/health || echo "⚠️ Health check failed"
             echo "Development deployment completed!"
@@ -161,7 +161,7 @@ jobs:
             
             # Check current container status
             echo "Current container status:"
-            docker compose -f docker-compose.prod.yml ps || echo "No running containers"
+            docker-compose -f docker-compose.prod.yml ps || echo "No running containers"
 
             # PHASE 1.5: CREATE ENVIRONMENT FILE
             echo ""
@@ -274,7 +274,7 @@ jobs:
             echo "📦 PHASE 2: PULLING LATEST IMAGE"
             echo "=========================================="
             echo "⬇️ Pulling latest image..."
-            docker compose -f docker-compose.prod.yml pull
+            docker-compose -f docker-compose.prod.yml pull
             
             echo "📋 New image version:"
             docker images | grep bisa | head -1
@@ -286,7 +286,7 @@ jobs:
             
             # Start app container temporarily to run migrations
             echo "Starting app container for migrations..."
-            docker compose -f docker-compose.prod.yml up -d app
+            docker-compose -f docker-compose.prod.yml up -d app
             
             # Wait for app to be ready with better diagnostics
             echo " Waiting for app to be ready (180 seconds)..."
@@ -338,11 +338,11 @@ jobs:
 
             # Stop all containers
             echo "Stopping all containers..."
-            docker compose -f docker-compose.prod.yml down
+            docker-compose -f docker-compose.prod.yml down
 
             # Start new containers
             echo "Starting new containers..."
-            docker compose -f docker-compose.prod.yml up -d
+            docker-compose -f docker-compose.prod.yml up -d
 
             # Wait for app to stabilize
             echo " Waiting for app to stabilize (60 seconds)..."
@@ -355,11 +355,11 @@ jobs:
 
             # Show container status
             echo "Container status:"
-            docker compose -f docker-compose.prod.yml ps
+            docker-compose -f docker-compose.prod.yml ps
 
             # Show recent logs
             echo "Recent logs (last 30 lines):"
-            docker compose -f docker-compose.prod.yml logs --tail=30 app
+            docker-compose -f docker-compose.prod.yml logs --tail=30 app
 
             # Health check with retry
             echo "Performing health check..."
@@ -458,7 +458,7 @@ jobs:
             
             # Check current container status
             echo "Current container status:"
-            docker compose -f docker-compose.prod.yml ps || echo "No running containers"
+            docker-compose -f docker-compose.prod.yml ps || echo "No running containers"
 
             # PHASE 1.5: CREATE ENVIRONMENT FILE
             echo ""
@@ -571,7 +571,7 @@ jobs:
             echo "📦 PHASE 2: PULLING LATEST IMAGE"
             echo "=========================================="
             echo "⬇️ Pulling latest image..."
-            docker compose -f docker-compose.prod.yml pull
+            docker-compose -f docker-compose.prod.yml pull
             
             echo "📋 New image version:"
             docker images | grep bisa | head -1
@@ -583,7 +583,7 @@ jobs:
             
             # Start app container temporarily to run migrations
             echo "Starting app container for migrations..."
-            docker compose -f docker-compose.prod.yml up -d app
+            docker-compose -f docker-compose.prod.yml up -d app
             
             # Wait for app to be ready with better diagnostics
             echo " Waiting for app to be ready (180 seconds)..."
@@ -635,11 +635,11 @@ jobs:
 
             # Stop all containers
             echo "Stopping all containers..."
-            docker compose -f docker-compose.prod.yml down
+            docker-compose -f docker-compose.prod.yml down
 
             # Start new containers
             echo "Starting new containers..."
-            docker compose -f docker-compose.prod.yml up -d
+            docker-compose -f docker-compose.prod.yml up -d
 
             # Wait for app to stabilize
             echo " Waiting for app to stabilize (60 seconds)..."
@@ -652,11 +652,11 @@ jobs:
 
             # Show container status
             echo "Container status:"
-            docker compose -f docker-compose.prod.yml ps
+            docker-compose -f docker-compose.prod.yml ps
 
             # Show recent logs
             echo "Recent logs (last 30 lines):"
-            docker compose -f docker-compose.prod.yml logs --tail=30 app
+            docker-compose -f docker-compose.prod.yml logs --tail=30 app
 
             # Health check with retry
             echo "Performing health check..."
