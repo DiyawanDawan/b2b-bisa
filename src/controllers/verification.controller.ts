@@ -15,16 +15,15 @@ export const submitVerification = catchAsync(async (req: AuthRequest, res: Respo
   const userId = req.user!.id;
   const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
 
-  const { businessName, taxId, businessAddress, ktpUrl, nibUrl, selfieUrl, siupUrl } =
-    req.body as {
-      businessName?: string;
-      taxId?: string;
-      businessAddress?: string;
-      ktpUrl?: string;
-      nibUrl?: string;
-      selfieUrl?: string;
-      siupUrl?: string;
-    };
+  const { businessName, taxId, businessAddress, ktpUrl, nibUrl, selfieUrl, siupUrl } = req.body as {
+    businessName?: string;
+    taxId?: string;
+    businessAddress?: string;
+    ktpUrl?: string;
+    nibUrl?: string;
+    selfieUrl?: string;
+    siupUrl?: string;
+  };
 
   const updateData: Record<string, unknown> = {
     businessName,

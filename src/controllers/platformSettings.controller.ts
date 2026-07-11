@@ -11,9 +11,6 @@ export const listForAdmin = catchAsync(async (_req: AuthRequest, res: Response) 
 
 export const upsertForAdmin = catchAsync(async (req: AuthRequest, res: Response) => {
   const { settings } = req.body as { settings: Record<string, string> };
-  const items = await platformSettingsService.upsertPlatformSettings(
-    settings,
-    req.user?.id,
-  );
+  const items = await platformSettingsService.upsertPlatformSettings(settings, req.user?.id);
   return successResponse(res, items, 'Pengaturan platform berhasil disimpan.');
 });

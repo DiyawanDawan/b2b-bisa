@@ -12,8 +12,7 @@ const seedForumMedia = (keywords, lock) => [
 export async function seedCommunity(prisma, users) {
   logger.info('🌱 [09] Seeding Full Community Content (10+ Data)...');
 
-  const hasForumGroups =
-    typeof prisma.forumGroup?.findMany === 'function';
+  const hasForumGroups = typeof prisma.forumGroup?.findMany === 'function';
 
   await prisma.article.deleteMany({});
   await prisma.forumPost.deleteMany({});

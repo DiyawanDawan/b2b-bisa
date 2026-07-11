@@ -29,3 +29,13 @@ export const listRecentPredictions = catchAsync(async (req: AuthRequest, res: Re
   });
   successResponse(res, { predictions: result }, 'Riwayat prediksi berhasil dimuat');
 });
+
+/**
+ * Auto-generate deskripsi produk dari gambar menggunakan Gemini Vision.
+ * Prompt sudah dibatasi ketat — hanya mendeskripsikan produk biomassa.
+ */
+export const generateProductDescription = catchAsync(async (req: AuthRequest, res: Response) => {
+  const { imageBase64, mimeType } = req.body as { imageBase64: string; mimeType?: string };
+  const description = await aiService.generateProductDescription(imageBase64, mimeType);
+  successResponse(res, { description }, 'Deskripsi produk berhasil digenerate');
+});

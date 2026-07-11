@@ -3,12 +3,7 @@ import AppError from '#utils/appError';
 
 const storage = multer.memoryStorage();
 
-const CSV_MIME_TYPES = [
-  'text/csv',
-  'application/csv',
-  'text/plain',
-  'application/vnd.ms-excel',
-];
+const CSV_MIME_TYPES = ['text/csv', 'application/csv', 'text/plain', 'application/vnd.ms-excel'];
 
 const fileFilter = (_req: unknown, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
   const name = file.originalname?.toLowerCase() ?? '';

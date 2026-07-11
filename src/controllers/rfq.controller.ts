@@ -24,10 +24,6 @@ export const listInbox = catchAsync(async (req: AuthRequest, res: Response) => {
 });
 
 export const respond = catchAsync(async (req: AuthRequest, res: Response) => {
-  const result = await rfqService.respondToRfq(
-    req.user!.id,
-    req.params.id,
-    req.body.message,
-  );
+  const result = await rfqService.respondToRfq(req.user!.id, req.params.id, req.body.message);
   successResponse(res, result, 'Respons RFQ berhasil — ruang chat dibuka.');
 });

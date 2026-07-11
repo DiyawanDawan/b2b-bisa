@@ -144,12 +144,10 @@ describe('readiness.util', () => {
   });
 
   it('assertSupplierStoreReady throws STORE_NOT_READY', async () => {
-    mockFindUnique
-      .mockResolvedValueOnce({ role: 'SUPPLIER' })
-      .mockResolvedValueOnce({
-        ...completeSupplier,
-        profile: { ...completeSupplier.profile, rajaongkirOriginId: null },
-      });
+    mockFindUnique.mockResolvedValueOnce({ role: 'SUPPLIER' }).mockResolvedValueOnce({
+      ...completeSupplier,
+      profile: { ...completeSupplier.profile, rajaongkirOriginId: null },
+    });
 
     await expect(assertSupplierStoreReady('sup-1')).rejects.toMatchObject({
       statusCode: 422,

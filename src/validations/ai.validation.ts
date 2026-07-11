@@ -24,9 +24,24 @@ export const chatbotSchema = z.object({
 export const recentPredictionsQuerySchema = z.object({
   query: z.object({
     limit: z.coerce.number().int().min(1).max(50).optional().default(20),
-    iotOnly: z.preprocess(
-      (v) => v === 'true' || v === true,
-      z.boolean().optional().default(false),
-    ),
+    iotOnly: z.preprocess((v) => v === 'true' || v === true, z.boolean().optional().default(false)),
   }),
+});
+
+export const generateProductDescriptionSchema = z.object({
+  imageBase64: z
+    .string({ required_error: 'imageBase64 wajib diisi' })
+    .min(100, 'Data gambar tidak valid')
+    // Pastikan tidak ada prefix data URI — cukup data base64 mentah
+    .refine((v) => !v.startsWith('data:'), {
+      message: 'Kirim hanya konten base64 tanpa prefix "data:image/..."',
+    }),
+  mimeType: z
+    .string()
+    .regex(
+      /^image\/(jpeg|png|webp|gif)$/,
+      'mimeType harus image/jpeg, image/png, image/webp, atau image/gif',
+    )
+    .optional()
+    .default('image/jpeg'),
 });

@@ -1,0 +1,23 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "noCheck": true,
+    "skipLibCheck": true,
+    "declaration": false,
+    "sourceMap": false,
+    "incremental": false
+  },
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "prisma.config.ts"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "generated",
+    "tests",
+    "test",
+    "prisma/seed",
+    "scripts",
+    "**/*.test.ts",
+    "**/*.spec.ts"
+  ]
+}

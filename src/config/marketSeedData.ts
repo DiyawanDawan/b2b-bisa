@@ -27,7 +27,10 @@ export type MarketSeedBundle = {
   }>;
 };
 
-const bundlePath = join(dirname(fileURLToPath(import.meta.url)), '../../data/market_seed_bundles.json');
+const bundlePath = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '../../data/market_seed_bundles.json',
+);
 
 let cached: MarketSeedBundle | null = null;
 
@@ -47,6 +50,7 @@ export const getMarketSeedBaselines = (): Record<string, MarketSeedPoint[]> => {
   return out;
 };
 
-export const getMarketSeedCommodities = (): MarketSeedCommodity[] => loadMarketSeedBundle().commodities;
+export const getMarketSeedCommodities = (): MarketSeedCommodity[] =>
+  loadMarketSeedBundle().commodities;
 
 export const getHarvestWasteSeed = () => loadMarketSeedBundle().harvestWaste;

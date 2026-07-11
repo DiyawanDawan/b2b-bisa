@@ -31,8 +31,7 @@ export const getSupplierTradeStats = async (supplierId: string) => {
   }
 
   const decided = completedOrders + cancelledOrders;
-  const completionRate =
-    decided > 0 ? Math.round((completedOrders / decided) * 1000) / 10 : null;
+  const completionRate = decided > 0 ? Math.round((completedOrders / decided) * 1000) / 10 : null;
 
   const negotiations = await prisma.negotiation.findMany({
     where: { sellerId: supplierId },
@@ -60,9 +59,7 @@ export const getSupplierTradeStats = async (supplierId: string) => {
 
   const avgResponseHours =
     responseHours.length > 0
-      ? Math.round(
-          (responseHours.reduce((a, b) => a + b, 0) / responseHours.length) * 10,
-        ) / 10
+      ? Math.round((responseHours.reduce((a, b) => a + b, 0) / responseHours.length) * 10) / 10
       : null;
 
   return {

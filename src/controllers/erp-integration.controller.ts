@@ -12,7 +12,11 @@ export const listApiKeys = catchAsync(async (req: AuthRequest, res: Response) =>
 export const createApiKey = catchAsync(async (req: AuthRequest, res: Response) => {
   const { name } = req.body as { name: string };
   const result = await erpService.createSupplierApiKey(req.user!.id, name);
-  return createdResponse(res, result, 'API key berhasil dibuat. Simpan sekali — tidak ditampilkan lagi.');
+  return createdResponse(
+    res,
+    result,
+    'API key berhasil dibuat. Simpan sekali — tidak ditampilkan lagi.',
+  );
 });
 
 export const revokeApiKey = catchAsync(async (req: AuthRequest, res: Response) => {

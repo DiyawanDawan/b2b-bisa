@@ -72,5 +72,7 @@ export const seedMarket = async (prisma) => {
     logger.info(`   ↳ ${harvestRows.length} baris data panen/limbah biomassa`);
   }
 
-  logger.info(`✅ Market Trends seed completed (${trends.length} komoditas, ${bundle.periodRange?.months ?? '?'} bulan)!`);
+  logger.info(
+    `✅ Market Trends seed completed (${trends.length} komoditas, ${bundle.periodRange?.months ?? '?'} bulan)!`,
+  );
 };

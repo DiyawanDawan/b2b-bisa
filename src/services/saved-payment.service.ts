@@ -33,10 +33,7 @@ export const getDefaultSavedPayment = async (userId: string) => {
   });
 };
 
-export const saveUserPaymentPreference = async (
-  userId: string,
-  channel: ChannelInfo,
-) => {
+export const saveUserPaymentPreference = async (userId: string, channel: ChannelInfo) => {
   const code = channel.code.toUpperCase();
   await prisma.$transaction(async (tx) => {
     const existing = await tx.userSavedPayment.findUnique({

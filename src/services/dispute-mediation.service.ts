@@ -140,19 +140,17 @@ export const countAdminMediationMessages = async (negotiationId: string) =>
     },
   });
 
-export const buildDisputeMediationMeta = async (
-  order: {
-    id: string;
-    status: OrderStatus;
-    negotiation: { id: string } | null;
-    dispute: {
-      mediationStartedAt: Date | null;
-      readyToResolveAt: Date | null;
-      sellerRespondedAt: Date | null;
-      status: DisputeStatus;
-    } | null;
-  },
-) => {
+export const buildDisputeMediationMeta = async (order: {
+  id: string;
+  status: OrderStatus;
+  negotiation: { id: string } | null;
+  dispute: {
+    mediationStartedAt: Date | null;
+    readyToResolveAt: Date | null;
+    sellerRespondedAt: Date | null;
+    status: DisputeStatus;
+  } | null;
+}) => {
   const negotiationId = order.negotiation?.id ?? null;
   const dispute = order.dispute;
   const isDisputed = order.status === OrderStatus.DISPUTED;
@@ -172,11 +170,7 @@ export const buildDisputeMediationMeta = async (
     adminMessageCount,
     canMediate: isDisputed && Boolean(negotiationId),
     canMarkReady: isDisputed && mediationStarted && adminMessageCount > 0 && !readyToResolve,
-    canResolve:
-      isDisputed &&
-      mediationStarted &&
-      readyToResolve &&
-      adminMessageCount > 0,
+    canResolve: isDisputed && mediationStarted && readyToResolve && adminMessageCount > 0,
   };
 };
 
@@ -185,11 +179,17 @@ export const getDisputeChatThread = async (
   params: { page: number; limit: number },
 ) => {
   const order = await loadDisputedOrderContext(orderId);
-  if (!order.negotiation) {
-    throw new AppError('Order ini tidak memiliki ruang negosiasi terkait', 404);
+  
+  // Untuk order dengan dispute, cek dispute dulu lalu ambil negotiationId
+  let negotiationId: string;
+  if (order.dispute?.negotiationId) {
+    negotiationId = order.dispute.negotiationId;
+  } else if (order.negotiation) {
+    negotiationId = order.negotiation.id;
+  } else {
+    throw new AppError('Order ini tidak memiliki ruang negosiasi atau mediasi terkait', 404);
   }
 
-  const negotiationId = order.negotiation.id;
   const { page, limit } = params;
   const skip = (page - 1) * limit;
 
@@ -407,16 +407,10 @@ export const assertDisputeReadyForResolution = async (orderId: string) => {
     );
   }
   if (meta.adminMessageCount === 0) {
-    throw new AppError(
-      'Kirim minimal satu pesan mediasi sebagai Hakim BISA sebelum resolve.',
-      400,
-    );
+    throw new AppError('Kirim minimal satu pesan mediasi sebagai Hakim BISA sebelum resolve.', 400);
   }
   if (!meta.readyToResolveAt) {
-    throw new AppError(
-      'Tandai mediasi sebagai siap putus sebelum release atau refund.',
-      400,
-    );
+    throw new AppError('Tandai mediasi sebagai siap putus sebelum release atau refund.', 400);
   }
 
   return order;

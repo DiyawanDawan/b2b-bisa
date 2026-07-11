@@ -149,7 +149,8 @@ function loadCommoditySeedPriceKgMap() {
       const history = Array.isArray(c?.historyData) ? c.historyData : [];
       const last = history.at(-1);
       const fromHistory = Number(last?.y);
-      const byHistory = Number.isFinite(fromHistory) && fromHistory > 0 ? Math.round(fromHistory) : null;
+      const byHistory =
+        Number.isFinite(fromHistory) && fromHistory > 0 ? Math.round(fromHistory) : null;
       const byCurrentValue = extractCurrentValueKg(c?.currentValue);
       const refPrice = byHistory ?? byCurrentValue;
       if (!refPrice) continue;
@@ -171,7 +172,8 @@ function resolveSeedPriceKg(tpl) {
     queryOrder.push(normalizeLabel(`biochar grade ${tpl.grade} premium`));
   }
   if (tpl.biomassaType === 'SEKAM_PADI') queryOrder.push(normalizeLabel('sekam padi mentah'));
-  if (tpl.biomassaType === 'TONGKOL_JAGUNG') queryOrder.push(normalizeLabel('tongkol jagung kering'));
+  if (tpl.biomassaType === 'TONGKOL_JAGUNG')
+    queryOrder.push(normalizeLabel('tongkol jagung kering'));
   if (tpl.biomassaType === 'TEMPURUNG_KELAPA') queryOrder.push(normalizeLabel('tempurung kelapa'));
   queryOrder.push(normalizeLabel(tpl.name));
 
@@ -282,7 +284,14 @@ function stockTonForType(biomassaType, factor = 1) {
   return Math.round(base * factor * 10) / 10;
 }
 
-async function ensureSupplierCatalog(prisma, supplier, province, regency, categoryFor, regionalProducts) {
+async function ensureSupplierCatalog(
+  prisma,
+  supplier,
+  province,
+  regency,
+  categoryFor,
+  regionalProducts,
+) {
   let created = 0;
   const mediaBySlug = new Map();
 

@@ -8,7 +8,6 @@ import {
 } from '../../src/utils/encryption.util';
 
 describe('encryption.util', () => {
-
   it('round-trips encryptField / decryptField', () => {
     const plain = '1234567890';
     const sealed = encryptField(plain);

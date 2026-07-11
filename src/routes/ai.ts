@@ -26,4 +26,12 @@ router.get(
   aiController.listRecentPredictions,
 );
 
+// SEC-BE-007 derivative: chatbotLimiter reused — cegah abuse Gemini Vision API per user.
+router.post(
+  '/generate-product-description',
+  chatbotLimiter,
+  validate(aiValidation.generateProductDescriptionSchema, 'body'),
+  aiController.generateProductDescription,
+);
+
 export default router;

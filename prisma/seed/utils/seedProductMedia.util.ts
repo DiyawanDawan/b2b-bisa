@@ -4,7 +4,10 @@ import { fileURLToPath } from 'url';
 import logger from '../../../src/config/logger.js';
 import slugify from '../../../src/utils/slugify.ts';
 import * as storageService from '#services/storage.service';
-import { biomassImagePaths, organicProduceImagePaths } from '../../../src/utils/loremFlickrMedia.util.ts';
+import {
+  biomassImagePaths,
+  organicProduceImagePaths,
+} from '../../../src/utils/loremFlickrMedia.util.ts';
 import {
   downloadStockImage,
   downloadStockVideo,
@@ -21,9 +24,7 @@ const r2PathCache = new Map<string, string>();
 const toStockApiPage = (lockOrPage: number): number => (Math.abs(lockOrPage) % 15) + 1;
 
 const isStaleSeedMediaPath = (url: string | null | undefined): boolean =>
-  !url ||
-  url.startsWith('external/loremflickr') ||
-  url.includes('/390928-');
+  !url || url.startsWith('external/loremflickr') || url.includes('/390928-');
 
 const cacheResolvedPath = (cacheKey: string, path: string) => {
   if (path.startsWith('products/')) r2PathCache.set(cacheKey, path);
@@ -50,8 +51,7 @@ export const buildProductMediaSlug = (
   grade?: string | null,
 ): string => {
   if (productName?.trim()) {
-    const title =
-      productName.split('—')[0]?.split(' - ')[0]?.trim() ?? productName.trim();
+    const title = productName.split('—')[0]?.split(' - ')[0]?.trim() ?? productName.trim();
     const slug = slugify(title);
     if (slug) return slug.slice(0, 96);
   }
@@ -181,9 +181,7 @@ async function uploadSeedImageSlot(
     cacheResolvedPath(cacheKey, normalized);
     return normalized;
   } catch (err) {
-    logger.warn(
-      `[seed] Upload R2 gagal (${mediaSlug}-${fileLabel}): ${(err as Error).message}`,
-    );
+    logger.warn(`[seed] Upload R2 gagal (${mediaSlug}-${fileLabel}): ${(err as Error).message}`);
     if (!hasStockPhotoApiKey()) cacheResolvedPath(cacheKey, fallbackDbPath);
     return fallbackDbPath;
   }
@@ -485,8 +483,7 @@ export const backfillStaleProductMedia = async (
     const mediaSlug = buildProductMediaSlug(product.name, product.biomassaType, product.grade);
     const needsThumb = isStaleSeedMediaPath(product.thumbnailUrl);
     const needsImages =
-      product.images.length === 0 ||
-      product.images.some((img) => isStaleSeedMediaPath(img.url));
+      product.images.length === 0 || product.images.some((img) => isStaleSeedMediaPath(img.url));
     const needsVideo = !product.video;
 
     if (!needsThumb && !needsImages && !needsVideo) continue;

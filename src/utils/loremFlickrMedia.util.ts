@@ -41,12 +41,7 @@ export const loremFlickrDbPath = (
   const width = opts.width ?? DEFAULT_WIDTH;
   const height = opts.height ?? DEFAULT_HEIGHT;
   const segment = formatKeywordSegment(keywords, opts.matchAll ?? false);
-  const parts = [
-    LOREM_FLICKR_DB_PREFIX.replace(/\/$/, ''),
-    String(width),
-    String(height),
-    segment,
-  ];
+  const parts = [LOREM_FLICKR_DB_PREFIX.replace(/\/$/, ''), String(width), String(height), segment];
   if (opts.lock != null) parts.push('lock', String(opts.lock));
   if (opts.random != null) parts.push('random', String(opts.random));
   return parts.join('/');
@@ -112,15 +107,27 @@ const ORGANIC_KEYWORDS_BY_CROP: Record<string, string[][]> = {
     ['rice', 'plantation'],
     ['agriculture', 'farm'],
   ],
-  'Jagung Premium': [['corn', 'harvest'], ['corn', 'farm'], ['agriculture', 'harvest']],
-  'Kentang Organik': [['potato', 'vegetable'], ['potato', 'farm'], ['vegetable', 'harvest']],
+  'Jagung Premium': [
+    ['corn', 'harvest'],
+    ['corn', 'farm'],
+    ['agriculture', 'harvest'],
+  ],
+  'Kentang Organik': [
+    ['potato', 'vegetable'],
+    ['potato', 'farm'],
+    ['vegetable', 'harvest'],
+  ],
   'Sayur Hijau': [
     ['vegetable', 'tomato'],
     ['vegetable', 'carrot'],
     ['vegetable', 'broccoli'],
     ['cucumber', 'vegetable'],
   ],
-  'Biji-bijian': [['soybean', 'farm'], ['corn', 'soybean'], ['wheat', 'harvest']],
+  'Biji-bijian': [
+    ['soybean', 'farm'],
+    ['corn', 'soybean'],
+    ['wheat', 'harvest'],
+  ],
   'Buah-buahan': [
     ['fruit', 'mango'],
     ['fruit', 'banana'],
@@ -145,11 +152,7 @@ const BIOMASS_KEYWORDS_BY_TYPE: Record<string, string[][]> = {
   ],
   SEKAM_PADI: [['rice husk'], ['rice husk', 'biomass'], ['organic waste', 'farm']],
   TONGKOL_JAGUNG: [['corn stover'], ['corn stover', 'biomass'], ['corn', 'harvest']],
-  TEMPURUNG_KELAPA: [
-    ['palm oil', 'biomass'],
-    ['empty fruit bunch'],
-    ['palm kernel shell'],
-  ],
+  TEMPURUNG_KELAPA: [['palm oil', 'biomass'], ['empty fruit bunch'], ['palm kernel shell']],
   WOOD_CHIP: [['wood chips'], ['wood chips', 'sawdust'], ['sawdust', 'biomass']],
 };
 
@@ -173,11 +176,7 @@ export const productImageLock = (supplierId: string, productIndex: number): numb
   return hash + 1;
 };
 
-export const organicProduceImagePaths = (
-  faker: FakerLike,
-  cropType: string,
-  lockBase: number,
-) => {
+export const organicProduceImagePaths = (faker: FakerLike, cropType: string, lockBase: number) => {
   const pool = ORGANIC_KEYWORDS_BY_CROP[cropType] ?? ORGANIC_FALLBACK;
   const thumbKeywords = pickOne(faker, pool);
   const galleryKeywords = pickOne(faker, pool);

@@ -10,7 +10,10 @@ jest.mock('#config/prisma', () => ({
 }));
 
 import prisma from '#config/prisma';
-import { submitVerification, updateVerificationStatus } from '../../src/services/verification.service';
+import {
+  submitVerification,
+  updateVerificationStatus,
+} from '../../src/services/verification.service';
 
 describe('updateVerificationStatus', () => {
   beforeEach(() => {

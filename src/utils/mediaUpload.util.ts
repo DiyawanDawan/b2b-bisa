@@ -33,10 +33,7 @@ export const isAllowedMediaFolder = (value: string): value is AllowedMediaFolder
 
 export const assertAllowedFolder = (folder: string): AllowedMediaFolder => {
   if (!isAllowedMediaFolder(folder)) {
-    throw new AppError(
-      `Folder tidak diizinkan. Pilih: ${ALLOWED_MEDIA_FOLDERS.join(', ')}.`,
-      400,
-    );
+    throw new AppError(`Folder tidak diizinkan. Pilih: ${ALLOWED_MEDIA_FOLDERS.join(', ')}.`, 400);
   }
   return folder;
 };
@@ -46,7 +43,9 @@ export const maxBytesForMime = (mimeType: string): number => {
   return MEDIA_MAX_IMAGE_BYTES;
 };
 
-export const computeMultipartPlan = (totalBytes: number): { partSize: number; totalParts: number } => {
+export const computeMultipartPlan = (
+  totalBytes: number,
+): { partSize: number; totalParts: number } => {
   if (totalBytes <= 0) {
     throw new AppError('Ukuran file tidak valid.', 400);
   }

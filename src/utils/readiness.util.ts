@@ -42,8 +42,7 @@ const phoneValid = (value?: string | null) =>
 const phoneRecipientValid = (value?: string | null) =>
   !!value?.trim() && value.trim().replace(/\D/g, '').length >= 8;
 
-const textMin = (value?: string | null, min = 2) =>
-  !!value?.trim() && value.trim().length >= min;
+const textMin = (value?: string | null, min = 2) => !!value?.trim() && value.trim().length >= min;
 
 const loadReadinessUser = async (userId: string) =>
   prisma.user.findUnique({
@@ -81,9 +80,7 @@ const loadReadinessUser = async (userId: string) =>
   });
 
 const resolveCompanyName = (user: NonNullable<Awaited<ReturnType<typeof loadReadinessUser>>>) =>
-  user.profile?.companyName?.trim() ||
-  user.verification?.businessName?.trim() ||
-  '';
+  user.profile?.companyName?.trim() || user.verification?.businessName?.trim() || '';
 
 const resolveBusinessAddress = (user: NonNullable<Awaited<ReturnType<typeof loadReadinessUser>>>) =>
   user.profile?.address?.fullAddress?.trim() ||
@@ -111,7 +108,10 @@ export const evaluateSupplierStoreReadiness = async (
 ): Promise<ReadinessResult<StoreReadinessKey>> => {
   const user = await loadReadinessUser(userId);
   if (!user) {
-    return { ready: false, missing: ['companyName', 'phone', 'storeLocation', 'businessAddress', 'rajaongkirOriginId'] };
+    return {
+      ready: false,
+      missing: ['companyName', 'phone', 'storeLocation', 'businessAddress', 'rajaongkirOriginId'],
+    };
   }
 
   const missing: StoreReadinessKey[] = [];
@@ -235,9 +235,7 @@ export const assertSupplierStoreReady = async (userId: string) => {
 
   const first = result.missing[0];
   throw new AppError(
-    first
-      ? READINESS_MESSAGES[first]
-      : 'Lengkapi data toko sebelum menambah produk.',
+    first ? READINESS_MESSAGES[first] : 'Lengkapi data toko sebelum menambah produk.',
     422,
     {
       code: 'STORE_NOT_READY',

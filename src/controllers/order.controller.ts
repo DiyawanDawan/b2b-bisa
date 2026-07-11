@@ -360,3 +360,13 @@ export const getSalesStats = catchAsync(async (req: AuthRequest, res: Response) 
   const stats = await orderService.getSalesStats(req.user!.id);
   successResponse(res, stats, 'Statistik penjualan berhasil diambil.');
 });
+
+/**
+ * [BUYER] Upload Bukti Transfer Manual
+ */
+export const uploadPaymentProof = catchAsync(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params;
+  const { paymentProofUrl } = req.body;
+  const result = await orderService.uploadPaymentProof(id, req.user!.id, paymentProofUrl);
+  successResponse(res, result, 'Bukti transfer manual berhasil diunggah.');
+});

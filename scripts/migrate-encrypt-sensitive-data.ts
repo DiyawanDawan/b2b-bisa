@@ -5,7 +5,11 @@
  *   npx tsx scripts/migrate-encrypt-sensitive-data.ts
  */
 import prisma from '../src/config/prisma.ts';
-import { encryptField, encryptJsonValue, isEncryptedPayload } from '../src/utils/encryption.util.ts';
+import {
+  encryptField,
+  encryptJsonValue,
+  isEncryptedPayload,
+} from '../src/utils/encryption.util.ts';
 import { sealAccountNumber } from '../src/utils/payoutAccount.util.ts';
 
 const migratePayoutAccounts = async () => {

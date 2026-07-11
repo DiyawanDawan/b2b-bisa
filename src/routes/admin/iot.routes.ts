@@ -25,4 +25,20 @@ router.get(
   iotController.listAdminIotDevices,
 );
 
+/**
+ * PATCH /api/v1/admin/iot/devices/:deviceId
+ * Update device name and thresholds (admin override).
+ */
+router.patch(
+  '/devices/:deviceId',
+  validate(deviceValidation.adminUpdateDeviceSchema, 'all'),
+  iotController.adminUpdateDevice,
+);
+
+/**
+ * DELETE /api/v1/admin/iot/devices/:deviceId
+ * Delete device permanently (admin only).
+ */
+router.delete('/devices/:deviceId', iotController.adminDeleteDevice);
+
 export default router;

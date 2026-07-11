@@ -20,9 +20,7 @@ import {
   DeviceStatus,
 } from '#prisma';
 
-const enrichProductsWithActiveIot = async <
-  T extends { userId: string; isIotMonitored: boolean },
->(
+const enrichProductsWithActiveIot = async <T extends { userId: string; isIotMonitored: boolean }>(
   products: T[],
 ): Promise<(T & { hasActiveIot: boolean })[]> => {
   if (products.length === 0) return [];
@@ -39,9 +37,7 @@ const enrichProductsWithActiveIot = async <
   });
 };
 
-const enrichSingleProductIot = async <
-  T extends { userId: string; isIotMonitored: boolean },
->(
+const enrichSingleProductIot = async <T extends { userId: string; isIotMonitored: boolean }>(
   product: T,
 ): Promise<T & { hasActiveIot: boolean }> => {
   const [enriched] = await enrichProductsWithActiveIot([product]);
@@ -80,8 +76,7 @@ const resolveAiPredictionForProduct = async (
     grade: data.grade ?? prediction.predictedGrade ?? undefined,
     biomassaType: data.biomassaType,
     carbonPurity:
-      data.carbonPurity ??
-      (prediction.cOrganik != null ? Number(prediction.cOrganik) : undefined),
+      data.carbonPurity ?? (prediction.cOrganik != null ? Number(prediction.cOrganik) : undefined),
     predictionMeta: meta,
     prediction,
   };
@@ -288,10 +283,7 @@ export const createProduct = async (
     grade: effectiveGrade,
     ...mappedFromSpecs,
     moistureContent: mappedFromSpecs.moistureContent ?? moistureContent,
-    carbonPurity:
-      mappedFromSpecs.carbonPurity ??
-      predictionContext.carbonPurity ??
-      carbonPurity,
+    carbonPurity: mappedFromSpecs.carbonPurity ?? predictionContext.carbonPurity ?? carbonPurity,
     productionCapacity: mappedFromSpecs.productionCapacity ?? productionCapacity,
     surfaceArea: mappedFromSpecs.surfaceArea ?? surfaceArea,
     phLevel: mappedFromSpecs.phLevel ?? phLevel,
@@ -1215,11 +1207,9 @@ export const deleteProduct = async (id: string, userId: string) => {
   if (product._count.orderItems === 0) {
     await prisma.product.delete({ where: { id } });
     await deleteOrphanProductMedia(
-      [
-        product.thumbnailUrl,
-        product.video?.url,
-        ...product.images.map((img) => img.url),
-      ].filter((url): url is string => Boolean(url)),
+      [product.thumbnailUrl, product.video?.url, ...product.images.map((img) => img.url)].filter(
+        (url): url is string => Boolean(url),
+      ),
       [],
     );
     scheduleSupplyDemandRefresh();
@@ -1240,10 +1230,7 @@ export const deleteProduct = async (id: string, userId: string) => {
 /**
  * Rekomendasi produk: same category / productMode top sellers + co-purchase ringan.
  */
-export const getProductRecommendations = async (
-  productId: string,
-  limit = 8,
-) => {
+export const getProductRecommendations = async (productId: string, limit = 8) => {
   const product = await prisma.product.findUnique({
     where: { id: productId },
     select: {
@@ -1292,9 +1279,7 @@ export const getProductRecommendations = async (
             productMode: product.productMode,
             userId: { not: product.userId },
             ...(product.categoryId ? { categoryId: product.categoryId } : {}),
-            ...(coProductIds.length
-              ? { id: { notIn: coProductIds } }
-              : {}),
+            ...(coProductIds.length ? { id: { notIn: coProductIds } } : {}),
           },
           orderBy: [{ totalSold: 'desc' }, { averageRating: 'desc' }],
           take: limit - coProductIds.length,

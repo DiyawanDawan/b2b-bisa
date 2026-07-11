@@ -57,12 +57,20 @@ router.post(
 /**
  * POST /api/v1/admin/orders/disputes/:orderId/mediation/start
  */
-router.post('/disputes/:orderId/mediation/start', financialLimiter, adminController.startDisputeMediation);
+router.post(
+  '/disputes/:orderId/mediation/start',
+  financialLimiter,
+  adminController.startDisputeMediation,
+);
 
 /**
  * POST /api/v1/admin/orders/disputes/:orderId/mediation/ready
  */
-router.post('/disputes/:orderId/mediation/ready', financialLimiter, adminController.markDisputeReadyToResolve);
+router.post(
+  '/disputes/:orderId/mediation/ready',
+  financialLimiter,
+  adminController.markDisputeReadyToResolve,
+);
 
 /**
  * GET /api/v1/admin/orders/:id

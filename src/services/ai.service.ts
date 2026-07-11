@@ -1,6 +1,13 @@
 import prisma from '#config/prisma';
 import { BiomassaType, BiocharGrade } from '#prisma';
-import { GOOGLE_GEMINI_API_KEY, DEEPSEEK_API_KEY, DEEPSEEK_MODEL, ML_PREDICT_ENABLED, ML_SERVICE_API_KEY, ML_SERVICE_URL } from '#utils/env.util';
+import {
+  GOOGLE_GEMINI_API_KEY,
+  DEEPSEEK_API_KEY,
+  DEEPSEEK_MODEL,
+  ML_PREDICT_ENABLED,
+  ML_SERVICE_API_KEY,
+  ML_SERVICE_URL,
+} from '#utils/env.util';
 import fetch from 'node-fetch';
 import { withRetry } from '#utils/retry.util';
 import { GeminiResponse } from '#types/ai.types';
@@ -171,8 +178,11 @@ export const predictBiocharQuality = async (
         dosis: mlResult.dosis_ton_ha ?? config.defaultDosis,
         rawOutput: JSON.stringify({
           model: mlResult.model_version ?? 'xgb-biochar-v1.2.0',
-          inference_mode: (mlResult as MlPredictResponse & { inference_mode?: string }).inference_mode ?? 'xgb',
-          models_used: (mlResult as MlPredictResponse & { models_used?: Record<string, boolean> }).models_used ?? null,
+          inference_mode:
+            (mlResult as MlPredictResponse & { inference_mode?: string }).inference_mode ?? 'xgb',
+          models_used:
+            (mlResult as MlPredictResponse & { models_used?: Record<string, boolean> })
+              .models_used ?? null,
           confidence: mlResult.confidence ?? null,
           source: options.meta?.source ?? 'ml-service',
           predicted_price_idr_per_ton: mlResult.predicted_price_idr_per_ton ?? null,
@@ -265,11 +275,11 @@ export const listRecentPredictions = async (
  */
 const stripMarkdown = (text: string): string => {
   return text
-    .replace(/\*\*(.+?)\*\*/g, '$1')   // **bold** → bold
-    .replace(/\*(.+?)\*/g, '$1')        // *italic* → italic
-    .replace(/^#{1,6}\s+/gm, '')        // ### heading → heading
-    .replace(/^[-*]\s+/gm, '• ')        // - bullet → • bullet
-    .replace(/`(.+?)`/g, '$1')          // `code` → code
+    .replace(/\*\*(.+?)\*\*/g, '$1') // **bold** → bold
+    .replace(/\*(.+?)\*/g, '$1') // *italic* → italic
+    .replace(/^#{1,6}\s+/gm, '') // ### heading → heading
+    .replace(/^[-*]\s+/gm, '• ') // - bullet → • bullet
+    .replace(/`(.+?)`/g, '$1') // `code` → code
     .trim();
 };
 
@@ -324,7 +334,7 @@ export const askAssistant = async (question: string): Promise<string> => {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
+              Authorization: `Bearer ${DEEPSEEK_API_KEY}`,
             },
             body: JSON.stringify({
               model: DEEPSEEK_MODEL || 'deepseek-chat',
@@ -408,10 +418,144 @@ export const askAssistant = async (question: string): Promise<string> => {
     });
 
     const aiResponse = result.candidates?.[0]?.content?.parts?.[0]?.text;
-    return aiResponse ? stripMarkdown(aiResponse) : 'Maaf, saya tidak bisa proses jawaban sekarang. Coba lagi ya.';
+    return aiResponse
+      ? stripMarkdown(aiResponse)
+      : 'Maaf, saya tidak bisa proses jawaban sekarang. Coba lagi ya.';
   } catch (error: unknown) {
     const errMsg = error instanceof Error ? error.message : 'Unknown error';
     console.error('[AI SERVICE] Gemini Assistant Error:', errMsg);
     return 'Maaf, terjadi gangguan saat menghubungi asisten AI kami.';
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Auto-Deskripsi Produk — Gemini Vision (multimodal)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * SYSTEM PROMPT — Sangat dibatasi hanya untuk konteks produk biomassa.
+ * Aturan wajib:
+ *  1. Output HANYA deskripsi produk biomassa 2–3 kalimat, Bahasa Indonesia.
+ *  2. Dilarang menghasilkan kode pemrograman dalam bentuk apapun.
+ *  3. Dilarang menyebut harga, nama merek, atau data yang tidak terlihat di gambar.
+ *  4. Jika gambar BUKAN produk biomassa/pertanian, WAJIB balas tepat:
+ *     "BUKAN_PRODUK_BIOMASSA"
+ *  5. Tidak ada markup, bullet, atau penomoran — teks polos saja.
+ *  6. Maksimal 3 kalimat.
+ */
+const PRODUCT_DESC_SYSTEM_PROMPT = `Kamu adalah asisten pendeskripsian produk untuk marketplace biomassa Indonesia (BISA Marketplace).
+Tugasmu HANYA menulis deskripsi singkat suatu produk biomassa berdasarkan gambar yang diberikan.
+
+ATURAN WAJIB — TIDAK BOLEH DILANGGAR:
+1. Output HANYA berupa deskripsi produk 2–3 kalimat dalam Bahasa Indonesia yang baik.
+2. DILARANG KERAS menulis kode pemrograman, HTML, markdown, JSON, atau format teknis apapun.
+3. DILARANG menyebut harga, diskon, nama toko, nomor telepon, atau data yang tidak terlihat di gambar.
+4. DILARANG menjawab pertanyaan, memberikan saran, atau melakukan hal selain mendeskripsikan produk.
+5. Jika gambar yang diberikan BUKAN produk biomassa atau produk pertanian (misalnya: foto selfie, pemandangan, makanan, hewan peliharaan, teks, kode, logo, dsb), WAJIB balas HANYA dengan teks tepat ini (tanpa tambahan apapun): BUKAN_PRODUK_BIOMASSA
+6. Deskripsi fokus pada: jenis biomassa, karakteristik fisik yang terlihat (warna, tekstur, bentuk), dan kegunaan umum produk tersebut.
+7. Teks harus polos, tanpa bullet, tanpa penomoran, tanpa tanda bintang.
+8. Maksimal 3 kalimat.
+
+Contoh output yang BENAR:
+"Biochar sekam padi berkualitas tinggi dengan warna hitam pekat dan tekstur ringan berpori. Diproduksi melalui proses pirolisis terkontrol yang mempertahankan struktur karbon optimal. Cocok digunakan sebagai pembenah tanah untuk meningkatkan kesuburan dan kemampuan tanah menyerap air."
+
+Contoh output yang SALAH (jangan lakukan ini):
+- Menulis kode: \`const desc = ...\`
+- Menulis harga: "Harga Rp 50.000/kg"
+- Menjawab pertanyaan: "Tentu, gambar ini menunjukkan..."
+- Menambahkan penomoran: "1. Produk ini... 2. ..."`;
+
+/**
+ * Generate deskripsi produk dari gambar menggunakan Gemini Vision.
+ *
+ * @param imageBase64 - Konten gambar dalam format base64 (tanpa prefix data URI).
+ * @param mimeType    - MIME type gambar, misalnya "image/jpeg" atau "image/png".
+ * @returns Deskripsi produk dalam Bahasa Indonesia, atau string khusus "BUKAN_PRODUK_BIOMASSA".
+ * @throws Error jika API key tidak tersedia atau Gemini gagal merespons.
+ */
+export const generateProductDescription = async (
+  imageBase64: string,
+  mimeType: string = 'image/jpeg',
+): Promise<string> => {
+  if (!GOOGLE_GEMINI_API_KEY) {
+    throw new Error('Layanan AI tidak tersedia saat ini. Silakan hubungi administrator.');
+  }
+
+  // Validasi ukuran base64 — max ~3 MB decoded (~4 MB base64)
+  if (imageBase64.length > 4_000_000) {
+    throw new Error('Ukuran gambar terlalu besar. Gunakan gambar maksimal 3 MB.');
+  }
+
+  const body = {
+    contents: [
+      {
+        parts: [
+          // Part 1: Instruksi sistem (sebagai teks user karena Flash tidak mendukung system_instruction pada v1beta sederhana)
+          { text: PRODUCT_DESC_SYSTEM_PROMPT },
+          // Part 2: Gambar inline
+          {
+            inline_data: {
+              mime_type: mimeType,
+              data: imageBase64,
+            },
+          },
+          // Part 3: Perintah eksplisit
+          {
+            text: 'Tulis deskripsi produk berdasarkan gambar di atas. Ingat: ikuti semua aturan yang sudah dijelaskan.',
+          },
+        ],
+      },
+    ],
+    generationConfig: {
+      // Temperatur rendah = output lebih deterministic, kurangi halusinasi
+      temperature: 0.2,
+      topP: 0.8,
+      maxOutputTokens: 200,
+      // Stop sequence agar tidak ada output di luar deskripsi
+      stopSequences: ['```', '<', 'def ', 'function ', 'import ', 'const '],
+    },
+    safetySettings: [
+      { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_LOW_AND_ABOVE' },
+      { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_LOW_AND_ABOVE' },
+      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_LOW_AND_ABOVE' },
+      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_LOW_AND_ABOVE' },
+    ],
+  };
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GOOGLE_GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal as any,
+      },
+    );
+
+    const res = (await response.json()) as GeminiResponse;
+
+    if (!response.ok) {
+      console.error('[AI SERVICE] generateProductDescription Gemini Error:', res);
+      throw new Error(res.error?.message || 'Gagal menghubungi layanan AI');
+    }
+
+    const raw = res.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    const cleaned = stripMarkdown(raw).trim();
+
+    if (!cleaned) {
+      throw new Error('AI tidak menghasilkan deskripsi. Coba foto yang lebih jelas.');
+    }
+
+    return cleaned;
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[AI SERVICE] generateProductDescription Error:', errMsg);
+    throw new Error(errMsg);
+  } finally {
+    clearTimeout(timeout);
   }
 };

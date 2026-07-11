@@ -71,9 +71,7 @@ const applyBatchSiblingOrdersOnSuccess = async (
         },
       });
     }
-    console.log(
-      `[XENDIT V3 WEBHOOK] Batch sibling order ${sibling.id} lunas → PROCESSING`,
-    );
+    console.log(`[XENDIT V3 WEBHOOK] Batch sibling order ${sibling.id} lunas → PROCESSING`);
   }
 
   return siblings.map((s) => s.id);

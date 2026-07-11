@@ -16,8 +16,9 @@ jest.mock('#config/prisma', () => ({
     user,
     referralReward,
     wallet,
-    $transaction: jest.fn((fn: (tx: typeof referralReward & { wallet: typeof wallet }) => unknown) =>
-      fn({ referralReward, wallet } as never),
+    $transaction: jest.fn(
+      (fn: (tx: typeof referralReward & { wallet: typeof wallet }) => unknown) =>
+        fn({ referralReward, wallet } as never),
     ),
   },
 }));

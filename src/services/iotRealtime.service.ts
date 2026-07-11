@@ -17,11 +17,7 @@ const activeSessions = new Map<string, PyrolysisSession>();
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
-export const getPyrolysisSession = async (
-  deviceId: string,
-  userId: string,
-  userRole: UserRole,
-) => {
+export const getPyrolysisSession = async (deviceId: string, userId: string, userRole: UserRole) => {
   await assertDeviceAccess(deviceId, userId, userRole);
   const session = activeSessions.get(deviceId);
   if (!session) return null;
@@ -118,9 +114,7 @@ export const loadTelemetrySnapshot = async (
 export const getCurrentDeviceTelemetry = async (deviceId: string): Promise<TelemetrySnapshot> => {
   const session = activeSessions.get(deviceId);
   const windowMinutes = session ? 120 : 30;
-  const since = session
-    ? session.startedAt
-    : new Date(Date.now() - windowMinutes * 60_000);
+  const since = session ? session.startedAt : new Date(Date.now() - windowMinutes * 60_000);
   return loadTelemetrySnapshot(deviceId, since, windowMinutes);
 };
 
@@ -144,19 +138,19 @@ export const analyzeDeviceRealtime = async (
   const session = activeSessions.get(deviceId);
 
   const windowMinutes = options.windowMinutes ?? (session ? 120 : 30);
-  const since = session
-    ? session.startedAt
-    : new Date(Date.now() - windowMinutes * 60_000);
+  const since = session ? session.startedAt : new Date(Date.now() - windowMinutes * 60_000);
 
   const telemetry = await loadTelemetrySnapshot(deviceId, since, windowMinutes);
 
   const suhu =
     telemetry.avgTemp ??
     telemetry.currentTemp ??
-    (await prisma.iotReading.findFirst({
-      where: { deviceId },
-      orderBy: { recordedAt: 'desc' },
-    }))?.temperature;
+    (
+      await prisma.iotReading.findFirst({
+        where: { deviceId },
+        orderBy: { recordedAt: 'desc' },
+      })
+    )?.temperature;
 
   if (suhu == null || !Number.isFinite(Number(suhu))) {
     throw new AppError(
@@ -202,7 +196,7 @@ export const analyzeDeviceRealtime = async (
     deviceId: device.id,
     deviceName: device.name || device.deviceId,
     source: 'iot-realtime',
-    session: (await getPyrolysisSession(deviceId, userId, userRole)),
+    session: await getPyrolysisSession(deviceId, userId, userRole),
     telemetry,
     inputs: {
       biomassaType,

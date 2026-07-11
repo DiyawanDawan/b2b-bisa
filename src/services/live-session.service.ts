@@ -8,9 +8,13 @@ const parsePinnedIds = (raw: unknown): string[] => {
   return raw.filter((id): id is string => typeof id === 'string' && id.length > 0);
 };
 
-export const listPublicLiveSessions = async (params: { status?: LiveSessionStatus; page?: number; limit?: number } = {}) => {
+export const listPublicLiveSessions = async (
+  params: { status?: LiveSessionStatus; page?: number; limit?: number } = {},
+) => {
   const { status, page = 1, limit = 20 } = params;
-  const where = status ? { status } : { status: { in: [LiveSessionStatus.LIVE, LiveSessionStatus.SCHEDULED] } };
+  const where = status
+    ? { status }
+    : { status: { in: [LiveSessionStatus.LIVE, LiveSessionStatus.SCHEDULED] } };
 
   const [total, sessions] = await Promise.all([
     prisma.liveSession.count({ where }),

@@ -14,16 +14,16 @@ import {
   parseMarketHistory,
   syncAllMarketTrends,
 } from '#services/marketAggregator.service';
-import {
-  isSupportedMarketTrend,
-  resolveCommoditySpec,
-} from '#config/marketCommodity.config';
+import { isSupportedMarketTrend, resolveCommoditySpec } from '#config/marketCommodity.config';
 import {
   resolveMarketInsight,
   MarketAnalyticsContext,
   inferProjectionTrendType,
 } from '#utils/marketInsight.util';
-import { getSupplyDemandForLabel, getSupplyDemandOverview } from '#services/marketSupplyDemand.service';
+import {
+  getSupplyDemandForLabel,
+  getSupplyDemandOverview,
+} from '#services/marketSupplyDemand.service';
 
 type HistoryPoint = { x: string; y: number };
 
@@ -172,7 +172,11 @@ export const getPrediction = async (id: string) => {
     steps: FORECAST_STEPS,
   });
 
-  const { projectedData, forecastModel } = buildProjectedData(historyData, FORECAST_STEPS, mlResult);
+  const { projectedData, forecastModel } = buildProjectedData(
+    historyData,
+    FORECAST_STEPS,
+    mlResult,
+  );
 
   const historyValues = historyData.map((d) => d.y);
   const projectedValues = projectedData.map((d) => d.y);

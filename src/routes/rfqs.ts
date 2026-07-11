@@ -14,12 +14,7 @@ router.post(
   validate(v.createRfqSchema),
   rfqController.createRfq,
 );
-router.get(
-  '/',
-  requireAuth,
-  requireRole(UserRole.BUYER, UserRole.ADMIN),
-  rfqController.listMyRfqs,
-);
+router.get('/', requireAuth, requireRole(UserRole.BUYER, UserRole.ADMIN), rfqController.listMyRfqs);
 router.get(
   '/inbox',
   requireAuth,

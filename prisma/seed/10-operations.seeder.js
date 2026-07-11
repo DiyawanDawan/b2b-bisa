@@ -54,7 +54,7 @@ export async function seedOperations(prisma, users) {
             rating: faker.number.int({ min: 4, max: 5 }),
             comment:
               'Kualitas biochar sangat baik, pengiriman juga tepat waktu. Sangat direkomendasikan!',
-            imageUrl: loremFlickrDbPath('biomass', { lock: order.id.charCodeAt(0) % 900 + 1 }),
+            imageUrl: loremFlickrDbPath('biomass', { lock: (order.id.charCodeAt(0) % 900) + 1 }),
           },
         });
       }

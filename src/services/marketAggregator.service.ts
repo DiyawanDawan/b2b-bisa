@@ -77,7 +77,11 @@ const parseHistory = (raw: unknown): MarketHistoryPoint[] => {
     .filter((p): p is MarketHistoryPoint => p != null && Number.isFinite(p.y));
 };
 
-const normalizeToDisplayPrice = (price: number, unit: string, display: MarketPriceDisplay): number => {
+const normalizeToDisplayPrice = (
+  price: number,
+  unit: string,
+  display: MarketPriceDisplay,
+): number => {
   if (display === 'flat') return price;
   if (display === 'per_ton') {
     return unit === 'KG' ? price * 1000 : price;
@@ -183,7 +187,10 @@ export const collectLiveMarketSnapshot = async (
   if (orderItems90.length > 0) dataSources.push('bisa_orders');
   if (dataSources.length === 0) dataSources.push('historical_seed');
 
-  const monthlyLive = new Map<string, { prices: number[]; orderCount: number; listingCount: number }>();
+  const monthlyLive = new Map<
+    string,
+    { prices: number[]; orderCount: number; listingCount: number }
+  >();
 
   for (const item of orderItems12m) {
     const key = monthKey(item.order.createdAt);
@@ -210,7 +217,10 @@ export const collectLiveMarketSnapshot = async (
     monthlyLive.set(currentMonth, currentBucket);
   }
 
-  const monthlyResolved = new Map<string, { medianY: number; orderCount: number; listingCount: number }>();
+  const monthlyResolved = new Map<
+    string,
+    { medianY: number; orderCount: number; listingCount: number }
+  >();
   for (const [key, bucket] of monthlyLive.entries()) {
     const med = median(bucket.prices);
     if (med == null) continue;

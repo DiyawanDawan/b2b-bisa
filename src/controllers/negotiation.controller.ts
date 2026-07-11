@@ -28,11 +28,7 @@ export const getRoomByProduct = catchAsync(async (req: AuthRequest, res: Respons
   const { productId } = req.params;
   const rawPurpose = String(req.query.purpose ?? 'negotiation');
   const purpose = rawPurpose === 'inquiry' ? 'inquiry' : 'negotiation';
-  const room = await negotiationService.findChatRoomByProduct(
-    req.user!.id,
-    productId,
-    purpose,
-  );
+  const room = await negotiationService.findChatRoomByProduct(req.user!.id, productId, purpose);
   return successResponse(
     res,
     room,
@@ -124,7 +120,11 @@ export const updateStatus = catchAsync(async (req: AuthRequest, res: Response) =
 export const counterOffer = catchAsync(async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
   const updated = await negotiationService.counterOffer(id, req.user!.id, req.body);
-  successResponse(res, attachNegotiationMediaUrls(updated), 'Counter offer berhasil dikirim ke pembeli.');
+  successResponse(
+    res,
+    attachNegotiationMediaUrls(updated),
+    'Counter offer berhasil dikirim ke pembeli.',
+  );
 });
 
 /**
@@ -218,10 +218,7 @@ export const postInvoicePreview = catchAsync(async (req: AuthRequest, res: Respo
  */
 export const getBuyerShippingAddresses = catchAsync(async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
-  const data = await orderService.listBuyerShippingAddressesForNegotiation(
-    id,
-    req.user!.id,
-  );
+  const data = await orderService.listBuyerShippingAddressesForNegotiation(id, req.user!.id);
   successResponse(res, data, 'Alamat pembeli berhasil dimuat.');
 });
 

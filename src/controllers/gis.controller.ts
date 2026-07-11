@@ -50,7 +50,11 @@ export const matchSupplyDemand = catchAsync(async (req: Request, res: Response) 
   }
 
   if (!type) {
-    return successResponse(res, { radius: 0, matches: [] }, 'Parameter lokasi atau tipe biomass wajib');
+    return successResponse(
+      res,
+      { radius: 0, matches: [] },
+      'Parameter lokasi atau tipe biomass wajib',
+    );
   }
 
   const legacy = await gisService.matchSupplyDemand(type, regency);

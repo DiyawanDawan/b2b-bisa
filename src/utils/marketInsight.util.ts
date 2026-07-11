@@ -99,7 +99,9 @@ export const buildSmartMarketInsight = (
   return (
     `${ctx.label}: tren ${direction} (${changePct >= 0 ? '+' : ''}${changePct}% proyeksi 3 bulan). ` +
     `${priceNote} ${sourceNote} ${modelNote} ${action}`
-  ).replace(/\s+/g, ' ').trim();
+  )
+    .replace(/\s+/g, ' ')
+    .trim();
 };
 
 export const generateGeminiMarketInsight = async (

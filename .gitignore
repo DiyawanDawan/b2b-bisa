@@ -43,7 +43,7 @@ coverage/
 
 # Qodo / AI tools
 .qodo/
-
+test-cors.js
 # Cursor workspace (skills, rules, agent context)
 .cursor/
 

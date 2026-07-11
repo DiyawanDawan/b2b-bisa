@@ -9,10 +9,7 @@ const fileFilter = (_req: unknown, file: Express.Multer.File, cb: multer.FileFil
   if (VIDEO_MIME_TYPES.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(
-      new AppError('Format video tidak didukung. Gunakan MP4 atau WEBM.', 400) as any,
-      false,
-    );
+    cb(new AppError('Format video tidak didukung. Gunakan MP4 atau WEBM.', 400) as any, false);
   }
 };
 

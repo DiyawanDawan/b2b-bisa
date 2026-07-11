@@ -129,11 +129,7 @@ export const listBuyerRfqs = async (buyerId: string, page = 1, limit = 20) => {
   return { items, total, page, limit };
 };
 
-export const listSupplierRfqInbox = async (
-  supplierId: string,
-  page = 1,
-  limit = 20,
-) => {
+export const listSupplierRfqInbox = async (supplierId: string, page = 1, limit = 20) => {
   const supplierProducts = await prisma.product.findMany({
     where: {
       userId: supplierId,
@@ -149,13 +145,13 @@ export const listSupplierRfqInbox = async (
   const modes = [...new Set(supplierProducts.map((p) => p.productMode))];
   const biomassaTypes = [
     ...new Set(
-      supplierProducts.map((p) => p.biomassaType).filter((b): b is NonNullable<typeof b> => b != null),
+      supplierProducts
+        .map((p) => p.biomassaType)
+        .filter((b): b is NonNullable<typeof b> => b != null),
     ),
   ];
   const categoryIds = [
-    ...new Set(
-      supplierProducts.map((p) => p.categoryId).filter((c): c is string => c != null),
-    ),
+    ...new Set(supplierProducts.map((p) => p.categoryId).filter((c): c is string => c != null)),
   ];
 
   const where: Prisma.RfqWhereInput = {
@@ -219,11 +215,7 @@ const pickSupplierProductForRfq = async (
   });
 };
 
-export const respondToRfq = async (
-  supplierId: string,
-  rfqId: string,
-  message?: string,
-) => {
+export const respondToRfq = async (supplierId: string, rfqId: string, message?: string) => {
   const rfq = await prisma.rfq.findUnique({ where: { id: rfqId } });
   if (!rfq) throw new AppError('RFQ tidak ditemukan.', 404);
   if (rfq.status !== RfqStatus.OPEN) {

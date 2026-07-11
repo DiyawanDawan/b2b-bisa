@@ -38,7 +38,7 @@ export async function seedUsers(prisma) {
   // 3. Buyer
   await prisma.user.upsert({
     where: { email: 'buyer@industri.com' },
-  update: {},
+    update: {},
     create: {
       email: 'buyer@industri.com',
       fullName: 'PT Semen Go Green',

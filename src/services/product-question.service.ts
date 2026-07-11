@@ -25,11 +25,7 @@ const questionSelect = {
   },
 } as const;
 
-export const listProductQuestions = async (
-  productId: string,
-  page = 1,
-  limit = 10,
-) => {
+export const listProductQuestions = async (productId: string, page = 1, limit = 10) => {
   const product = await prisma.product.findUnique({
     where: { id: productId },
     select: { id: true, status: true },
@@ -56,11 +52,7 @@ export const listProductQuestions = async (
   };
 };
 
-export const askProductQuestion = async (
-  askerId: string,
-  productId: string,
-  question: string,
-) => {
+export const askProductQuestion = async (askerId: string, productId: string, question: string) => {
   const product = await prisma.product.findUnique({
     where: { id: productId },
     select: { id: true, userId: true, status: true, name: true },

@@ -56,11 +56,7 @@ router.post(
   requireRole('SUPPLIER', 'ADMIN'),
   productController.duplicateProduct,
 );
-router.get(
-  '/:id/recommendations',
-  optionalAuth,
-  productController.getProductRecommendations,
-);
+router.get('/:id/recommendations', optionalAuth, productController.getProductRecommendations);
 router.post(
   '/:id/promote',
   requireAuth,

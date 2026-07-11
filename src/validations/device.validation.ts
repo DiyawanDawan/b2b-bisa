@@ -8,6 +8,15 @@ export const adminCreateIotDeviceSchema = z.object({
   }),
 });
 
+export const adminUpdateDeviceSchema = z.object({
+  params: z.object({
+    deviceId: z.string().uuid('Invalid Device UUID format'),
+  }),
+  body: z.object({
+    name: z.string().optional(),
+  }),
+});
+
 export const claimIotDeviceSchema = z.object({
   body: z.object({
     deviceSecret: z

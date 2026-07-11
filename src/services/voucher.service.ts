@@ -2,8 +2,7 @@ import prisma from '#config/prisma';
 import AppError from '#utils/appError';
 import { Prisma, VoucherScope, VoucherType } from '#prisma';
 
-const roundIdr = (v: Prisma.Decimal) =>
-  new Prisma.Decimal(Math.round(Number(v)));
+const roundIdr = (v: Prisma.Decimal) => new Prisma.Decimal(Math.round(Number(v)));
 
 export type VoucherValidationInput = {
   code: string;
@@ -192,8 +191,7 @@ export const createVoucherAdmin = async (input: CreateVoucherAdminInput) => {
       type: input.type,
       value: new Prisma.Decimal(input.value),
       minOrderAmount: new Prisma.Decimal(input.minOrderAmount ?? 0),
-      maxDiscount:
-        input.maxDiscount != null ? new Prisma.Decimal(input.maxDiscount) : null,
+      maxDiscount: input.maxDiscount != null ? new Prisma.Decimal(input.maxDiscount) : null,
       scope,
       supplierId: scope === VoucherScope.SUPPLIER ? input.supplierId : null,
       usageLimit: input.usageLimit ?? null,

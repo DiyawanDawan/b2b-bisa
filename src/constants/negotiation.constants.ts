@@ -2,12 +2,8 @@ import { NegotiationRoomType, Prisma } from '#prisma';
 
 export type NegotiationChatPurpose = 'inquiry' | 'negotiation';
 
-export const purposeToRoomType = (
-  purpose: NegotiationChatPurpose,
-): NegotiationRoomType =>
-  purpose === 'inquiry'
-    ? NegotiationRoomType.INQUIRY
-    : NegotiationRoomType.NEGOTIATION;
+export const purposeToRoomType = (purpose: NegotiationChatPurpose): NegotiationRoomType =>
+  purpose === 'inquiry' ? NegotiationRoomType.INQUIRY : NegotiationRoomType.NEGOTIATION;
 
 const inquiryRoomWhere: Prisma.NegotiationWhereInput = {
   OR: [
@@ -23,9 +19,7 @@ export const negotiationPurposeWhere = (
   purpose === 'inquiry' ? inquiryRoomWhere : { NOT: inquiryRoomWhere };
 
 /** Spesifikasi teknis produk saat buka ruang (bukan jenis chat). */
-export const buildTechnicalSpecifications = (
-  technicalSpecLine?: string,
-): string | null => {
+export const buildTechnicalSpecifications = (technicalSpecLine?: string): string | null => {
   const base = technicalSpecLine?.trim() ?? '';
   return base.length > 0 ? base : null;
 };

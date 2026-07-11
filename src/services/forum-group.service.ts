@@ -326,7 +326,10 @@ export const leaveGroup = async (groupId: string, userId: string) => {
   });
   if (!member) throw new AppError('Anda belum bergabung ke grup ini.', 400);
   if (member.role === FORUM_GROUP_ROLE.OWNER) {
-    throw new AppError('Pemilik grup tidak bisa keluar. Hapus grup atau transfer kepemilikan dulu.', 400);
+    throw new AppError(
+      'Pemilik grup tidak bisa keluar. Hapus grup atau transfer kepemilikan dulu.',
+      400,
+    );
   }
 
   await prisma.$transaction([

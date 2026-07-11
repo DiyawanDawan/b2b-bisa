@@ -22,8 +22,7 @@ type OrderWithShipment = {
 export const attachShipmentTrackingNumber = <T extends OrderWithShipment>(order: T): T => {
   if (!order.shipment || !order.orderNumber) return order;
   const trackingNumber =
-    order.shipment.batchId?.toString().trim() ||
-    buildBisaTrackingNumber(order.orderNumber);
+    order.shipment.batchId?.toString().trim() || buildBisaTrackingNumber(order.orderNumber);
   return {
     ...order,
     shipment: {

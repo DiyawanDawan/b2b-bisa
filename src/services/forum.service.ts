@@ -42,9 +42,7 @@ export const listPosts = async (params: {
 
   const where: Prisma.ForumPostWhereInput = {
     ...(categoryId && { categoryId }),
-    ...(groupId
-      ? { groupId }
-      : { groupId: null }),
+    ...(groupId ? { groupId } : { groupId: null }),
     ...(keyword && {
       OR: [{ title: { contains: keyword } }, { content: { contains: keyword } }],
     }),

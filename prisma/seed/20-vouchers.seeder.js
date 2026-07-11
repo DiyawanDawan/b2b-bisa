@@ -93,5 +93,7 @@ export async function seedVouchers(prisma, users) {
     logger.info(`   ✓ ${data.code} — ${description}`);
   }
 
-  logger.info(`✅ [20] ${rows.length} voucher demo seeded (expires ${expiresAt.toISOString().slice(0, 10)}).`);
+  logger.info(
+    `✅ [20] ${rows.length} voucher demo seeded (expires ${expiresAt.toISOString().slice(0, 10)}).`,
+  );
 }

@@ -108,12 +108,7 @@ export const matchSupplyDemandByLocation = async (input: LocationMatchInput) => 
 
     for (const dev of p.user.iotDevices) {
       if (dev.lat == null || dev.lng == null) continue;
-      const d = haversineKm(
-        input.lat,
-        input.lng,
-        Number(dev.lat),
-        Number(dev.lng),
-      );
+      const d = haversineKm(input.lat, input.lng, Number(dev.lat), Number(dev.lng));
       distance = distance == null ? d : Math.min(distance, d);
     }
 
@@ -123,11 +118,7 @@ export const matchSupplyDemandByLocation = async (input: LocationMatchInput) => 
     if (distance == null) {
       if (regencyNorm && productRegency && productRegency.includes(regencyNorm)) {
         distance = 25;
-      } else if (
-        provinceNorm &&
-        productProvince &&
-        productProvince.includes(provinceNorm)
-      ) {
+      } else if (provinceNorm && productProvince && productProvince.includes(provinceNorm)) {
         distance = 60;
       } else {
         continue;
@@ -140,8 +131,7 @@ export const matchSupplyDemandByLocation = async (input: LocationMatchInput) => 
       productId: p.id,
       productName: p.name,
       supplierId: p.userId,
-      supplierName:
-        p.user.profile?.companyName?.trim() || p.user.fullName || 'Supplier',
+      supplierName: p.user.profile?.companyName?.trim() || p.user.fullName || 'Supplier',
       biomassType: p.biomassaType,
       distance: Math.round(distance * 10) / 10,
       volume: Number(p.stock),

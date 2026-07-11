@@ -82,7 +82,8 @@ export const buildStorageAssetUrl = (relativePath: string): string => {
 // AI
 export const GOOGLE_GEMINI_API_KEY = optional('GOOGLE_GEMINI_API_KEY');
 export const DEEPSEEK_API_KEY = optional('DEEPSEEK_API_KEY') || optional('DEEPSHEEK_API_KEY');
-export const DEEPSEEK_MODEL = optional('DEEPSEEK_MODEL') || optional('DEEPSHEEK_MODEL') || 'deepseek-chat';
+export const DEEPSEEK_MODEL =
+  optional('DEEPSEEK_MODEL') || optional('DEEPSHEEK_MODEL') || 'deepseek-chat';
 
 export const ML_SERVICE_URL = optional('ML_SERVICE_URL');
 export const ML_SERVICE_API_KEY = optional('ML_SERVICE_API_KEY');
@@ -90,7 +91,10 @@ export const ML_PREDICT_ENABLED = optional('ML_PREDICT_ENABLED', 'true') === 'tr
 
 // Chroma Cloud — RAG knowledge base
 export const CHROMA_API_KEY = optional('CHROMA_API_KEY');
-export const CHROMA_TENANT_ID = optional('CHROMA_TENANT_ID') || optional('CHROMA_TENANT') || '5f0969bb-9cbf-43c2-9fb5-130785014b2e';
+export const CHROMA_TENANT_ID =
+  optional('CHROMA_TENANT_ID') ||
+  optional('CHROMA_TENANT') ||
+  '5f0969bb-9cbf-43c2-9fb5-130785014b2e';
 export const CHROMA_DATABASE = optional('CHROMA_DATABASE', 'bisa');
 export const CHROMA_COLLECTION = optional('CHROMA_COLLECTION', 'bisa_knowledge');
 export const RAG_ENABLED = optional('RAG_ENABLED', 'true') === 'true';
@@ -168,18 +172,12 @@ export const getEncryptionKeyBufferForVersion = (version: string): Buffer =>
   resolveKeyForVersion(version);
 
 // Chunked media upload (R2 multipart)
-export const MEDIA_CHUNK_SIZE_BYTES = parseInt(
-  optional('MEDIA_CHUNK_SIZE_BYTES', '5242880'),
-  10,
-);
+export const MEDIA_CHUNK_SIZE_BYTES = parseInt(optional('MEDIA_CHUNK_SIZE_BYTES', '5242880'), 10);
 export const MEDIA_UPLOAD_SESSION_TTL_HOURS = parseInt(
   optional('MEDIA_UPLOAD_SESSION_TTL_HOURS', '24'),
   10,
 );
-export const MEDIA_MAX_IMAGE_BYTES = parseInt(
-  optional('MEDIA_MAX_IMAGE_BYTES', '52428800'),
-  10,
-);
+export const MEDIA_MAX_IMAGE_BYTES = parseInt(optional('MEDIA_MAX_IMAGE_BYTES', '52428800'), 10);
 export const MEDIA_MAX_PDF_BYTES = parseInt(optional('MEDIA_MAX_PDF_BYTES', '20971520'), 10);
 /** When true, chunks go through backend proxy (no R2 CORS required). Default true in development. */
 export const MEDIA_UPLOAD_PROXY_MODE =
@@ -192,8 +190,7 @@ export const REDIS_DEFAULT_TTL_SECONDS = parseInt(
   optional('REDIS_DEFAULT_TTL_SECONDS', '3600'),
   10,
 );
-export const REDIS_ENABLED =
-  optional('REDIS_ENABLED', 'false') === 'true' && REDIS_URL.length > 0;
+export const REDIS_ENABLED = optional('REDIS_ENABLED', 'false') === 'true' && REDIS_URL.length > 0;
 
 // Stock photos untuk seed produk (unduh → R2 → path relatif di DB)
 export const PEXELS_API_KEY = optional('PEXELS_API_KEY');

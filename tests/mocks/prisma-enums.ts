@@ -118,8 +118,7 @@ export const NotificationType = {
   DISPUTE: 'DISPUTE',
 } as const;
 
-export type VerificationStatus =
-  (typeof VerificationStatus)[keyof typeof VerificationStatus];
+export type VerificationStatus = (typeof VerificationStatus)[keyof typeof VerificationStatus];
 
 export const VoucherScope = {
   PLATFORM: 'PLATFORM',

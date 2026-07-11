@@ -233,8 +233,12 @@ export const createProduct = catchAsync(async (req: AuthRequest, res: Response) 
       preUploaded.length,
     );
 
-    const { imageOrder: _imageOrder, syncImages: _syncImages, imageUrls: _imageUrls, ...body } =
-      req.body;
+    const {
+      imageOrder: _imageOrder,
+      syncImages: _syncImages,
+      imageUrls: _imageUrls,
+      ...body
+    } = req.body;
     const product = await productService.createProduct(req.user!.id, body, imageUrls);
     return createdResponse(res, attachProductMediaUrls(product), 'Produk berhasil ditambahkan');
   } catch (error) {
@@ -505,11 +509,7 @@ export const getCollectionProducts = catchAsync(async (req: Request, res: Respon
  */
 export const promoteProduct = catchAsync(async (req: AuthRequest, res: Response) => {
   const days = parseInt(req.body.days as string) || productPromotionService.PROMOTE_DAYS;
-  const result = await productPromotionService.promoteProduct(
-    req.user!.id,
-    req.params.id,
-    days,
-  );
+  const result = await productPromotionService.promoteProduct(req.user!.id, req.params.id, days);
   return successResponse(res, result, 'Produk berhasil dipromosikan');
 });
 

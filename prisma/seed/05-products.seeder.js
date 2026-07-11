@@ -205,9 +205,7 @@ export async function seedProducts(prisma, users) {
           isBiochar ? 'Biochar Aktif' : selectedType.replace('_', ' ')
         } ${faker.location.city()}`;
 
-        const biocharGrade = isBiochar
-          ? faker.helpers.arrayElement(['A', 'B', 'C'])
-          : null;
+        const biocharGrade = isBiochar ? faker.helpers.arrayElement(['A', 'B', 'C']) : null;
 
         const biomassTemplateName = isBiochar
           ? `Biochar Grade ${biocharGrade}`

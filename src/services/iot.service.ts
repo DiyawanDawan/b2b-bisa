@@ -1042,8 +1042,8 @@ export const listAdminIotDevices = async (
   const where = q
     ? {
         OR: [
-          { name: { contains: q, mode: 'insensitive' as const } },
-          { deviceId: { contains: q, mode: 'insensitive' as const } },
+          { name: { contains: q } },
+          { deviceId: { contains: q } },
         ],
       }
     : {};
@@ -1055,10 +1055,32 @@ export const listAdminIotDevices = async (
       skip,
       take: limit,
       orderBy: { createdAt: 'desc' },
-      include: {
+      select: {
+        id: true,
+        deviceId: true,
+        deviceSecret: true,
+        name: true,
+        status: true,
+        userId: true,
+        ownedAt: true,
+        thresholdMin: true,
+        thresholdMax: true,
         user: { select: { id: true, fullName: true, email: true } },
-        readings: { orderBy: { recordedAt: 'desc' }, take: 1 },
-        alerts: { where: { isRead: false }, take: 1 },
+        readings: { 
+          select: {
+            temperature: true,
+            humidity: true,
+            co2Level: true,
+            recordedAt: true,
+          },
+          orderBy: { recordedAt: 'desc' }, 
+          take: 1 
+        },
+        alerts: { 
+          select: { id: true },
+          where: { isRead: false }, 
+          take: 1 
+        },
       },
     }),
   ]);
@@ -1082,6 +1104,7 @@ export const listAdminIotDevices = async (
         hasUnreadAlert: d.alerts.length > 0,
         thresholdMin: d.thresholdMin != null ? Number(d.thresholdMin) : null,
         thresholdMax: d.thresholdMax != null ? Number(d.thresholdMax) : null,
+        deviceSecret: d.deviceSecret,
       };
     }),
     pagination: {
@@ -1091,4 +1114,52 @@ export const listAdminIotDevices = async (
       totalPages: Math.ceil(total / limit) || 1,
     },
   };
+};
+
+/**
+ * Admin: update device (name only, thresholds managed by owner).
+ */
+export const adminUpdateDevice = async (
+  deviceId: string,
+  data: {
+    name?: string;
+  },
+) => {
+  const device = await prisma.iotDevice.findUnique({ where: { id: deviceId } });
+  if (!device) throw new AppError('Perangkat tidak ditemukan.', 404);
+
+  const updated = await prisma.iotDevice.update({
+    where: { id: deviceId },
+    data: { name: data.name },
+    select: {
+      id: true,
+      deviceId: true,
+      deviceSecret: true,
+      name: true,
+      status: true,
+      thresholdMin: true,
+      thresholdMax: true,
+      userId: true,
+      ownedAt: true,
+    },
+  });
+
+  return {
+    id: updated.id,
+    deviceId: updated.deviceId,
+    name: updated.name,
+    deviceSecret: updated.deviceSecret,
+    thresholdMin: updated.thresholdMin != null ? Number(updated.thresholdMin) : null,
+    thresholdMax: updated.thresholdMax != null ? Number(updated.thresholdMax) : null,
+  };
+};
+
+/**
+ * Admin: delete device permanently.
+ */
+export const adminDeleteDevice = async (deviceId: string) => {
+  const device = await prisma.iotDevice.findUnique({ where: { id: deviceId } });
+  if (!device) throw new AppError('Perangkat tidak ditemukan.', 404);
+
+  return prisma.iotDevice.delete({ where: { id: deviceId } });
 };

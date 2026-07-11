@@ -28,7 +28,11 @@ assert(decryptField(detA) === '9876543210', 'deterministic reveal');
 
 const payload = { id: 'pr-1', va: '123' };
 const jsonSealed = encryptJsonValue(payload);
-assert(decryptJsonValue(jsonSealed)?.toString() === '[object Object]' || JSON.stringify(decryptJsonValue(jsonSealed)) === JSON.stringify(payload), 'json round-trip');
+assert(
+  decryptJsonValue(jsonSealed)?.toString() === '[object Object]' ||
+    JSON.stringify(decryptJsonValue(jsonSealed)) === JSON.stringify(payload),
+  'json round-trip',
+);
 
 let tamperFailed = false;
 try {

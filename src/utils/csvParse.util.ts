@@ -1,6 +1,9 @@
 /** Minimal RFC4180-ish CSV parser for bulk product import. */
 export function parseCsvRows(buffer: Buffer): Array<Record<string, string>> {
-  const text = buffer.toString('utf-8').replace(/^\uFEFF/, '').trim();
+  const text = buffer
+    .toString('utf-8')
+    .replace(/^\uFEFF/, '')
+    .trim();
   if (!text) return [];
 
   const lines = splitCsvLines(text);

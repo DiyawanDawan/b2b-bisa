@@ -20,15 +20,15 @@ const commentSchema = z.object({
 });
 
 router.get('/', optionalAuth, liveController.listPublic);
-router.get('/mine', requireAuth, requireRole(UserRole.SUPPLIER, UserRole.ADMIN), liveController.listMine);
+router.get(
+  '/mine',
+  requireAuth,
+  requireRole(UserRole.SUPPLIER, UserRole.ADMIN),
+  liveController.listMine,
+);
 router.get('/:id', optionalAuth, liveController.getById);
 router.post('/:id/viewer', liveController.recordViewer);
-router.post(
-  '/:id/comments',
-  requireAuth,
-  validate(commentSchema),
-  liveController.comment,
-);
+router.post('/:id/comments', requireAuth, validate(commentSchema), liveController.comment);
 
 router.post(
   '/',

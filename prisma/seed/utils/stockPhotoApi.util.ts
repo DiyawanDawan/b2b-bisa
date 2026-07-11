@@ -130,9 +130,7 @@ const searchPexelsVideos = async (query: string, page: number): Promise<string[]
 
     const urls: string[] = [];
     for (const video of data.videos ?? []) {
-      const files = [...(video.video_files ?? [])].sort(
-        (a, b) => (a.width ?? 0) - (b.width ?? 0),
-      );
+      const files = [...(video.video_files ?? [])].sort((a, b) => (a.width ?? 0) - (b.width ?? 0));
       const pick =
         files.find((f) => f.file_type === 'video/mp4' && (f.width ?? 0) >= 720) ??
         files.find((f) => f.file_type === 'video/mp4') ??
@@ -289,5 +287,4 @@ export const resolveStockVideoQuery = (
   return `${ORGANIC_STOCK_QUERIES[key] ?? 'organic agriculture'} video`;
 };
 
-export const hasStockPhotoApiKey = (): boolean =>
-  Boolean(PEXELS_API_KEY || PIXABAY_API_KEY);
+export const hasStockPhotoApiKey = (): boolean => Boolean(PEXELS_API_KEY || PIXABAY_API_KEY);

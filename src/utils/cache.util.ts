@@ -19,7 +19,8 @@ export const cacheKeys = {
   sysSupport: () => buildCacheKey('sys', 'support'),
   policyList: () => buildCacheKey('policy', 'list'),
   policyByKey: (key: string) => buildCacheKey('policy', 'key', key),
-  faqList: (page: number, limit: number) => buildCacheKey('faq', 'list', String(page), String(limit)),
+  faqList: (page: number, limit: number) =>
+    buildCacheKey('faq', 'list', String(page), String(limit)),
   payChannels: () => buildCacheKey('pay', 'channels'),
   shipCouriers: () => buildCacheKey('ship', 'couriers'),
   shipVehicles: () => buildCacheKey('ship', 'vehicles'),

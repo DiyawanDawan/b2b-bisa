@@ -29,7 +29,10 @@ export const parseCsvLine = (line: string): string[] => {
 /** Turn CSV rows into plain text suitable for RAG chunking. */
 export const csvBufferToText = (buffer: Buffer): string => {
   const raw = buffer.toString('utf-8').replace(/^\uFEFF/, '');
-  const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const lines = raw
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
   if (lines.length === 0) return '';
 
   const headers = parseCsvLine(lines[0]);
@@ -58,7 +61,10 @@ export const chunkText = (
   const normalized = text.replace(/\r\n/g, '\n').replace(/\t/g, ' ').trim();
   if (!normalized) return [];
 
-  const paragraphs = normalized.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+  const paragraphs = normalized
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean);
   const chunks: string[] = [];
   let buffer = '';
 

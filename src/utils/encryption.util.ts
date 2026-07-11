@@ -8,7 +8,9 @@ const VERSION_PREFIX = /^v(\d+):/;
 
 export const isEncryptedPayload = (value: string): boolean => VERSION_PREFIX.test(value);
 
-const parsePayload = (payload: string): { version: string; iv: Buffer; tag: Buffer; ciphertext: Buffer } => {
+const parsePayload = (
+  payload: string,
+): { version: string; iv: Buffer; tag: Buffer; ciphertext: Buffer } => {
   const match = payload.match(/^v(\d+):([^:]+):([^:]+):(.+)$/);
   if (!match) throw new Error('Invalid encrypted payload format.');
   return {

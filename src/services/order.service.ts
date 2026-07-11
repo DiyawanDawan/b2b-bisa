@@ -1,4 +1,4 @@
-﻿import crypto from 'crypto';
+import crypto from 'crypto';
 import prisma from '#config/prisma';
 import AppError from '#utils/appError';
 import {
@@ -26,10 +26,7 @@ import {
 } from '#prisma';
 import { createNotification } from '#services/notification.service';
 import * as rajaOngkirService from '#services/rajaongkir.service';
-import {
-  getSupplierShippingOrigin,
-  persistOrderShipping,
-} from '#services/order-shipping.service';
+import { getSupplierShippingOrigin, persistOrderShipping } from '#services/order-shipping.service';
 import type { LogisticsSnapshotMeta, ShippingSelectionInput } from '#types/order-shipping';
 import { notifyOrderStatusChange } from '#services/orderNotification.service';
 import { scheduleSupplyDemandRefresh } from '#services/marketSupplyDemand.service';
@@ -296,8 +293,7 @@ export const listBuyerShippingAddressesForNegotiation = async (
   try {
     defaultSnapshot = await resolveBuyerShippingSnapshot(negotiation.buyerId);
   } catch {
-    defaultSnapshot =
-      savedAddresses.find((a) => a.isPrimary)?.snapshot ??
+    defaultSnapshot = savedAddresses.find((a) => a.isPrimary)?.snapshot ??
       savedAddresses[0]?.snapshot ??
       profileAddress ?? {
         recipient: buyer.fullName,
@@ -310,9 +306,7 @@ export const listBuyerShippingAddressesForNegotiation = async (
   }
 
   const isSameSnapshot = (a: ShippingAddressSnapshot, b: ShippingAddressSnapshot) =>
-    (a.customerAddressId &&
-      b.customerAddressId &&
-      a.customerAddressId === b.customerAddressId) ||
+    (a.customerAddressId && b.customerAddressId && a.customerAddressId === b.customerAddressId) ||
     (a.address.trim() === b.address.trim() &&
       (a.regency ?? '') === (b.regency ?? '') &&
       (a.province ?? '') === (b.province ?? ''));
@@ -398,8 +392,7 @@ export const resolveSellerShippingSnapshot = async (
     seller.regency?.trim() ||
     productLocation?.regency?.trim() ||
     '';
-  const provinceName =
-    linked?.province?.name?.trim() || productLocation?.province?.trim() || '';
+  const provinceName = linked?.province?.name?.trim() || productLocation?.province?.trim() || '';
   const street =
     linked?.fullAddress?.trim() ||
     businessAddress ||
@@ -442,9 +435,7 @@ export const resolveSellerShippingOrigin = async (
 
   const queries = [
     stored.originLabel?.trim(),
-    snapshot.regency && snapshot.province
-      ? `${snapshot.regency}, ${snapshot.province}`
-      : null,
+    snapshot.regency && snapshot.province ? `${snapshot.regency}, ${snapshot.province}` : null,
     snapshot.regency?.trim(),
     snapshot.province?.trim(),
   ].filter((q): q is string => !!q && q.length >= 2);
@@ -551,11 +542,18 @@ export const buildDealEconomics = async (params: {
   productStock: number;
   unit: string;
 }) => {
-  const { catalogPricePerUnit: catalogUnit, negotiatedPricePerUnit: negoUnit, quantity: qtyNum, productStock: stockNum, unit } =
-    params;
+  const {
+    catalogPricePerUnit: catalogUnit,
+    negotiatedPricePerUnit: negoUnit,
+    quantity: qtyNum,
+    productStock: stockNum,
+    unit,
+  } = params;
   const subtotalInput = new Prisma.Decimal(negoUnit).mul(qtyNum);
-  const { platformFee: platformFeeDec, subtotal: subtotalDec } =
-    await calculateContractFinancials(subtotalInput, new Prisma.Decimal(0));
+  const { platformFee: platformFeeDec, subtotal: subtotalDec } = await calculateContractFinancials(
+    subtotalInput,
+    new Prisma.Decimal(0),
+  );
   const catalogSubtotal = catalogUnit * qtyNum;
   const negoSubtotal = Number(subtotalDec);
   const savingsTotal = catalogSubtotal - negoSubtotal;
@@ -641,8 +639,7 @@ const assertShippingDestinationReady = (snapshot: ShippingAddressSnapshot) => {
     );
   }
   const hasRegion =
-    (snapshot.regency?.trim().length ?? 0) > 0 ||
-    (snapshot.province?.trim().length ?? 0) > 0;
+    (snapshot.regency?.trim().length ?? 0) > 0 || (snapshot.province?.trim().length ?? 0) > 0;
   if (!hasRegion) {
     throw new AppError(
       'Kabupaten/kota atau provinsi tujuan wajib diisi sebelum menerbitkan tagihan.',
@@ -936,9 +933,7 @@ export const createContract = async (
   const shippingSnapshot = {
     ...attachLogisticsToSnapshot(mergedSnapshot, logisticsMeta),
     sellerOrigin: sellerOrigin.snapshot,
-    ...(sellerOrigin.originLabel
-      ? { sellerOriginLabel: sellerOrigin.originLabel }
-      : {}),
+    ...(sellerOrigin.originLabel ? { sellerOriginLabel: sellerOrigin.originLabel } : {}),
   };
 
   // LOGIKA SMART DESCRIPTION: Menggabungkan spek teknis & kesepakatan chat
@@ -1196,11 +1191,7 @@ export const createDirectOrderFromCart = async (
   const sellerLabelById = new Map(
     sellerProfiles.map((u) => [
       u.id,
-      (
-        u.profile?.companyName?.trim() ||
-        u.fullName?.trim() ||
-        'Supplier'
-      ).toString(),
+      (u.profile?.companyName?.trim() || u.fullName?.trim() || 'Supplier').toString(),
     ]),
   );
 
@@ -1391,8 +1382,7 @@ export const createDirectOrderFromCart = async (
     new Prisma.Decimal(0),
   );
 
-  const checkoutBatchNumber =
-    sharedCheckoutBatchNumber ?? createdOrders[0]?.orderNumber ?? null;
+  const checkoutBatchNumber = sharedCheckoutBatchNumber ?? createdOrders[0]?.orderNumber ?? null;
 
   if (voucherCtx && createdOrders[0]?.orderId) {
     await redeemVoucherForOrder({
@@ -1877,10 +1867,7 @@ const resolveBatchCheckoutOrders = async (buyerId: string, orderIds: string[]) =
   const checkoutBatchId = [...batchIds][0]!;
   const allInBatch = await prisma.order.count({ where: { checkoutBatchId, buyerId } });
   if (allInBatch !== orders.length) {
-    throw new AppError(
-      'Pembayaran gabungan harus mencakup semua pesanan dari checkout ini.',
-      400,
-    );
+    throw new AppError('Pembayaran gabungan harus mencakup semua pesanan dari checkout ini.', 400);
   }
 
   for (const order of orders) {
@@ -1940,10 +1927,7 @@ export const initializeBatchPayment = async (
     orderIds,
   );
 
-  const batchTotal = orders.reduce(
-    (sum, o) => sum.add(o.totalAmount),
-    new Prisma.Decimal(0),
-  );
+  const batchTotal = orders.reduce((sum, o) => sum.add(o.totalAmount), new Prisma.Decimal(0));
   const batchTotalRounded = roundIdrDecimal(batchTotal);
   const batchExternalId = `${BATCH_PAYMENT_EXTERNAL_PREFIX}${checkoutBatchId}`;
 
@@ -1990,8 +1974,7 @@ export const initializeBatchPayment = async (
   const payment = await initializePayment(leadOrder.id, buyerId, channelCode, forceNew);
 
   const checkoutBatchNumber =
-    orders[0]?.checkoutBatchNumber ??
-    (orders.length === 1 ? orders[0]?.orderNumber : null);
+    orders[0]?.checkoutBatchNumber ?? (orders.length === 1 ? orders[0]?.orderNumber : null);
 
   return {
     ...payment,
@@ -1999,9 +1982,7 @@ export const initializeBatchPayment = async (
     checkoutBatchNumber,
     leadOrderId: leadOrder.id,
     orderIds: orders.map((o) => o.id),
-    orderNumbers: checkoutBatchNumber
-      ? [checkoutBatchNumber]
-      : orders.map((o) => o.orderNumber),
+    orderNumbers: checkoutBatchNumber ? [checkoutBatchNumber] : orders.map((o) => o.orderNumber),
     batchTotalAmount: roundIdrAmount(batchTotalRounded),
     isBatchPayment: orders.length > 1,
   };
@@ -2052,15 +2033,12 @@ export const simulateBatchPayment = async (buyerId: string, orderIds: string[]) 
   }
 
   const checkoutBatchNumber =
-    orders[0]?.checkoutBatchNumber ??
-    (orders.length === 1 ? orders[0]?.orderNumber : null);
+    orders[0]?.checkoutBatchNumber ?? (orders.length === 1 ? orders[0]?.orderNumber : null);
   return {
     ...((typeof result === 'object' && result !== null ? result : {}) as Record<string, unknown>),
     orderIds: orders.map((o) => o.id),
     checkoutBatchNumber,
-    orderNumbers: checkoutBatchNumber
-      ? [checkoutBatchNumber]
-      : orders.map((o) => o.orderNumber),
+    orderNumbers: checkoutBatchNumber ? [checkoutBatchNumber] : orders.map((o) => o.orderNumber),
     batchSize: orders.length,
   };
 };
@@ -2236,19 +2214,14 @@ export const initializePayment = async (
     );
   }
 
-  const isBatchLeadPayment = isMultiCheckoutPaymentExternalId(
-    order.transaction.externalId ?? '',
-  );
+  const isBatchLeadPayment = isMultiCheckoutPaymentExternalId(order.transaction.externalId ?? '');
   const amountDecimal = roundIdrDecimal(
     isBatchLeadPayment ? order.transaction.amount : order.totalAmount,
   );
   const amount = roundIdrAmount(amountDecimal);
 
   // Order lama / batch: fee/PPN persen bisa menghasilkan desimal — Xendit IDR wajib bulat.
-  if (
-    !isBatchLeadPayment &&
-    !amountDecimal.equals(order.totalAmount)
-  ) {
+  if (!isBatchLeadPayment && !amountDecimal.equals(order.totalAmount)) {
     await prisma.$transaction([
       prisma.order.update({
         where: { id: order.id },
@@ -2755,6 +2728,61 @@ export const mockConfirmPayment = async (orderId: string, buyerId: string) => {
 };
 
 /**
+ * Simpan URL bukti transfer manual (BANK_TRANSFER) ke data transaksi pesanan.
+ */
+export const uploadPaymentProof = async (
+  orderId: string,
+  buyerId: string,
+  paymentProofUrl: string,
+) => {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: {
+      id: true,
+      buyerId: true,
+      status: true,
+      transaction: {
+        select: {
+          id: true,
+          status: true,
+        },
+      },
+    },
+  });
+
+  if (!order) throw new AppError('Pesanan tidak ditemukan.', 404);
+  if (order.buyerId !== buyerId) throw new AppError('Akses ditolak.', 403);
+  if (order.status !== OrderStatus.PENDING) {
+    throw new AppError('Pesanan sudah diproses.', 400);
+  }
+  if (!order.transaction) {
+    throw new AppError(
+      'Transaksi belum diinisialisasi. Silakan pilih metode pembayaran terlebih dahulu.',
+      400,
+    );
+  }
+
+  // Update data transaksi
+  const updatedTransaction = await prisma.transaction.update({
+    where: { id: order.transaction.id },
+    data: {
+      paymentProofUrl,
+      paymentStatus: PaymentStatus.PENDING,
+      paymentMethod: PaymentMethod.BANK_TRANSFER,
+    },
+    select: {
+      id: true,
+      paymentProofUrl: true,
+      paymentStatus: true,
+      paymentMethod: true,
+      paidAt: true,
+    },
+  });
+
+  return updatedTransaction;
+};
+
+/**
  * 2. List Purchasing / Sales Log with Pagination
  */
 
@@ -2824,13 +2852,10 @@ export const getOrderStatusCounts = async (params: {
     prisma.order.count({ where: baseWhere }),
   ]);
 
-  const byStatus = new Map(
-    statusGroups.map((row) => [row.status, row._count.id ?? 0]),
-  );
+  const byStatus = new Map(statusGroups.map((row) => [row.status, row._count.id ?? 0]));
 
   const processing =
-    (byStatus.get(OrderStatus.PROCESSING) ?? 0) +
-    (byStatus.get(OrderStatus.CONFIRMED) ?? 0);
+    (byStatus.get(OrderStatus.PROCESSING) ?? 0) + (byStatus.get(OrderStatus.CONFIRMED) ?? 0);
 
   return {
     ALL: total,
@@ -2854,8 +2879,16 @@ export const listOrdersByRole = async (params: {
   page?: number;
   limit?: number;
 }) => {
-  const { userId, role, statusFilter, search, productMode, orderTypeFilter, page = 1, limit = 20 } =
-    params;
+  const {
+    userId,
+    role,
+    statusFilter,
+    search,
+    productMode,
+    orderTypeFilter,
+    page = 1,
+    limit = 20,
+  } = params;
   const skip = (page - 1) * limit;
 
   const where: Prisma.OrderWhereInput = {
@@ -2918,6 +2951,7 @@ export const listOrdersByRole = async (params: {
             paymentUrl: true,
             paidAt: true,
             paymentMethod: true,
+            paymentProofUrl: true,
           },
         },
         shipment: {
@@ -3324,6 +3358,7 @@ const checkoutBatchOrderListSelect = {
       paymentUrl: true,
       paidAt: true,
       paymentMethod: true,
+      paymentProofUrl: true,
     },
   },
   shipment: {
@@ -3389,9 +3424,7 @@ export const getCheckoutBatchDetail = async (orderId: string, userId: string) =>
   );
 
   const batchNumber =
-    anchor.checkoutBatchNumber?.trim() ||
-    enrichedOrders[0]?.checkoutBatchNumber?.trim() ||
-    null;
+    anchor.checkoutBatchNumber?.trim() || enrichedOrders[0]?.checkoutBatchNumber?.trim() || null;
 
   return {
     checkoutBatchId: anchor.checkoutBatchId,
@@ -3627,10 +3660,7 @@ export const raiseDispute = async (
     };
   } catch (error) {
     if (error instanceof AppError) throw error;
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === 'P2002'
-    ) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       throw new AppError('Sengketa untuk pesanan ini sudah diajukan.', 409);
     }
     throw error;
@@ -3738,7 +3768,8 @@ export const signContract = async (orderId: string, userId: string) => {
 
   const isBuyer = order.buyerId === userId;
   const isSeller = order.sellerId === userId;
-  if (!isBuyer && !isSeller) throw new AppError('Anda tidak berhak menandatangani kontrak ini.', 403);
+  if (!isBuyer && !isSeller)
+    throw new AppError('Anda tidak berhak menandatangani kontrak ini.', 403);
 
   const now = new Date();
   const signHash = crypto
@@ -3805,9 +3836,7 @@ export const getPublicContractVerification = async (orderNumber: string) => {
 
   return {
     ...order,
-    verificationStatus: order.isDigitalSigned
-      ? 'SIGNED_AND_VERIFIED'
-      : 'ISSUED_PENDING_SIGNATURE',
+    verificationStatus: order.isDigitalSigned ? 'SIGNED_AND_VERIFIED' : 'ISSUED_PENDING_SIGNATURE',
     timestamp: new Date(),
   };
 };

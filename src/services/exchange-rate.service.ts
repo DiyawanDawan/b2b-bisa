@@ -14,8 +14,7 @@ export const getExchangeRates = () => ({
   quotes: QUOTES,
   supported: SUPPORTED,
   updatedAt: '2026-06-07',
-  disclaimer:
-    'Kurs indikatif untuk tampilan. Pembayaran dan penyelesaian tetap dalam IDR.',
+  disclaimer: 'Kurs indikatif untuk tampilan. Pembayaran dan penyelesaian tetap dalam IDR.',
 });
 
 export const convertIdrForDisplay = (amountIdr: number, currency: string): number => {

@@ -51,7 +51,10 @@ export function assertDirectCheckoutItem(
     throw new AppError(`Produk ${product.name} tidak aktif.`, 400);
   }
   if (product.stock.lt(item.quantity)) {
-    throw new AppError(`Stok ${product.name} tidak mencukupi. Tersisa ${product.stock.toString()}.`, 400);
+    throw new AppError(
+      `Stok ${product.name} tidak mencukupi. Tersisa ${product.stock.toString()}.`,
+      400,
+    );
   }
 
   if (orderType === 'SAMPLE') {

@@ -315,3 +315,16 @@ export const listAdminIotDevices = catchAsync(async (req: AuthRequest, res: Resp
     'Daftar perangkat IoT (admin)',
   );
 });
+
+export const adminUpdateDevice = catchAsync(async (req: AuthRequest, res: Response) => {
+  const { deviceId } = req.params;
+  const { name } = req.body;
+  const result = await iotService.adminUpdateDevice(deviceId, { name });
+  successResponse(res, result, 'Perangkat IoT berhasil diperbarui');
+});
+
+export const adminDeleteDevice = catchAsync(async (req: AuthRequest, res: Response) => {
+  const { deviceId } = req.params;
+  await iotService.adminDeleteDevice(deviceId);
+  successResponse(res, null, 'Perangkat IoT berhasil dihapus');
+});

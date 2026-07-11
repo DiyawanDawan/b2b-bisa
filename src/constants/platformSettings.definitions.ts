@@ -13,8 +13,7 @@ export const PLATFORM_SETTING_DEFINITIONS: PlatformSettingDefinition[] = [
   {
     key: 'SUPPORT_WHATSAPP',
     label: 'WhatsApp Customer Service',
-    description:
-      'Nomor WhatsApp untuk tombol hubungi CS di aplikasi mobile (format 628xxxxxxxx).',
+    description: 'Nomor WhatsApp untuk tombol hubungi CS di aplikasi mobile (format 628xxxxxxxx).',
     type: 'phone',
     placeholder: '6281234567890',
     envFallback: 'SUPPORT_WHATSAPP',

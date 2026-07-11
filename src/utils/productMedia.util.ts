@@ -55,7 +55,8 @@ export const attachProductMediaUrls = <T extends ProductWithMedia>(product: T): 
       : product.user;
 
   const video = mapProductVideo(product.video ?? null);
-  const videoUrl = video?.url ?? resolveMediaUrl(product.videoUrl ?? null) ?? product.videoUrl ?? null;
+  const videoUrl =
+    video?.url ?? resolveMediaUrl(product.videoUrl ?? null) ?? product.videoUrl ?? null;
 
   return {
     ...product,

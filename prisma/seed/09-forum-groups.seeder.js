@@ -121,7 +121,9 @@ export async function seedForumGroups(prisma) {
     for (const [email, role] of memberRoleByEmail) {
       const member = await findUserIdByEmail(prisma, email);
       if (!member) {
-        logger.warn(`⚠️ [09-forum-groups] Anggota ${email} tidak ditemukan — skip untuk grup "${seed.name}".`);
+        logger.warn(
+          `⚠️ [09-forum-groups] Anggota ${email} tidak ditemukan — skip untuk grup "${seed.name}".`,
+        );
         continue;
       }
       await prisma.forumGroupMember.create({
@@ -142,9 +144,7 @@ export async function seedForumGroups(prisma) {
     });
 
     groups.push(created);
-    logger.info(
-      `   ✓ Grup "${seed.name}" — owner ${owner.fullName}, ${memberCount} anggota`,
-    );
+    logger.info(`   ✓ Grup "${seed.name}" — owner ${owner.fullName}, ${memberCount} anggota`);
   }
 
   logger.info(`✅ [09-forum-groups] ${groups.length} grup publik + anggota di-seed.`);

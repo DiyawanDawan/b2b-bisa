@@ -16,10 +16,8 @@ export const expireStalePromotions = async () => {
   });
 };
 
-const isPromotionActive = (product: {
-  isPromoted: boolean;
-  promotedUntil: Date | null;
-}) => product.isPromoted && !!product.promotedUntil && product.promotedUntil > new Date();
+const isPromotionActive = (product: { isPromoted: boolean; promotedUntil: Date | null }) =>
+  product.isPromoted && !!product.promotedUntil && product.promotedUntil > new Date();
 
 export const promoteProduct = async (
   supplierId: string,

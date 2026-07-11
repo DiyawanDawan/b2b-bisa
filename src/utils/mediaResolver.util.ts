@@ -136,7 +136,11 @@ export const attachReviewMediaUrls = <T extends ReviewLike>(review: T): T => {
 };
 
 type WishlistPayload = {
-  products?: Array<{ thumbnailUrl?: string | null; user?: UserLike | null; [key: string]: unknown }>;
+  products?: Array<{
+    thumbnailUrl?: string | null;
+    user?: UserLike | null;
+    [key: string]: unknown;
+  }>;
   [key: string]: unknown;
 };
 

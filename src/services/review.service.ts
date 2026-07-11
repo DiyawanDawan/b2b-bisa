@@ -131,11 +131,7 @@ export const updateReview = async (
 /**
  * 1c. Supplier reply to a review
  */
-export const replyToReview = async (
-  supplierId: string,
-  reviewId: string,
-  reply: string,
-) => {
+export const replyToReview = async (supplierId: string, reviewId: string, reply: string) => {
   const review = await prisma.review.findUnique({
     where: { id: reviewId },
     select: {

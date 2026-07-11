@@ -32,7 +32,9 @@ export const presignPart = catchAsync(async (req: AuthRequest, res: Response) =>
 export const uploadPartProxy = catchAsync(async (req: AuthRequest, res: Response) => {
   const body = req.body as Buffer;
   if (!body?.length) {
-    return res.status(400).json({ meta: { success: false, message: 'Body chunk kosong.' }, data: null });
+    return res
+      .status(400)
+      .json({ meta: { success: false, message: 'Body chunk kosong.' }, data: null });
   }
   const result = await mediaUploadService.uploadPartProxy(
     req.params.id,

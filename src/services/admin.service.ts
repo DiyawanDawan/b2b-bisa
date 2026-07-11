@@ -1013,10 +1013,7 @@ export const resolveDispute = async (
         );
       }
       if (!order.dispute.readyToResolveAt) {
-        throw new AppError(
-          'Tandai mediasi sebagai siap putus sebelum release atau refund.',
-          400,
-        );
+        throw new AppError('Tandai mediasi sebagai siap putus sebelum release atau refund.', 400);
       }
       if (!order.negotiation) {
         const room = await ensureDisputeNegotiationRoom(orderId, tx);

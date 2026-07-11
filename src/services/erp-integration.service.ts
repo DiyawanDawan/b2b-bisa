@@ -117,11 +117,21 @@ export const bulkSyncInventory = async (
 
   for (const item of items) {
     if (!ownedSet.has(item.productId)) {
-      updates.push({ productId: item.productId, stock: item.stock, updated: false, reason: 'NOT_OWNED' });
+      updates.push({
+        productId: item.productId,
+        stock: item.stock,
+        updated: false,
+        reason: 'NOT_OWNED',
+      });
       continue;
     }
     if (item.stock < 0) {
-      updates.push({ productId: item.productId, stock: item.stock, updated: false, reason: 'NEGATIVE_STOCK' });
+      updates.push({
+        productId: item.productId,
+        stock: item.stock,
+        updated: false,
+        reason: 'NEGATIVE_STOCK',
+      });
       continue;
     }
     await prisma.product.update({

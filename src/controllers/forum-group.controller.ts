@@ -1,6 +1,11 @@
 import { Response } from 'express';
 import catchAsync from '#utils/catchAsync';
-import { successResponse, createdResponse, paginatedResponse, errorResponse } from '#utils/response.util';
+import {
+  successResponse,
+  createdResponse,
+  paginatedResponse,
+  errorResponse,
+} from '#utils/response.util';
 import * as forumGroupService from '#services/forum-group.service';
 import { AuthRequest } from '#types/index';
 

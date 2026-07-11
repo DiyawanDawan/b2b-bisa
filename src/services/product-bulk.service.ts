@@ -1,13 +1,7 @@
 import prisma from '#config/prisma';
 import AppError from '#utils/appError';
 import { parseCsvRows, PRODUCT_BULK_CSV_TEMPLATE } from '#utils/csvParse.util';
-import {
-  BiomassaType,
-  BiocharGrade,
-  ProductStatus,
-  UnitStatus,
-  Prisma,
-} from '#prisma';
+import { BiomassaType, BiocharGrade, ProductStatus, UnitStatus, Prisma } from '#prisma';
 import { assertSupplierStoreReady } from '#utils/readiness.util';
 
 const MAX_ROWS = 100;
@@ -85,11 +79,7 @@ export const importProductsFromCsv = async (userId: string, fileBuffer: Buffer) 
         throw new AppError('minOrder minimal 1.', 400);
       }
 
-      const unit = parseEnum(
-        (row.unit || 'KG').toUpperCase(),
-        Object.values(UnitStatus),
-        'unit',
-      );
+      const unit = parseEnum((row.unit || 'KG').toUpperCase(), Object.values(UnitStatus), 'unit');
       const status = parseEnum(
         (row.status || 'DRAFT').toUpperCase(),
         [ProductStatus.DRAFT, ProductStatus.ACTIVE, ProductStatus.INACTIVE],

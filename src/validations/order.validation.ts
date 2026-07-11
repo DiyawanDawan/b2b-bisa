@@ -135,18 +135,12 @@ const disputeEvidenceUrlSchema = z
 export const raiseDisputeSchema = z.object({
   reason: z.string().min(10, 'Alasan sengketa harus jelas (minimal 10 karakter)'),
   description: z.string().max(2000, 'Deskripsi terlalu panjang').optional(),
-  evidenceUrls: z
-    .array(disputeEvidenceUrlSchema)
-    .max(5, 'Maksimal 5 foto bukti')
-    .optional(),
+  evidenceUrls: z.array(disputeEvidenceUrlSchema).max(5, 'Maksimal 5 foto bukti').optional(),
 });
 
 export const respondDisputeSchema = z.object({
   response: z.string().min(10, 'Tanggapan minimal 10 karakter'),
-  evidenceUrls: z
-    .array(disputeEvidenceUrlSchema)
-    .max(5, 'Maksimal 5 foto bukti')
-    .optional(),
+  evidenceUrls: z.array(disputeEvidenceUrlSchema).max(5, 'Maksimal 5 foto bukti').optional(),
 });
 
 export const listOrdersSchema = z.object({
@@ -166,4 +160,8 @@ export const orderStatusCountsSchema = z.object({
     productMode: z.nativeEnum(ProductMode).optional(),
     orderType: z.enum(['STANDARD', 'SAMPLE']).optional(),
   }),
+});
+
+export const uploadPaymentProofSchema = z.object({
+  paymentProofUrl: z.string().url('URL bukti transfer tidak valid'),
 });

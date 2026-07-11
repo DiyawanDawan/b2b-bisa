@@ -26,8 +26,8 @@ const fetchCategories = async ({
       ...(biomassaType && { biomassaType }),
       ...(q && {
         OR: [
-          { name: { contains: q, mode: 'insensitive' } },
-          { description: { contains: q, mode: 'insensitive' } },
+          { name: { contains: q } },
+          { description: { contains: q } },
         ],
       }),
     },
@@ -50,10 +50,8 @@ const fetchCategories = async ({
  * List categories with optional type, productMode, biomassaType, and search filter.
  */
 export const listCategories = async (params: ListCategoriesParams = {}) =>
-  cacheAside(
-    cacheKeys.categoryList(params as Record<string, unknown>),
-    CACHE_TTL.CATEGORY,
-    () => fetchCategories(params),
+  cacheAside(cacheKeys.categoryList(params as Record<string, unknown>), CACHE_TTL.CATEGORY, () =>
+    fetchCategories(params),
   );
 
 const fetchCategoryById = async (id: string) => {

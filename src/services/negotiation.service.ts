@@ -1002,10 +1002,7 @@ export const clearChatMessages = async (negotiationId: string, userId: string) =
     select: { id: true },
   });
   if (linkedOrder) {
-    throw new AppError(
-      'Riwayat chat tidak dapat dihapus saat pesanan dalam sengketa aktif.',
-      400,
-    );
+    throw new AppError('Riwayat chat tidak dapat dihapus saat pesanan dalam sengketa aktif.', 400);
   }
 
   const CHAT_BLOCKED_STATUSES: string[] = [

@@ -10,10 +10,7 @@ export const listSaved = catchAsync(async (req: AuthRequest, res: Response) => {
 });
 
 export const setDefault = catchAsync(async (req: AuthRequest, res: Response) => {
-  const item = await savedPaymentService.setDefaultSavedPayment(
-    req.user!.id,
-    req.params.id,
-  );
+  const item = await savedPaymentService.setDefaultSavedPayment(req.user!.id, req.params.id);
   successResponse(res, item, 'Metode pembayaran default diperbarui.');
 });
 

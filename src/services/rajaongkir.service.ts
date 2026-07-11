@@ -20,11 +20,7 @@ import AppError from '#utils/appError';
 import fetch from 'node-fetch';
 import prisma from '#config/prisma';
 import { CACHE_TTL } from '#constants/cache.constants';
-import {
-  cacheAside,
-  cacheKeys,
-  invalidateShippingConfig,
-} from '#utils/cache.util';
+import { cacheAside, cacheKeys, invalidateShippingConfig } from '#utils/cache.util';
 
 type RequestOpts = {
   method: 'GET' | 'POST';
@@ -143,13 +139,7 @@ const normalizeDestinationKeyword = (raw: string): string => {
 const isBlockedDestinationKeyword = (keyword: string): boolean => {
   const lower = keyword.toLowerCase();
   if (lower.length < 3) return true;
-  const blocked = new Set([
-    'indonesia',
-    'nusa tenggara barat',
-    'nusa tenggara',
-    'ntb',
-    'ntt',
-  ]);
+  const blocked = new Set(['indonesia', 'nusa tenggara barat', 'nusa tenggara', 'ntb', 'ntt']);
   if (blocked.has(lower)) return true;
   // Satu kata tanpa petunjuk administratif — biasanya provinsi/nama orang, boros kuota.
   if (!lower.includes(',') && !/(kab|kota|kec|kel|desa|prov)/i.test(lower)) {
@@ -231,11 +221,7 @@ export const searchDomesticDestinations = async (params: {
     return [];
   }
 
-  const cacheKey = cacheKeys.shipDest(
-    keyword.toLowerCase(),
-    params.limit,
-    params.offset,
-  );
+  const cacheKey = cacheKeys.shipDest(keyword.toLowerCase(), params.limit, params.offset);
 
   return cacheAside(cacheKey, CACHE_TTL.SHIP_DEST, async () => {
     try {

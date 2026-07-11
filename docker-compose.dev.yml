@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  # Optional: App container for isolated development (usually run locally via npm run dev instead)
+  app:
+    build: 
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: buka-lombok-app-dev
+    ports:
+      - "5001:5001"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=${DATABASE_URL}
+      - PORT=${PORT:-5001}
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+    volumes:
+      - .:/app
+      - /app/node_modules
+    depends_on:
+      - redis
+      - mysql
+    networks:
+      - buka-lombok-dev-network
+    command: npm run dev
+
+  redis:
+    image: redis:7-alpine
+    container_name: buka-lombok-redis-dev
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data_dev:/data
+    networks:
+      - buka-lombok-dev-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  mysql:
+    image: mysql:8.0
+    container_name: buka-lombok-mysql-dev
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-buka_lombok}
+    volumes:
+      - mysql_data_dev:/var/lib/mysql
+    networks:
+      - buka-lombok-dev-network
+
+networks:
+  buka-lombok-dev-network:
+    driver: bridge
+
+volumes:
+  redis_data_dev:
+  mysql_data_dev:

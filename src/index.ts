@@ -114,9 +114,15 @@ app.use(
       'Accept',
       'X-Requested-With',
       'X-ML-API-Key',
+      'X-Device-Token',
     ],
+    preflightContinue: false,
+    optionsSuccessStatus: 204,
   }),
 );
+
+// Explicit OPTIONS handler for all routes
+app.options('*', cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 // SEC-BE-023: format produksi 'combined' (terstruktur, redact-friendly via reverse proxy);

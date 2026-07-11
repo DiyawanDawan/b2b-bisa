@@ -188,6 +188,14 @@ router.post(
   orderController.cancelOrderPayment,
 );
 
+router.post(
+  '/:id/payment-proof',
+  financialLimiter,
+  requireRole(UserRole.BUYER, UserRole.ADMIN),
+  validate(v.uploadPaymentProofSchema),
+  orderController.uploadPaymentProof,
+);
+
 /**
  * ==========================================
  * DISPUTE & COMPLAINTS (BUYER ONLY)
