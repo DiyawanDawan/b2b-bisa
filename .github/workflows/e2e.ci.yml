@@ -13,7 +13,7 @@ concurrency:
 
 env:
   NODE_ENV: test
-  DATABASE_URL: mysql://root:test@127.0.0.1:3306/buka_lombok_test
+  DATABASE_URL: mysql://root:test@127.0.0.1:3306/bisa_test
   AUTH_SECRET: e2e-ci-auth-secret-min-32-chars-long
   AUTH_REFRESH_SECRET: e2e-ci-refresh-secret-min-32-chars
   AUTH_SECRET_EXPIRES_IN: 1h
@@ -39,7 +39,7 @@ jobs:
         image: mysql:8.0
         env:
           MYSQL_ROOT_PASSWORD: test
-          MYSQL_DATABASE: buka_lombok_test
+          MYSQL_DATABASE: bisa_test
         ports:
           - 3306:3306
         options: >-
@@ -86,7 +86,7 @@ jobs:
         image: mysql:8.0
         env:
           MYSQL_ROOT_PASSWORD: test
-          MYSQL_DATABASE: buka_lombok_test
+          MYSQL_DATABASE: bisa_test
         ports:
           - 3306:3306
         options: >-
