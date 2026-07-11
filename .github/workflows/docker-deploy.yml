@@ -171,72 +171,100 @@ jobs:
             DEPLOYMENT_TIMESTAMP=$(date)
             GIT_COMMIT=${{ github.sha }}
             DEPLOYED_BY=GitHub Actions
-            
+
             DATABASE_URL=${{ secrets.DATABASE_URL }}
             DATABASE_NAME=${{ secrets.DATABASE_NAME }}
             DATABASE_PORT=${{ secrets.DATABASE_PORT }}
             DATABASE_PASSWORD=${{ secrets.DATABASE_PASSWORD }}
             DATABASE_USER=${{ secrets.DATABASE_USER }}
             DATABASE_HOST=${{ secrets.DATABASE_HOST }}
-            
+
             NODE_ENV=production
             PORT=3000
-            APP_NAME=${{ secrets.APP_NAME || 'backend' }}
-            
-            AUTH_SECRET=${{ secrets.AUTH_SECRET }}
-            AUTH_SECRET_EXPIRES_IN=${{ secrets.AUTH_SECRET_EXPIRES_IN }}
-            AUTH_REFRESH_SECRET=${{ secrets.AUTH_REFRESH_SECRET }}
-            AUTH_REFRESH_SECRET_EXPIRES_IN=${{ secrets.AUTH_REFRESH_SECRET_EXPIRES_IN }}
-            
-            ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
-            ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}
-            
+            CORS_ORIGINS=${{ secrets.CORS_ORIGINS }}
+
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            JWT_EXPIRES_IN=${{ secrets.JWT_EXPIRES_IN || '1d' }}
+            JWT_REFRESH_EXPIRES_IN=${{ secrets.JWT_REFRESH_EXPIRES_IN || '30d' }}
+            ENCRYPTION_KEY=${{ secrets.ENCRYPTION_KEY }}
+            ENCRYPTION_KEY_V2=${{ secrets.ENCRYPTION_KEY_V2 }}
+
+            CLIENT_HOST=${{ secrets.CLIENT_HOST }}
+
             EMAIL_SMTP_SECURE=${{ secrets.EMAIL_SMTP_SECURE }}
             EMAIL_SMTP_USER=${{ secrets.EMAIL_SMTP_USER }}
             EMAIL_SMTP_PASS=${{ secrets.EMAIL_SMTP_PASS }}
             EMAIL_SMTP_PORT=${{ secrets.EMAIL_SMTP_PORT }}
             EMAIL_SMTP_HOST=${{ secrets.EMAIL_SMTP_HOST }}
-            CLIENT_HOST=${{ secrets.CLIENT_HOST }}
-            
-            ZEPTOMAIL_API_TOKEN=${{ secrets.ZEPTOMAIL_API_TOKEN }}
-            ZEPTOMAIL_API_HOST=${{ secrets.ZEPTOMAIL_API_HOST }}
-            ZEPTOMAIL_MAIL_AGENT_ALIAS=${{ secrets.ZEPTOMAIL_MAIL_AGENT_ALIAS }}
             EMAIL_FROM=${{ secrets.EMAIL_FROM }}
             EMAIL_SENDER_NAME=${{ secrets.EMAIL_SENDER_NAME }}
-            
+
             PUSHER_APP_ID=${{ secrets.PUSHER_APP_ID }}
             PUSHER_KEY=${{ secrets.PUSHER_KEY }}
             PUSHER_SECRET=${{ secrets.PUSHER_SECRET }}
             PUSHER_CLUSTER=${{ secrets.PUSHER_CLUSTER }}
-            
-            R2_ACCESS_KEY=${{ secrets.R2_ACCESS_KEY }}
-            R2_SECRET_KEY=${{ secrets.R2_SECRET_KEY }}
-            R2_BUCKET=${{ secrets.R2_BUCKET }}
-            R2_ENDPOINT=${{ secrets.R2_ENDPOINT }}
-            CDN_URL=${{ secrets.CDN_URL }}
-            
-            KEY_PATH=${{ secrets.KEY_PATH }}
-            ENCRYPTION_KEY=${{ secrets.ENCRYPTION_KEY }}
-            VERIFIER_MASTER_KEY=
-            
+
+            R2_ACCOUNT_ID=${{ secrets.R2_ACCOUNT_ID }}
+            R2_ACCESS_KEY_ID=${{ secrets.R2_ACCESS_KEY_ID }}
+            R2_SECRET_ACCESS_KEY=${{ secrets.R2_SECRET_ACCESS_KEY }}
+            R2_BUCKET_NAME=${{ secrets.R2_BUCKET_NAME }}
+            R2_PUBLIC_URL=${{ secrets.R2_PUBLIC_URL }}
+
+            API_PUBLIC_URL=${{ secrets.API_PUBLIC_URL }}
+            MEDIA_BASE_URL=${{ secrets.MEDIA_BASE_URL }}
+
             XENDIT_PAYMENT_SECRET_KEY=${{ secrets.XENDIT_PAYMENT_SECRET_KEY }}
             XENDIT_PAYOUT_SECRET_KEY=${{ secrets.XENDIT_PAYOUT_SECRET_KEY }}
             XENDIT_REPORT_SECRET_KEY=${{ secrets.XENDIT_REPORT_SECRET_KEY }}
             XENDIT_PUBLIC_KEY=${{ secrets.XENDIT_PUBLIC_KEY }}
             XENDIT_WEBHOOK_TOKEN=${{ secrets.XENDIT_WEBHOOK_TOKEN }}
-            FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID }}
-            FIREBASE_PRIVATE_KEY=${{ secrets.FIREBASE_PRIVATE_KEY }}
-            FIREBASE_CLIENT_EMAIL=${{ secrets.FIREBASE_CLIENT_EMAIL }}
-            
-            REDIS_ENABLED=${{ secrets.REDIS_ENABLED }}
-            REDIS_HOST=${{ secrets.REDIS_HOST || 'redis' }}
-            REDIS_PORT=${{ secrets.REDIS_PORT || 6379 }}
-            REDIS_TTL=${{ secrets.REDIS_TTL }}
-            
-            REQUEST_TIMEOUT=30000
-            MAX_FILE_UPLOAD=50mb
-            RATE_LIMIT_WINDOW=900000
-            RATE_LIMIT_MAX=1000
+
+            REDIS_URL=${{ secrets.REDIS_URL }}
+            REDIS_ENABLED=${{ secrets.REDIS_ENABLED || 'false' }}
+            REDIS_KEY_PREFIX=${{ secrets.REDIS_KEY_PREFIX || 'bisa:v1' }}
+            REDIS_DEFAULT_TTL_SECONDS=${{ secrets.REDIS_DEFAULT_TTL_SECONDS || '3600' }}
+
+            ML_SERVICE_URL=${{ secrets.ML_SERVICE_URL }}
+            ML_PREDICT_ENABLED=${{ secrets.ML_PREDICT_ENABLED || 'true' }}
+            LOG_LEVEL=${{ secrets.LOG_LEVEL || 'info' }}
+
+            CHROMA_HOST=${{ secrets.CHROMA_HOST }}
+            CHROMA_API_KEY=${{ secrets.CHROMA_API_KEY }}
+            CHROMA_TENANT=${{ secrets.CHROMA_TENANT }}
+            CHROMA_DATABASE=${{ secrets.CHROMA_DATABASE }}
+            CHROMA_COLLECTION=${{ secrets.CHROMA_COLLECTION }}
+            DEEPSHEEK_API_KEY=${{ secrets.DEEPSHEEK_API_KEY }}
+            DEEPSHEEK_MODEL=${{ secrets.DEEPSHEEK_MODEL }}
+
+            USER_ID_RAJA_ONGKIR=${{ secrets.USER_ID_RAJA_ONGKIR }}
+            SECRET_KEY_RAJA_ONGKIR=${{ secrets.SECRET_KEY_RAJA_ONGKIR }}
+            SHIPPING_COST_API_KEY=${{ secrets.SHIPPING_COST_API_KEY }}
+            PAYMENT_API_KEY=${{ secrets.PAYMENT_API_KEY }}
+            QRISLY_API_KEY=${{ secrets.QRISLY_API_KEY }}
+
+            PEXELS_API_KEY=${{ secrets.PEXELS_API_KEY }}
+            PIXABAY_API_KEY=${{ secrets.PIXABAY_API_KEY }}
+
+            FIREBASE_SERVICE_ACCOUNT=${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+            FIREBASE_SERVICE_ACCOUNT_PATH=${{ secrets.FIREBASE_SERVICE_ACCOUNT_PATH }}
+
+            READINESS_GATES_ENABLED=${{ secrets.READINESS_GATES_ENABLED || 'true' }}
+            READINESS_ENFORCE_ADMIN=${{ secrets.READINESS_ENFORCE_ADMIN || 'false' }}
+            REQUIRE_KYC_FOR_ACTIVE_PRODUCT=${{ secrets.REQUIRE_KYC_FOR_ACTIVE_PRODUCT || 'false' }}
+
+            MEDIA_CHUNK_SIZE_BYTES=${{ secrets.MEDIA_CHUNK_SIZE_BYTES || '5242880' }}
+            MEDIA_UPLOAD_SESSION_TTL_HOURS=${{ secrets.MEDIA_UPLOAD_SESSION_TTL_HOURS || '24' }}
+            MEDIA_MAX_IMAGE_BYTES=${{ secrets.MEDIA_MAX_IMAGE_BYTES || '52428800' }}
+            MEDIA_MAX_PDF_BYTES=${{ secrets.MEDIA_MAX_PDF_BYTES || '20971520' }}
+            MEDIA_UPLOAD_PROXY_MODE=${{ secrets.MEDIA_UPLOAD_PROXY_MODE || 'true' }}
+
+            PUBLIC_VERIFY_BASE_URL=${{ secrets.PUBLIC_VERIFY_BASE_URL }}
+            SUPPORT_WHATSAPP=${{ secrets.SUPPORT_WHATSAPP }}
+            SUPPORT_EMAIL=${{ secrets.SUPPORT_EMAIL }}
+
+            RAJAONGKIR_BASE_URL=${{ secrets.RAJAONGKIR_BASE_URL }}
+            RAJAONGKIR_DEFAULT_COURIERS=${{ secrets.RAJAONGKIR_DEFAULT_COURIERS }}
+            RAG_ENABLED=${{ secrets.RAG_ENABLED || 'true' }}
             EOF
             chmod 600 .env
             echo "✅ .env file automatically created from GitHub Secrets!"
@@ -440,72 +468,100 @@ jobs:
             DEPLOYMENT_TIMESTAMP=$(date)
             GIT_COMMIT=${{ github.sha }}
             DEPLOYED_BY=GitHub Actions
-            SERVER_HOST = ${{ secrets.DEPLOY_HOST }}
+
             DATABASE_URL=${{ secrets.DATABASE_URL }}
             DATABASE_NAME=${{ secrets.DATABASE_NAME }}
             DATABASE_PORT=${{ secrets.DATABASE_PORT }}
             DATABASE_PASSWORD=${{ secrets.DATABASE_PASSWORD }}
             DATABASE_USER=${{ secrets.DATABASE_USER }}
             DATABASE_HOST=${{ secrets.DATABASE_HOST }}
-            
+
             NODE_ENV=production
             PORT=3000
-            APP_NAME=${{ secrets.APP_NAME || 'backend' }}
-            
-            AUTH_SECRET=${{ secrets.AUTH_SECRET }}
-            AUTH_SECRET_EXPIRES_IN=${{ secrets.AUTH_SECRET_EXPIRES_IN }}
-            AUTH_REFRESH_SECRET=${{ secrets.AUTH_REFRESH_SECRET }}
-            AUTH_REFRESH_SECRET_EXPIRES_IN=${{ secrets.AUTH_REFRESH_SECRET_EXPIRES_IN }}
-            
-            ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
-            ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}
-            
+            CORS_ORIGINS=${{ secrets.CORS_ORIGINS }}
+
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            JWT_EXPIRES_IN=${{ secrets.JWT_EXPIRES_IN || '1d' }}
+            JWT_REFRESH_EXPIRES_IN=${{ secrets.JWT_REFRESH_EXPIRES_IN || '30d' }}
+            ENCRYPTION_KEY=${{ secrets.ENCRYPTION_KEY }}
+            ENCRYPTION_KEY_V2=${{ secrets.ENCRYPTION_KEY_V2 }}
+
+            CLIENT_HOST=${{ secrets.CLIENT_HOST }}
+
             EMAIL_SMTP_SECURE=${{ secrets.EMAIL_SMTP_SECURE }}
             EMAIL_SMTP_USER=${{ secrets.EMAIL_SMTP_USER }}
             EMAIL_SMTP_PASS=${{ secrets.EMAIL_SMTP_PASS }}
             EMAIL_SMTP_PORT=${{ secrets.EMAIL_SMTP_PORT }}
             EMAIL_SMTP_HOST=${{ secrets.EMAIL_SMTP_HOST }}
-            CLIENT_HOST=${{ secrets.CLIENT_HOST }}
-            
-            ZEPTOMAIL_API_TOKEN=${{ secrets.ZEPTOMAIL_API_TOKEN }}
-            ZEPTOMAIL_API_HOST=${{ secrets.ZEPTOMAIL_API_HOST }}
-            ZEPTOMAIL_MAIL_AGENT_ALIAS=${{ secrets.ZEPTOMAIL_MAIL_AGENT_ALIAS }}
             EMAIL_FROM=${{ secrets.EMAIL_FROM }}
             EMAIL_SENDER_NAME=${{ secrets.EMAIL_SENDER_NAME }}
-            
+
             PUSHER_APP_ID=${{ secrets.PUSHER_APP_ID }}
             PUSHER_KEY=${{ secrets.PUSHER_KEY }}
             PUSHER_SECRET=${{ secrets.PUSHER_SECRET }}
             PUSHER_CLUSTER=${{ secrets.PUSHER_CLUSTER }}
-            
-            R2_ACCESS_KEY=${{ secrets.R2_ACCESS_KEY }}
-            R2_SECRET_KEY=${{ secrets.R2_SECRET_KEY }}
-            R2_BUCKET=${{ secrets.R2_BUCKET }}
-            R2_ENDPOINT=${{ secrets.R2_ENDPOINT }}
-            CDN_URL=${{ secrets.CDN_URL }}
-            
-            KEY_PATH=${{ secrets.KEY_PATH }}
-            ENCRYPTION_KEY=${{ secrets.ENCRYPTION_KEY }}
-            VERIFIER_MASTER_KEY=
-            
+
+            R2_ACCOUNT_ID=${{ secrets.R2_ACCOUNT_ID }}
+            R2_ACCESS_KEY_ID=${{ secrets.R2_ACCESS_KEY_ID }}
+            R2_SECRET_ACCESS_KEY=${{ secrets.R2_SECRET_ACCESS_KEY }}
+            R2_BUCKET_NAME=${{ secrets.R2_BUCKET_NAME }}
+            R2_PUBLIC_URL=${{ secrets.R2_PUBLIC_URL }}
+
+            API_PUBLIC_URL=${{ secrets.API_PUBLIC_URL }}
+            MEDIA_BASE_URL=${{ secrets.MEDIA_BASE_URL }}
+
             XENDIT_PAYMENT_SECRET_KEY=${{ secrets.XENDIT_PAYMENT_SECRET_KEY }}
             XENDIT_PAYOUT_SECRET_KEY=${{ secrets.XENDIT_PAYOUT_SECRET_KEY }}
             XENDIT_REPORT_SECRET_KEY=${{ secrets.XENDIT_REPORT_SECRET_KEY }}
             XENDIT_PUBLIC_KEY=${{ secrets.XENDIT_PUBLIC_KEY }}
             XENDIT_WEBHOOK_TOKEN=${{ secrets.XENDIT_WEBHOOK_TOKEN }}
-            FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID }}
-            FIREBASE_PRIVATE_KEY=${{ secrets.FIREBASE_PRIVATE_KEY }}
-            FIREBASE_CLIENT_EMAIL=${{ secrets.FIREBASE_CLIENT_EMAIL }}
-            
-            REDIS_ENABLED=${{ secrets.REDIS_ENABLED }}
-            REDIS_HOST=${{ secrets.REDIS_HOST || 'redis' }}
-            REDIS_PORT=${{ secrets.REDIS_PORT || 6379 }}
-            REDIS_TTL=${{ secrets.REDIS_TTL }}
-            
-            REQUEST_TIMEOUT=30000
-            MAX_FILE_UPLOAD=50mb
-            RATE_LIMIT_WINDOW=900000
-            RATE_LIMIT_MAX=1000
+
+            REDIS_URL=${{ secrets.REDIS_URL }}
+            REDIS_ENABLED=${{ secrets.REDIS_ENABLED || 'false' }}
+            REDIS_KEY_PREFIX=${{ secrets.REDIS_KEY_PREFIX || 'bisa:v1' }}
+            REDIS_DEFAULT_TTL_SECONDS=${{ secrets.REDIS_DEFAULT_TTL_SECONDS || '3600' }}
+
+            ML_SERVICE_URL=${{ secrets.ML_SERVICE_URL }}
+            ML_PREDICT_ENABLED=${{ secrets.ML_PREDICT_ENABLED || 'true' }}
+            LOG_LEVEL=${{ secrets.LOG_LEVEL || 'info' }}
+
+            CHROMA_HOST=${{ secrets.CHROMA_HOST }}
+            CHROMA_API_KEY=${{ secrets.CHROMA_API_KEY }}
+            CHROMA_TENANT=${{ secrets.CHROMA_TENANT }}
+            CHROMA_DATABASE=${{ secrets.CHROMA_DATABASE }}
+            CHROMA_COLLECTION=${{ secrets.CHROMA_COLLECTION }}
+            DEEPSHEEK_API_KEY=${{ secrets.DEEPSHEEK_API_KEY }}
+            DEEPSHEEK_MODEL=${{ secrets.DEEPSHEEK_MODEL }}
+
+            USER_ID_RAJA_ONGKIR=${{ secrets.USER_ID_RAJA_ONGKIR }}
+            SECRET_KEY_RAJA_ONGKIR=${{ secrets.SECRET_KEY_RAJA_ONGKIR }}
+            SHIPPING_COST_API_KEY=${{ secrets.SHIPPING_COST_API_KEY }}
+            PAYMENT_API_KEY=${{ secrets.PAYMENT_API_KEY }}
+            QRISLY_API_KEY=${{ secrets.QRISLY_API_KEY }}
+
+            PEXELS_API_KEY=${{ secrets.PEXELS_API_KEY }}
+            PIXABAY_API_KEY=${{ secrets.PIXABAY_API_KEY }}
+
+            FIREBASE_SERVICE_ACCOUNT=${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+            FIREBASE_SERVICE_ACCOUNT_PATH=${{ secrets.FIREBASE_SERVICE_ACCOUNT_PATH }}
+
+            READINESS_GATES_ENABLED=${{ secrets.READINESS_GATES_ENABLED || 'true' }}
+            READINESS_ENFORCE_ADMIN=${{ secrets.READINESS_ENFORCE_ADMIN || 'false' }}
+            REQUIRE_KYC_FOR_ACTIVE_PRODUCT=${{ secrets.REQUIRE_KYC_FOR_ACTIVE_PRODUCT || 'false' }}
+
+            MEDIA_CHUNK_SIZE_BYTES=${{ secrets.MEDIA_CHUNK_SIZE_BYTES || '5242880' }}
+            MEDIA_UPLOAD_SESSION_TTL_HOURS=${{ secrets.MEDIA_UPLOAD_SESSION_TTL_HOURS || '24' }}
+            MEDIA_MAX_IMAGE_BYTES=${{ secrets.MEDIA_MAX_IMAGE_BYTES || '52428800' }}
+            MEDIA_MAX_PDF_BYTES=${{ secrets.MEDIA_MAX_PDF_BYTES || '20971520' }}
+            MEDIA_UPLOAD_PROXY_MODE=${{ secrets.MEDIA_UPLOAD_PROXY_MODE || 'true' }}
+
+            PUBLIC_VERIFY_BASE_URL=${{ secrets.PUBLIC_VERIFY_BASE_URL }}
+            SUPPORT_WHATSAPP=${{ secrets.SUPPORT_WHATSAPP }}
+            SUPPORT_EMAIL=${{ secrets.SUPPORT_EMAIL }}
+
+            RAJAONGKIR_BASE_URL=${{ secrets.RAJAONGKIR_BASE_URL }}
+            RAJAONGKIR_DEFAULT_COURIERS=${{ secrets.RAJAONGKIR_DEFAULT_COURIERS }}
+            RAG_ENABLED=${{ secrets.RAG_ENABLED || 'true' }}
             EOF
             chmod 600 .env
             echo "✅ .env file automatically created from GitHub Secrets!"
