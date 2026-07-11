@@ -111,3 +111,4 @@ networks:
 
 volumes:
   redis_data:
+  mysql_data:
