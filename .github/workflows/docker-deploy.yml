@@ -80,11 +80,11 @@ jobs:
       - name: Deploy to development server
         uses: appleboy/ssh-action@master
         env:
-          DEPLOY_HOST: ${{ vars.DEPLOY_HOST || secrets.DEVELOPMENT_HOST_IP }}
-          DEPLOY_USER: ${{ vars.DEPLOY_USER || secrets.DEVELOPMENT_USERNAME }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || secrets.DEVELOPMENT_HOST_IP }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER || secrets.DEVELOPMENT_USERNAME }}
           DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY || secrets.DEVELOPMENT_SSH_PRIVATE_KEY }}
-          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/var/www/app/bisa-backend' }}
-          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/var/www/app/bisa-backend' }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
         with:
           host: ${{ env.DEPLOY_HOST }}
           username: ${{ env.DEPLOY_USER }}
@@ -122,11 +122,11 @@ jobs:
     if: github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/code-optimazed' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
     environment: staging
     env:
-      DEPLOY_HOST: ${{ vars.DEPLOY_HOST || secrets.STAGING_HOST_IP }}
-      DEPLOY_USER: ${{ vars.DEPLOY_USER || secrets.STAGING_USERNAME }}
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || secrets.STAGING_HOST_IP }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER || secrets.STAGING_USERNAME }}
       DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY || secrets.STAGING_SSH_PRIVATE_KEY }}
-      DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/var/www/app/bisa-backend' }}
-      DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/var/www/app/bisa-backend' }}
+      DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
 
     steps:
       - name: Deploy to staging server
@@ -181,22 +181,22 @@ jobs:
             
             NODE_ENV=production
             PORT=3000
-            APP_NAME=${{ vars.APP_NAME || 'backend' }}
+            APP_NAME=${{ secrets.APP_NAME || 'backend' }}
             
             AUTH_SECRET=${{ secrets.AUTH_SECRET }}
-            AUTH_SECRET_EXPIRES_IN=${{ vars.AUTH_SECRET_EXPIRES_IN }}
+            AUTH_SECRET_EXPIRES_IN=${{ secrets.AUTH_SECRET_EXPIRES_IN }}
             AUTH_REFRESH_SECRET=${{ secrets.AUTH_REFRESH_SECRET }}
-            AUTH_REFRESH_SECRET_EXPIRES_IN=${{ vars.AUTH_REFRESH_SECRET_EXPIRES_IN }}
+            AUTH_REFRESH_SECRET_EXPIRES_IN=${{ secrets.AUTH_REFRESH_SECRET_EXPIRES_IN }}
             
             ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
             ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}
             
-            EMAIL_SMTP_SECURE=${{ vars.EMAIL_SMTP_SECURE }}
+            EMAIL_SMTP_SECURE=${{ secrets.EMAIL_SMTP_SECURE }}
             EMAIL_SMTP_USER=${{ secrets.EMAIL_SMTP_USER }}
             EMAIL_SMTP_PASS=${{ secrets.EMAIL_SMTP_PASS }}
-            EMAIL_SMTP_PORT=${{ vars.EMAIL_SMTP_PORT }}
-            EMAIL_SMTP_HOST=${{ vars.EMAIL_SMTP_HOST }}
-            CLIENT_HOST=${{ vars.CLIENT_HOST }}
+            EMAIL_SMTP_PORT=${{ secrets.EMAIL_SMTP_PORT }}
+            EMAIL_SMTP_HOST=${{ secrets.EMAIL_SMTP_HOST }}
+            CLIENT_HOST=${{ secrets.CLIENT_HOST }}
             
             ZEPTOMAIL_API_TOKEN=${{ secrets.ZEPTOMAIL_API_TOKEN }}
             ZEPTOMAIL_API_HOST=${{ secrets.ZEPTOMAIL_API_HOST }}
@@ -211,9 +211,9 @@ jobs:
             
             R2_ACCESS_KEY=${{ secrets.R2_ACCESS_KEY }}
             R2_SECRET_KEY=${{ secrets.R2_SECRET_KEY }}
-            R2_BUCKET=${{ vars.R2_BUCKET }}
-            R2_ENDPOINT=${{ vars.R2_ENDPOINT }}
-            CDN_URL=${{ vars.CDN_URL }}
+            R2_BUCKET=${{ secrets.R2_BUCKET }}
+            R2_ENDPOINT=${{ secrets.R2_ENDPOINT }}
+            CDN_URL=${{ secrets.CDN_URL }}
             
             KEY_PATH=${{ secrets.KEY_PATH }}
             ENCRYPTION_KEY=${{ secrets.ENCRYPTION_KEY }}
@@ -228,10 +228,10 @@ jobs:
             FIREBASE_PRIVATE_KEY=${{ secrets.FIREBASE_PRIVATE_KEY }}
             FIREBASE_CLIENT_EMAIL=${{ secrets.FIREBASE_CLIENT_EMAIL }}
             
-            REDIS_ENABLED=${{ vars.REDIS_ENABLED }}
-            REDIS_HOST=${{ vars.REDIS_HOST || 'redis' }}
-            REDIS_PORT=${{ vars.REDIS_PORT || 6379 }}
-            REDIS_TTL=${{ vars.REDIS_TTL }}
+            REDIS_ENABLED=${{ secrets.REDIS_ENABLED }}
+            REDIS_HOST=${{ secrets.REDIS_HOST || 'redis' }}
+            REDIS_PORT=${{ secrets.REDIS_PORT || 6379 }}
+            REDIS_TTL=${{ secrets.REDIS_TTL }}
             
             REQUEST_TIMEOUT=30000
             MAX_FILE_UPLOAD=50mb
@@ -391,11 +391,11 @@ jobs:
     if: github.ref == 'refs/heads/main'
     environment: production
     env:
-      DEPLOY_HOST: ${{ vars.DEPLOY_HOST || secrets.HOST }}
-      DEPLOY_USER: ${{ vars.DEPLOY_USER || secrets.USERNAME }}
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || secrets.HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER || secrets.USERNAME }}
       DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY || secrets.SSH_PRIVATE_KEY }}
-      DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/var/www/app/bisa-backend' }}
-      DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/var/www/app/bisa-backend' }}
+      DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
 
     steps:
       - name: Deploy to production server
@@ -450,22 +450,22 @@ jobs:
             
             NODE_ENV=production
             PORT=3000
-            APP_NAME=${{ vars.APP_NAME || 'backend' }}
+            APP_NAME=${{ secrets.APP_NAME || 'backend' }}
             
             AUTH_SECRET=${{ secrets.AUTH_SECRET }}
-            AUTH_SECRET_EXPIRES_IN=${{ vars.AUTH_SECRET_EXPIRES_IN }}
+            AUTH_SECRET_EXPIRES_IN=${{ secrets.AUTH_SECRET_EXPIRES_IN }}
             AUTH_REFRESH_SECRET=${{ secrets.AUTH_REFRESH_SECRET }}
-            AUTH_REFRESH_SECRET_EXPIRES_IN=${{ vars.AUTH_REFRESH_SECRET_EXPIRES_IN }}
+            AUTH_REFRESH_SECRET_EXPIRES_IN=${{ secrets.AUTH_REFRESH_SECRET_EXPIRES_IN }}
             
             ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
             ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}
             
-            EMAIL_SMTP_SECURE=${{ vars.EMAIL_SMTP_SECURE }}
+            EMAIL_SMTP_SECURE=${{ secrets.EMAIL_SMTP_SECURE }}
             EMAIL_SMTP_USER=${{ secrets.EMAIL_SMTP_USER }}
             EMAIL_SMTP_PASS=${{ secrets.EMAIL_SMTP_PASS }}
-            EMAIL_SMTP_PORT=${{ vars.EMAIL_SMTP_PORT }}
-            EMAIL_SMTP_HOST=${{ vars.EMAIL_SMTP_HOST }}
-            CLIENT_HOST=${{ vars.CLIENT_HOST }}
+            EMAIL_SMTP_PORT=${{ secrets.EMAIL_SMTP_PORT }}
+            EMAIL_SMTP_HOST=${{ secrets.EMAIL_SMTP_HOST }}
+            CLIENT_HOST=${{ secrets.CLIENT_HOST }}
             
             ZEPTOMAIL_API_TOKEN=${{ secrets.ZEPTOMAIL_API_TOKEN }}
             ZEPTOMAIL_API_HOST=${{ secrets.ZEPTOMAIL_API_HOST }}
@@ -480,9 +480,9 @@ jobs:
             
             R2_ACCESS_KEY=${{ secrets.R2_ACCESS_KEY }}
             R2_SECRET_KEY=${{ secrets.R2_SECRET_KEY }}
-            R2_BUCKET=${{ vars.R2_BUCKET }}
-            R2_ENDPOINT=${{ vars.R2_ENDPOINT }}
-            CDN_URL=${{ vars.CDN_URL }}
+            R2_BUCKET=${{ secrets.R2_BUCKET }}
+            R2_ENDPOINT=${{ secrets.R2_ENDPOINT }}
+            CDN_URL=${{ secrets.CDN_URL }}
             
             KEY_PATH=${{ secrets.KEY_PATH }}
             ENCRYPTION_KEY=${{ secrets.ENCRYPTION_KEY }}
@@ -497,10 +497,10 @@ jobs:
             FIREBASE_PRIVATE_KEY=${{ secrets.FIREBASE_PRIVATE_KEY }}
             FIREBASE_CLIENT_EMAIL=${{ secrets.FIREBASE_CLIENT_EMAIL }}
             
-            REDIS_ENABLED=${{ vars.REDIS_ENABLED }}
-            REDIS_HOST=${{ vars.REDIS_HOST || 'redis' }}
-            REDIS_PORT=${{ vars.REDIS_PORT || 6379 }}
-            REDIS_TTL=${{ vars.REDIS_TTL }}
+            REDIS_ENABLED=${{ secrets.REDIS_ENABLED }}
+            REDIS_HOST=${{ secrets.REDIS_HOST || 'redis' }}
+            REDIS_PORT=${{ secrets.REDIS_PORT || 6379 }}
+            REDIS_TTL=${{ secrets.REDIS_TTL }}
             
             REQUEST_TIMEOUT=30000
             MAX_FILE_UPLOAD=50mb
