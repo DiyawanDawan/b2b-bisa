@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   app:
-    image: ghcr.io/bukalomboks/bisa:staging
+    image: ghcr.io/diyawandawan/b2b-bisa:latest
     pull_policy: always
     container_name: bisa-app
     ports:
@@ -46,6 +46,7 @@ services:
       - "host.docker.internal:host-gateway"
     depends_on:
       - redis
+      - mysql
     restart: unless-stopped
     networks:
       - bisa-network
@@ -78,10 +79,25 @@ services:
     restart: unless-stopped
     networks:
       - bisa-network
+  mysql:
+    image: mysql:8.0
+    container_name: bisa-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:}
+      MYSQL_USER: ${MYSQL_USER:-bisa_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - bisa-network
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
       interval: 30s
-      timeout: 10s
       retries: 3
 
 networks:
