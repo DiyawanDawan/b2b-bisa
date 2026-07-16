@@ -767,17 +767,15 @@ const notifyAdminsOfDisputePartyMessage = async (
   const title = 'Balasan Mediasi Sengketa';
   const body = `Pesanan ${linked.orderNumber}: ${preview || 'Pesan baru di chat mediasi.'}`;
 
-  let adminIds: string[] = [];
-  if (linked.dispute.mediationStartedById) {
-    adminIds = [linked.dispute.mediationStartedById];
-  } else {
-    const admins = await prisma.user.findMany({
-      where: { role: UserRole.ADMIN, status: UserStatus.ACTIVE },
-      select: { id: true },
-      take: 10,
-    });
-    adminIds = admins.map((a) => a.id);
-  }
+  const adminIds = linked.dispute.mediationStartedById
+    ? [linked.dispute.mediationStartedById]
+    : (
+        await prisma.user.findMany({
+          where: { role: UserRole.ADMIN, status: UserStatus.ACTIVE },
+          select: { id: true },
+          take: 10,
+        })
+      ).map((a) => a.id);
 
   for (const adminId of adminIds) {
     if (adminId === senderId) continue;
