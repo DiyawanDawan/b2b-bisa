@@ -179,16 +179,12 @@ export const getDisputeChatThread = async (
   params: { page: number; limit: number },
 ) => {
   const order = await loadDisputedOrderContext(orderId);
-  
-  // Untuk order dengan dispute, cek dispute dulu lalu ambil negotiationId
-  let negotiationId: string;
-  if (order.dispute?.negotiationId) {
-    negotiationId = order.dispute.negotiationId;
-  } else if (order.negotiation) {
-    negotiationId = order.negotiation.id;
-  } else {
+
+  // Ruang mediasi = Negotiation terhubung ke order (bukan field di OrderDispute).
+  if (!order.negotiation) {
     throw new AppError('Order ini tidak memiliki ruang negosiasi atau mediasi terkait', 404);
   }
+  const negotiationId = order.negotiation.id;
 
   const { page, limit } = params;
   const skip = (page - 1) * limit;
@@ -338,6 +334,11 @@ export const sendDisputeMediationMessage = async (
       },
       select: DISPUTE_CHAT_MESSAGE_SELECT,
     });
+  });
+
+  await prisma.negotiation.update({
+    where: { id: negotiationId },
+    data: { updatedAt: new Date() },
   });
 
   pusher.trigger(`private-negotiation-${negotiationId}`, 'new-message', message).catch(() => {});

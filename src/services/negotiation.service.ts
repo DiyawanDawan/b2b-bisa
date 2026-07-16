@@ -5,11 +5,14 @@ import { assertQuantityMeetsMinOrder } from '#utils/productOrderRules';
 import { assertBuyerCommerceReady } from '#utils/readiness.util';
 import {
   NegotiationStatus,
+  NotificationPriority,
+  NotificationType,
   OrderStatus,
   Prisma,
   TaxStatus,
   ProductStatus,
   UserRole,
+  UserStatus,
 } from '#prisma';
 import {
   buildTechnicalSpecifications,
@@ -18,7 +21,7 @@ import {
   purposeToRoomType,
 } from '#constants/negotiation.constants';
 import { buildDealEconomics } from '#services/order.service';
-// import { sendNotification } from '#services/notification.service'; // TODO: integrate later
+import { createNotification } from '#services/notification.service';
 
 const CHAT_MESSAGE_SELECT = {
   id: true,
@@ -700,29 +703,93 @@ export const sendChatMessage = async (
     throw new AppError(`Chat ditutup karena status negosiasi sudah ${negotiation.status}.`, 400);
   }
 
-  const message = await prisma.chatMessage.create({
-    data: {
-      negotiationId,
-      senderId,
-      content,
-      attachmentUrl,
-    },
-    include: {
-      sender: {
-        select: {
-          id: true,
-          fullName: true,
-          avatarUrl: true,
-          role: true,
+  const message = await prisma.$transaction(async (tx) => {
+    const created = await tx.chatMessage.create({
+      data: {
+        negotiationId,
+        senderId,
+        content,
+        attachmentUrl,
+      },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            fullName: true,
+            avatarUrl: true,
+            role: true,
+          },
         },
       },
-    },
+    });
+    // Agar room naik di inbox buyer/seller saat mediasi 3 pihak aktif.
+    await tx.negotiation.update({
+      where: { id: negotiationId },
+      data: { updatedAt: new Date() },
+    });
+    return created;
   });
 
   // Trigger Pusher for New Message
   pusher.trigger(`private-negotiation-${negotiationId}`, 'new-message', message);
 
+  // Saat order DISPUTED, beritahu admin mediator agar loop 3 pihak tertutup.
+  void notifyAdminsOfDisputePartyMessage(negotiationId, senderId, content).catch(() => {});
+
   return message;
+};
+
+const notifyAdminsOfDisputePartyMessage = async (
+  negotiationId: string,
+  senderId: string,
+  content: string,
+) => {
+  const linked = await prisma.order.findFirst({
+    where: {
+      negotiation: { id: negotiationId },
+      status: OrderStatus.DISPUTED,
+      dispute: { isNot: null },
+    },
+    select: {
+      id: true,
+      orderNumber: true,
+      dispute: {
+        select: {
+          mediationStartedAt: true,
+          mediationStartedById: true,
+        },
+      },
+    },
+  });
+  if (!linked?.dispute?.mediationStartedAt) return;
+
+  const preview = content.trim().slice(0, 120);
+  const title = 'Balasan Mediasi Sengketa';
+  const body = `Pesanan ${linked.orderNumber}: ${preview || 'Pesan baru di chat mediasi.'}`;
+
+  let adminIds: string[] = [];
+  if (linked.dispute.mediationStartedById) {
+    adminIds = [linked.dispute.mediationStartedById];
+  } else {
+    const admins = await prisma.user.findMany({
+      where: { role: UserRole.ADMIN, status: UserStatus.ACTIVE },
+      select: { id: true },
+      take: 10,
+    });
+    adminIds = admins.map((a) => a.id);
+  }
+
+  for (const adminId of adminIds) {
+    if (adminId === senderId) continue;
+    void createNotification({
+      userId: adminId,
+      title,
+      body,
+      type: NotificationType.DISPUTE,
+      priority: NotificationPriority.HIGH,
+      refId: linked.id,
+    }).catch(() => {});
+  }
 };
 
 /**

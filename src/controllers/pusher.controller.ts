@@ -3,13 +3,13 @@ import catchAsync from '#utils/catchAsync';
 import AppError from '#utils/appError';
 import pusher from '#config/pusher';
 import prisma from '#config/prisma';
-import { AuthRequest } from '#types/index';
+import { AuthRequest, UserRole } from '#types/index';
 
 /**
  * SEC-MOB-004: Pusher private channel authorization.
  *
  * Pola channel yang didukung:
- *   - `private-negotiation-{negotiationId}` → cek user = buyerId|sellerId.
+ *   - `private-negotiation-{negotiationId}` → buyerId|sellerId, atau ADMIN (mediasi 3 pihak).
  *   - `private-user-{userId}`               → cek user.id === userId (notifikasi pribadi).
  *
  * Untuk channel lain, default DENY agar tidak menjadi bypass.
@@ -27,6 +27,7 @@ export const authorizeChannel = catchAsync(async (req: AuthRequest, res: Respons
   }
 
   const userId = req.user!.id;
+  const userRole = req.user!.role;
 
   // Pattern: private-negotiation-{id}
   const negMatch = channelName.match(/^private-negotiation-([0-9a-fA-F-]{8,})$/);
@@ -37,7 +38,10 @@ export const authorizeChannel = catchAsync(async (req: AuthRequest, res: Respons
       select: { buyerId: true, sellerId: true },
     });
     if (!negotiation) throw new AppError('Negosiasi tidak ditemukan.', 404);
-    if (negotiation.buyerId !== userId && negotiation.sellerId !== userId) {
+    const isParty =
+      negotiation.buyerId === userId || negotiation.sellerId === userId;
+    const isAdminMediator = userRole === UserRole.ADMIN;
+    if (!isParty && !isAdminMediator) {
       throw new AppError('Bukan participant negosiasi ini.', 403);
     }
     const auth = pusher.authorizeChannel(socketId, channelName);

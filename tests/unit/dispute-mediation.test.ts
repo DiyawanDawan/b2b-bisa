@@ -81,4 +81,30 @@ describe('dispute mediation', () => {
     expect(room.id).toBe('neg-existing');
     expect(prisma.negotiation.create).not.toHaveBeenCalled();
   });
+
+  it('creates locked room so buyer/seller/admin share one mediation thread', async () => {
+    (prisma.negotiation.findFirst as jest.Mock).mockResolvedValue(null);
+    (prisma.order.findUnique as jest.Mock).mockResolvedValue({
+      id: 'order-2',
+      buyerId: 'buyer-2',
+      sellerId: 'seller-2',
+      orderNumber: 'ORD-002',
+      totalAmount: 100_000,
+      items: [{ productId: 'prod-2', quantity: 1, pricePerUnit: 100_000 }],
+    });
+    (prisma.negotiation.create as jest.Mock).mockResolvedValue({ id: 'neg-2' });
+
+    await ensureDisputeNegotiationRoom('order-2');
+
+    expect(prisma.negotiation.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'LOCKED',
+          isLocked: true,
+          buyerId: 'buyer-2',
+          sellerId: 'seller-2',
+        }),
+      }),
+    );
+  });
 });
