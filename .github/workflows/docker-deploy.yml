@@ -558,16 +558,19 @@ jobs:
             docker system df || true
             docker container prune -f || true
             docker builder prune -af || true
+            # Hapus image BISA lama (yang tidak dipakai container running) agar ada ruang untuk pull.
+            docker images "ghcr.io/diyawandawan/b2b-bisa" --format "{{.ID}} {{.Repository}}:{{.Tag}}" || true
             docker image prune -af || true
-            # Drop unused dangling containerd leftovers if tool exists
-            if command -v ctr >/dev/null 2>&1; then
-              ctr -n moby content ls 2>/dev/null | awk 'NR>1 {print $1}' | head -n 0 || true
-            fi
+            # Bersihkan log journal & apt cache di host (aman)
+            sudo journalctl --vacuum-size=100M 2>/dev/null || journalctl --vacuum-size=100M 2>/dev/null || true
+            sudo apt-get clean 2>/dev/null || true
             echo "Disk after cleanup:"
             df -h / || true
             AVAIL_KB=$(df -Pk / | awk 'NR==2 {print $4}')
-            if [ -n "$AVAIL_KB" ] && [ "$AVAIL_KB" -lt 1048576 ]; then
-              echo "WARNING: less than 1GiB free on /. Pull may still fail — free more disk on the VPS."
+            if [ -n "$AVAIL_KB" ] && [ "$AVAIL_KB" -lt 2097152 ]; then
+              echo "ERROR: less than 2GiB free on /. Free disk on the VPS before deploy."
+              echo "Hint: docker images; docker rmi <old-ids>; du -xh /var/lib/docker | sort -h | tail"
+              exit 1
             fi
 
             echo ""
@@ -1016,16 +1019,19 @@ jobs:
             docker system df || true
             docker container prune -f || true
             docker builder prune -af || true
+            # Hapus image BISA lama (yang tidak dipakai container running) agar ada ruang untuk pull.
+            docker images "ghcr.io/diyawandawan/b2b-bisa" --format "{{.ID}} {{.Repository}}:{{.Tag}}" || true
             docker image prune -af || true
-            # Drop unused dangling containerd leftovers if tool exists
-            if command -v ctr >/dev/null 2>&1; then
-              ctr -n moby content ls 2>/dev/null | awk 'NR>1 {print $1}' | head -n 0 || true
-            fi
+            # Bersihkan log journal & apt cache di host (aman)
+            sudo journalctl --vacuum-size=100M 2>/dev/null || journalctl --vacuum-size=100M 2>/dev/null || true
+            sudo apt-get clean 2>/dev/null || true
             echo "Disk after cleanup:"
             df -h / || true
             AVAIL_KB=$(df -Pk / | awk 'NR==2 {print $4}')
-            if [ -n "$AVAIL_KB" ] && [ "$AVAIL_KB" -lt 1048576 ]; then
-              echo "WARNING: less than 1GiB free on /. Pull may still fail — free more disk on the VPS."
+            if [ -n "$AVAIL_KB" ] && [ "$AVAIL_KB" -lt 2097152 ]; then
+              echo "ERROR: less than 2GiB free on /. Free disk on the VPS before deploy."
+              echo "Hint: docker images; docker rmi <old-ids>; du -xh /var/lib/docker | sort -h | tail"
+              exit 1
             fi
 
             echo ""
