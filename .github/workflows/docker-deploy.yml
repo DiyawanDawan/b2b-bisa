@@ -957,6 +957,16 @@ jobs:
             echo ""
             echo "🗄️ PHASE 3: DATABASE MIGRATIONS"
             echo "=========================================="
+
+            if ! docker compose version >/dev/null 2>&1; then
+              echo "ERROR: Docker Compose V2 required (docker-compose v1 hits ContainerConfig bug)"
+              exit 1
+            fi
+
+            # Remove stale containers left by docker-compose v1 before recreate
+            echo "Cleaning stale containers..."
+            docker rm -f bisa-mysql bisa-app backend-redis 2>/dev/null || true
+            docker ps -aq --filter "name=-mysql" | xargs -r docker rm -f 2>/dev/null || true
             
             # Start app container temporarily to run migrations
             echo "Starting app container for migrations..."
