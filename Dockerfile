@@ -27,6 +27,7 @@ RUN npm run build:docker \
   && test -f dist/src/index.js \
   && test -f dist/src/routes/pusher.js \
   && test -f dist/src/controllers/pusher.controller.js \
+  && test -f dist/data/market_seed_bundles.json \
   && node -e "const p=require('./package.json'); if(!String(p.imports['#routes/*']||'').includes('/dist/')) { console.error('imports not rewritten'); process.exit(1); }"
 
 # Expose port
