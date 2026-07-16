@@ -72,6 +72,9 @@ import organicRoutes from '#routes/organic';
 import cartRoutes from '#routes/cart';
 import wishlistRoutes from '#routes/wishlist';
 import followsRoutes from '#routes/follows';
+import partnershipsRoutes from '#routes/partnerships';
+import productHarvestRoutes from '#routes/product-harvest';
+import bookingsRoutes from '#routes/bookings';
 import policiesRoutes from '#routes/policies';
 import faqsRoutes from '#routes/faqs';
 import storageRoutes from '#routes/storage';
@@ -218,6 +221,9 @@ app.use('/api/v1/organic', organicRoutes);
 app.use('/api/v1/cart', cartRoutes);
 app.use('/api/v1/wishlist', wishlistRoutes);
 app.use('/api/v1/follows', followsRoutes);
+app.use('/api/v1/partnerships', partnershipsRoutes);
+app.use('/api/v1/harvest-lots', productHarvestRoutes);
+app.use('/api/v1/bookings', financialLimiter, bookingsRoutes);
 app.use('/api/v1/policies', publicApiLimiter, policiesRoutes);
 app.use('/api/v1/faqs', publicApiLimiter, faqsRoutes);
 app.use('/api/v1/storage', publicApiLimiter, storageRoutes);
@@ -322,6 +328,9 @@ if (process.env.NODE_ENV !== 'test') {
     });
     import('#crons/mediaUploadExpiry').then(({ startMediaUploadExpiryCron }) => {
       startMediaUploadExpiryCron();
+    });
+    import('#crons/bookingExpiry').then(({ startBookingExpiryCron }) => {
+      startBookingExpiryCron();
     });
   });
 }

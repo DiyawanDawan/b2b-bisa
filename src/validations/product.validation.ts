@@ -124,6 +124,12 @@ export const productFilterSchema = z.object({
   // Organic Produce filters
   productMode: z.nativeEnum(ProductMode).optional(),
   cropType: z.string().optional(),
+  availabilityType: z.enum(['READY', 'PRE_HARVEST', 'MIXED']).optional(),
+  harvestAfter: z.coerce.date().optional(),
+  harvestBefore: z.coerce.date().optional(),
+  canBook: z.preprocess((val) => val === 'true' || val === true, z.boolean()).optional(),
+  availableNow: z.preprocess((val) => val === 'true' || val === true, z.boolean()).optional(),
+  preHarvestBookable: z.preprocess((val) => val === 'true' || val === true, z.boolean()).optional(),
 
   // Advanced Industrial Filters
   minRating: z.coerce.number().min(0).max(5).optional(),

@@ -3825,7 +3825,16 @@ export const getPublicContractVerification = async (orderNumber: string) => {
       },
       items: {
         select: {
-          product: { select: { name: true, biomassaType: true } },
+          product: {
+            select: {
+              name: true,
+              biomassaType: true,
+              thumbnailUrl: true,
+              isCertified: true,
+              isIotMonitored: true,
+              isEscrowProtected: true,
+            },
+          },
         },
       },
     },
@@ -3834,8 +3843,21 @@ export const getPublicContractVerification = async (orderNumber: string) => {
   if (!order)
     throw new AppError('Kontrak B2B dengan nomor tersebut tidak valid atau tidak ditemukan.', 404);
 
+  const resolvedItems = order.items.map((item) => {
+    const product = item.product
+      ? {
+          ...item.product,
+          thumbnailUrl:
+            storageService.getPublicUrl(item.product.thumbnailUrl ?? null) ?? item.product.thumbnailUrl ?? null,
+        }
+      : item.product;
+
+    return { ...item, product };
+  });
+
   return {
     ...order,
+    items: resolvedItems,
     verificationStatus: order.isDigitalSigned ? 'SIGNED_AND_VERIFIED' : 'ISSUED_PENDING_SIGNATURE',
     timestamp: new Date(),
   };

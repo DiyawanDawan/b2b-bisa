@@ -116,6 +116,32 @@ enum NotificationType {
   SYSTEM_ANNOUNCEMENT
   DISPUTE
   RFQ
+  PARTNERSHIP
+  BOOKING
+}
+
+enum BookingStatus {
+  PENDING_PAYMENT
+  CONFIRMED
+  EXPIRED
+  CANCELLED
+  FULFILLED
+}
+
+enum PartnershipStatus {
+  PENDING
+  AWAITING_SIGNATURE
+  ACTIVE
+  REJECTED
+  TERMINATED
+  EXPIRED
+  RENEWAL_PENDING
+}
+
+enum PartnershipTier {
+  MAIN_PARTNER
+  PREFERRED
+  STANDARD
 }
 
 enum ReferralRewardStatus {
@@ -392,6 +418,10 @@ model User {
   supplierApiKeys   SupplierApiKey[]
   liveSessions      LiveSession[]
   liveSessionComments LiveSessionComment[]
+  buyerPartnerships BuyerSupplierPartnership[] @relation("BuyerPartnerships")
+  supplierPartnerships BuyerSupplierPartnership[] @relation("SupplierPartnerships")
+  buyerBookings     Booking[] @relation("BuyerBookings")
+  supplierBookings  Booking[] @relation("SupplierBookings")
 
   @@index([role])
   @@index([referralCode])
@@ -537,6 +567,21 @@ enum ProductStatus {
   DELETED
 }
 
+enum HarvestLotStatus {
+  SCHEDULED
+  HARVESTING
+  HARVESTED
+  STOCKED
+  CANCELLED
+  EXPIRED
+}
+
+enum ProductAvailabilityType {
+  READY
+  PRE_HARVEST
+  MIXED
+}
+
 enum UnitStatus {
   KG
   TON
@@ -553,6 +598,7 @@ model Product {
   pricePerUnit  Decimal      @db.Decimal(15, 2) @map("price_per_unit")
   originalPrice Decimal?     @db.Decimal(15, 2) @map("original_price") // Harga sebelum diskon (nullable)
   stock         Decimal      @db.Decimal(15, 2) @map("stock") // Changed from Int to support decimal weights (e.g. 1.5 Ton)
+  reservedStock Decimal      @db.Decimal(15, 2) @default(0) @map("reserved_stock")
   unit          UnitStatus                   @map("unit") // Unit of stock (KG/TON)
   minOrder      Decimal      @db.Decimal(15, 2) @default(100) @map("min_order") // Changed from Int
   allowsSample  Boolean      @default(true) @map("allows_sample")
@@ -564,6 +610,9 @@ model Product {
   fertilizerType String?     @map("fertilizer_type")
   isChemicalFree Boolean     @default(false) @map("is_chemical_free")
   cropType       String?     @map("crop_type")
+  availabilityType ProductAvailabilityType @default(READY) @map("availability_type")
+  nextHarvestDate DateTime?  @map("next_harvest_date")
+  nextHarvestQtyTon Decimal? @db.Decimal(15, 2) @map("next_harvest_qty_ton")
 
   province      String?                      @map("province") // Location for GIS matching
   regency       String?                      @map("regency")
@@ -601,6 +650,8 @@ model Product {
   productLikes  ProductLike[]
   specs         ProductSpec[]
   questions     ProductQuestion[]
+  harvestLots   ProductHarvestLot[]
+  bookings      Booking[]
 
   @@index([userId])
   @@index([categoryId])
@@ -612,8 +663,69 @@ model Product {
   @@index([name])
   @@index([productMode])
   @@index([cropType])
+  @@index([availabilityType])
+  @@index([nextHarvestDate])
   @@index([isPromoted, promotedUntil])
   @@map("products")
+}
+
+model ProductHarvestLot {
+  id                  String           @id @default(uuid())
+  productId           String           @map("product_id")
+  seasonLabel         String?          @map("season_label")
+  expectedHarvestDate DateTime         @map("expected_harvest_date")
+  expectedQuantityTon Decimal          @db.Decimal(15, 2) @map("expected_quantity_ton")
+  reservedQuantityTon Decimal          @db.Decimal(15, 2) @default(0) @map("reserved_quantity_ton")
+  actualHarvestDate   DateTime?        @map("actual_harvest_date")
+  actualQuantityTon   Decimal?         @db.Decimal(15, 2) @map("actual_quantity_ton")
+  status              HarvestLotStatus @default(SCHEDULED) @map("status")
+  notes               String?          @db.Text
+  stockedAt           DateTime?        @map("stocked_at")
+  createdAt           DateTime         @default(now()) @map("created_at")
+  updatedAt           DateTime         @updatedAt @map("updated_at")
+
+  product  Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  bookings Booking[]
+
+  @@index([productId, expectedHarvestDate])
+  @@index([status, expectedHarvestDate])
+  @@map("product_harvest_lots")
+}
+
+model Booking {
+  id                   String        @id @default(uuid())
+  bookingNumber        String        @unique @map("booking_number")
+  buyerId              String        @map("buyer_id")
+  supplierId           String        @map("supplier_id")
+  productId            String        @map("product_id")
+  harvestLotId         String?       @map("harvest_lot_id")
+  productMode          ProductMode   @map("product_mode")
+  quantity             Decimal       @db.Decimal(15, 2)
+  unit                 UnitStatus
+  priceSnapshot        Decimal       @db.Decimal(15, 2) @map("price_snapshot")
+  subtotalSnapshot     Decimal       @db.Decimal(15, 2) @map("subtotal_snapshot")
+  status               BookingStatus @default(PENDING_PAYMENT)
+  expiresAt            DateTime      @map("expires_at")
+  expectedDeliveryDate DateTime?     @map("expected_delivery_date")
+  notes                String?       @db.Text
+  orderId              String?       @unique @map("order_id")
+  cancelledById        String?       @map("cancelled_by_id")
+  cancelReason         String?       @db.Text @map("cancel_reason")
+  confirmedAt          DateTime?     @map("confirmed_at")
+  createdAt            DateTime      @default(now()) @map("created_at")
+  updatedAt            DateTime      @updatedAt @map("updated_at")
+
+  buyer      User               @relation("BuyerBookings", fields: [buyerId], references: [id], onDelete: Restrict)
+  supplier   User               @relation("SupplierBookings", fields: [supplierId], references: [id], onDelete: Restrict)
+  product    Product            @relation(fields: [productId], references: [id], onDelete: Restrict)
+  harvestLot ProductHarvestLot? @relation(fields: [harvestLotId], references: [id], onDelete: SetNull)
+  order      Order?             @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([buyerId, status])
+  @@index([supplierId, status])
+  @@index([productId])
+  @@index([status, expiresAt])
+  @@map("bookings")
 }
 
 model ProductTechnicalSpec {
@@ -750,6 +862,7 @@ model Order {
   dispute       OrderDispute?
   voucherRedemption VoucherRedemption?
   referralReward    ReferralReward?
+  booking           Booking?
 
   @@index([buyerId])
   @@index([sellerId])
@@ -2032,6 +2145,61 @@ model UserFollow {
   @@index([followerId])
   @@index([followingId])
   @@map("user_follows")
+}
+
+/// Kerjasama berlanjut buyer–supplier (Mitra Utama) dengan surat kontrak & e-sign.
+model BuyerSupplierPartnership {
+  id             String             @id @default(uuid())
+  contractNumber String             @unique @map("contract_number")
+  buyerId        String             @map("buyer_id")
+  supplierId     String             @map("supplier_id")
+  tier           PartnershipTier    @default(MAIN_PARTNER) @map("tier")
+  status         PartnershipStatus  @default(PENDING) @map("status")
+
+  title                 String
+  description           String?  @db.Text
+  productCategory       String?  @map("product_category")
+  estimatedMonthlyQty   Decimal? @db.Decimal(15, 2) @map("estimated_monthly_qty")
+  priceAgreement        String?  @db.Text @map("price_agreement")
+  deliveryTerms         String?  @db.Text @map("delivery_terms")
+  paymentTerms          String?  @db.Text @map("payment_terms")
+  specialTerms          String?  @db.Text @map("special_terms")
+
+  startDate DateTime  @map("start_date")
+  endDate   DateTime  @map("end_date")
+
+  buyerSignedAt  DateTime? @map("buyer_signed_at")
+  sellerSignedAt DateTime? @map("seller_signed_at")
+  buyerSignHash  String?   @map("buyer_sign_hash")
+  sellerSignHash String?   @map("seller_sign_hash")
+  isFullySigned  Boolean   @default(false) @map("is_fully_signed")
+
+  /// Perpanjangan kontrak
+  renewalCount           Int       @default(0) @map("renewal_count")
+  renewalProposedEndDate DateTime? @map("renewal_proposed_end_date")
+  renewalRequestedBy     String?   @map("renewal_requested_by")
+  renewalRequestedAt     DateTime? @map("renewal_requested_at")
+  renewalNote            String?   @db.Text @map("renewal_note")
+  renewedFromId          String?   @map("renewed_from_id")
+
+  originatingNegotiationId String? @map("originating_negotiation_id")
+  originatingOrderId       String? @map("originating_order_id")
+  initiatedBy              String  @map("initiated_by")
+  rejectionReason          String? @db.Text @map("rejection_reason")
+  terminatedAt             DateTime? @map("terminated_at")
+  terminatedBy             String?   @map("terminated_by")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  buyer    User @relation("BuyerPartnerships", fields: [buyerId], references: [id], onDelete: Restrict)
+  supplier User @relation("SupplierPartnerships", fields: [supplierId], references: [id], onDelete: Restrict)
+
+  @@index([buyerId])
+  @@index([supplierId])
+  @@index([status])
+  @@index([buyerId, supplierId])
+  @@map("buyer_supplier_partnerships")
 }
 
 model MediaUploadSession {

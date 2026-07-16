@@ -5,7 +5,12 @@ import AppError from '#utils/appError';
 import { successResponse, createdResponse, paginatedResponse } from '#utils/response.util';
 import * as productService from '#services/product.service';
 import * as productPromotionService from '#services/product-promotion.service';
-import { ProductStatus, BiomassaType, BiocharGrade, ProductMode } from '#prisma';
+import {
+  ProductStatus,
+  BiomassaType,
+  BiocharGrade,
+  ProductMode,
+} from '#prisma';
 import * as storageService from '#services/storage.service';
 import * as mediaUploadService from '#services/mediaUpload.service';
 import { attachProductMediaUrls } from '#utils/productMedia.util';
@@ -29,7 +34,13 @@ interface ProductQuery {
   userId?: string;
   productMode?: ProductMode;
   cropType?: string;
+  availabilityType?: string;
+  harvestAfter?: string;
+  harvestBefore?: string;
   isChemicalFree?: string | boolean;
+  canBook?: string | boolean;
+  availableNow?: string | boolean;
+  preHarvestBookable?: string | boolean;
 }
 
 type ImageOrderItem = {
@@ -280,7 +291,14 @@ export const listProducts = catchAsync(async (req: Request, res: Response) => {
     minStock: query.minStock ? parseFloat(query.minStock) : undefined,
     productMode: query.productMode,
     cropType: query.cropType,
+    availabilityType: query.availabilityType,
+    harvestAfter: query.harvestAfter ? new Date(query.harvestAfter) : undefined,
+    harvestBefore: query.harvestBefore ? new Date(query.harvestBefore) : undefined,
     isChemicalFree: isChemicalFreeVal,
+    canBook: query.canBook === 'true' || query.canBook === true,
+    availableNow: query.availableNow === 'true' || query.availableNow === true,
+    preHarvestBookable:
+      query.preHarvestBookable === 'true' || query.preHarvestBookable === true,
     sortBy: query.sortBy,
     sortOrder: query.sortOrder,
     page,
@@ -322,7 +340,14 @@ export const getMyProducts = catchAsync(async (req: AuthRequest, res: Response) 
     regency: query.regency,
     productMode: query.productMode,
     cropType: query.cropType,
+    availabilityType: query.availabilityType,
+    harvestAfter: query.harvestAfter ? new Date(query.harvestAfter) : undefined,
+    harvestBefore: query.harvestBefore ? new Date(query.harvestBefore) : undefined,
     isChemicalFree: isChemicalFreeVal,
+    canBook: query.canBook === 'true' || query.canBook === true,
+    availableNow: query.availableNow === 'true' || query.availableNow === true,
+    preHarvestBookable:
+      query.preHarvestBookable === 'true' || query.preHarvestBookable === true,
     sortBy: query.sortBy,
     sortOrder: query.sortOrder,
     page,

@@ -818,13 +818,24 @@ export const listAllProducts = async (params: {
       include: {
         user: { select: { fullName: true, email: true } },
         category: { select: { name: true } },
+        // For fallback thumbnail resolution (and to provide richer data if needed later).
+        images: { select: { url: true } },
       },
     }),
     prisma.product.count({ where }),
   ]);
 
+  const mappedProducts = products.map((p) => {
+    const mapped = attachProductMediaUrls({ ...p });
+    return {
+      ...p,
+      // Ensure frontend can render directly (public URL instead of stored path).
+      thumbnailUrl: mapped.thumbnailUrl ?? null,
+    };
+  });
+
   return {
-    products,
+    products: mappedProducts,
     pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
   };
 };
@@ -985,7 +996,10 @@ export const resolveDispute = async (
   note: string,
   adminId: string,
 ) => {
-  let refundTransaction: Awaited<ReturnType<typeof executeDisputeRefundInTx>> | null = null;
+  // NOTE: Type inference di jalur refund kadang menyimpulkan `never` (problem narrowing/conditional return type).
+  // Kita hanya butuh payload untuk Xendit refund; cast tipe di sini agar TS tidak blok build.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let refundTransaction: any = null;
 
   const result = await prisma.$transaction(
     async (tx) => {
@@ -1105,12 +1119,15 @@ export const resolveDispute = async (
   );
 
   if (refundTransaction) {
+    // TS kadang menyimpulkan tipe `never` di jalur after-narrowing,
+    // padahal runtime value punya shape yang dibutuhkan Xendit refund.
+    const rt = refundTransaction as any;
     await attemptXenditRefundForTransaction(
       {
-        paymentRequestId: refundTransaction.paymentRequestId,
-        xenditInvoiceId: refundTransaction.xenditInvoiceId,
-        amount: refundTransaction.amount,
-        paymentStatus: refundTransaction.paymentStatus ?? PaymentStatus.PENDING,
+        paymentRequestId: rt.paymentRequestId,
+        xenditInvoiceId: rt.xenditInvoiceId,
+        amount: rt.amount,
+        paymentStatus: rt.paymentStatus ?? PaymentStatus.PENDING,
       },
       'DISPUTE_REFUND',
     );

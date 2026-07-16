@@ -369,6 +369,7 @@ export const createProduct = async (
       pricePerUnit: true,
       originalPrice: true,
       stock: true,
+        reservedStock: true,
       minOrder: true,
       unit: true,
       status: true,
@@ -376,7 +377,24 @@ export const createProduct = async (
       fertilizerType: true,
       isChemicalFree: true,
       cropType: true,
+      availabilityType: true,
+      nextHarvestDate: true,
+      nextHarvestQtyTon: true,
       specs: productSpecsSelect,
+      harvestLots: {
+        orderBy: { expectedHarvestDate: 'asc' },
+        select: {
+          id: true,
+          seasonLabel: true,
+          expectedHarvestDate: true,
+          expectedQuantityTon: true,
+          actualHarvestDate: true,
+          actualQuantityTon: true,
+          status: true,
+          notes: true,
+          stockedAt: true,
+        },
+      },
       thumbnailUrl: true,
       averageRating: true,
       totalReviews: true,
@@ -435,7 +453,13 @@ export const listProducts = async (filters: {
   limit?: number;
   productMode?: ProductMode;
   cropType?: string;
+  availabilityType?: string;
+  harvestAfter?: Date;
+  harvestBefore?: Date;
   isChemicalFree?: boolean;
+  canBook?: boolean;
+  availableNow?: boolean;
+  preHarvestBookable?: boolean;
 }) => {
   const {
     search,
@@ -457,10 +481,16 @@ export const listProducts = async (filters: {
     limit = 10,
     productMode,
     cropType,
+    availabilityType,
+    harvestAfter,
+    harvestBefore,
     isChemicalFree,
+    canBook,
+    availableNow,
+    preHarvestBookable,
   } = filters;
 
-  const where: Prisma.ProductWhereInput = {
+  const where: any = {
     ...(userId && { userId }),
     ...(categoryId && { categoryId }),
     status: status || (userId ? { not: ProductStatus.DELETED } : ProductStatus.ACTIVE),
@@ -483,6 +513,15 @@ export const listProducts = async (filters: {
     // Organic Produce Mode filters
     ...(productMode && { productMode }),
     ...(cropType && { cropType }),
+    ...(availabilityType && { availabilityType }),
+    ...(harvestAfter || harvestBefore
+      ? {
+          nextHarvestDate: {
+            ...(harvestAfter ? { gte: harvestAfter } : {}),
+            ...(harvestBefore ? { lte: harvestBefore } : {}),
+          },
+        }
+      : {}),
     ...(isChemicalFree !== undefined && { isChemicalFree }),
     // Advanced Technical Filters
     ...(minCarbonPurity !== undefined || maxMoistureContent !== undefined
@@ -496,6 +535,37 @@ export const listProducts = async (filters: {
         }
       : {}),
   };
+
+  const bookingAndFilters: any[] = [];
+  if (availableNow) {
+    bookingAndFilters.push({
+      OR: [
+        { availabilityType: 'READY' },
+        { availabilityType: 'MIXED' },
+      ],
+    });
+  }
+  if (preHarvestBookable) {
+    bookingAndFilters.push({
+      OR: [
+        { availabilityType: 'PRE_HARVEST' },
+        { availabilityType: 'MIXED' },
+      ],
+    });
+  }
+  if (canBook) {
+    bookingAndFilters.push({
+      OR: [
+        { stock: { gt: new Prisma.Decimal(0) } },
+        { availabilityType: 'PRE_HARVEST' },
+        { availabilityType: 'MIXED' },
+      ],
+    });
+  }
+  if (bookingAndFilters.length > 0) {
+    const existingAnd = Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : [];
+    where.AND = [...existingAnd, ...bookingAndFilters];
+  }
 
   await expireStalePromotions();
 
@@ -522,6 +592,7 @@ export const listProducts = async (filters: {
         pricePerUnit: true,
         originalPrice: true,
         stock: true,
+        reservedStock: true,
         minOrder: true,
         unit: true,
         status: true,
@@ -529,6 +600,9 @@ export const listProducts = async (filters: {
         fertilizerType: true,
         isChemicalFree: true,
         cropType: true,
+        availabilityType: true,
+        nextHarvestDate: true,
+        nextHarvestQtyTon: true,
         specs: productSpecsSelect,
         isCertified: true,
         isIotMonitored: true,
@@ -570,14 +644,25 @@ export const listProducts = async (filters: {
   ]);
   // averageRating & totalReviews are kept in-sync by the review service cache writer.
   // No need to re-compute from a join — just map the user verification flags.
-  const mappedProducts = products.map((p) => ({
-    ...p,
-    user: {
-      ...p.user,
-      isVerified: p.user?.verification?.isVerified || false,
-      verificationStatus: p.user?.verification?.verificationStatus || 'PENDING',
-    },
-  }));
+  const mappedProducts = products.map((p) => {
+    const stock = Number(p.stock);
+    const reserved = Number((p as { reservedStock?: Prisma.Decimal }).reservedStock ?? 0);
+    return {
+      ...p,
+      reservedStock: reserved,
+      availableStock: Math.max(0, stock - reserved),
+      canBook:
+        p.status === ProductStatus.ACTIVE &&
+        (stock - reserved > 0 ||
+          p.availabilityType === 'PRE_HARVEST' ||
+          p.availabilityType === 'MIXED'),
+      user: {
+        ...p.user,
+        isVerified: p.user?.verification?.isVerified || false,
+        verificationStatus: p.user?.verification?.verificationStatus || 'PENDING',
+      },
+    };
+  });
 
   const enriched = await enrichProductsWithActiveIot(mappedProducts);
   return { total, page, limit, products: enriched };
@@ -597,6 +682,7 @@ export const getProductById = async (id: string, requestUserId?: string) => {
       pricePerUnit: true,
       originalPrice: true,
       stock: true,
+      reservedStock: true,
       minOrder: true,
       unit: true,
       status: true,
@@ -604,6 +690,9 @@ export const getProductById = async (id: string, requestUserId?: string) => {
       fertilizerType: true,
       isChemicalFree: true,
       cropType: true,
+      availabilityType: true,
+      nextHarvestDate: true,
+      nextHarvestQtyTon: true,
       specs: productSpecsSelect,
       isCertified: true,
       isIotMonitored: true,
@@ -666,8 +755,13 @@ export const getProductById = async (id: string, requestUserId?: string) => {
   }
 
   // averageRating & totalReviews are kept in-sync by the review service cache writer.
+  const stock = Number(product.stock);
+  const reserved = Number((product as { reservedStock?: Prisma.Decimal }).reservedStock ?? 0);
   const base = {
     ...product,
+    reservedStock: reserved,
+    availableStock: Math.max(0, stock - reserved),
+    canBook: product.status === ProductStatus.ACTIVE && stock - reserved > 0,
     user: {
       ...product.user,
       isVerified: product.user?.verification?.isVerified || false,
@@ -842,6 +936,9 @@ export const duplicateProduct = async (id: string, userId: string) => {
       fertilizerType: true,
       isChemicalFree: true,
       cropType: true,
+      availabilityType: true,
+      nextHarvestDate: true,
+      nextHarvestQtyTon: true,
       specs: productSpecsSelect,
       isCertified: true,
       isIotMonitored: true,
@@ -1116,6 +1213,7 @@ export const updateProduct = async (
         pricePerUnit: true,
         originalPrice: true,
         stock: true,
+        reservedStock: true,
         minOrder: true,
         unit: true,
         status: true,
@@ -1123,6 +1221,9 @@ export const updateProduct = async (
         fertilizerType: true,
         isChemicalFree: true,
         cropType: true,
+        availabilityType: true,
+        nextHarvestDate: true,
+        nextHarvestQtyTon: true,
         specs: productSpecsSelect,
         thumbnailUrl: true,
         averageRating: true,
