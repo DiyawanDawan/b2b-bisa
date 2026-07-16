@@ -1,6 +1,6 @@
 import { PaymentMethod } from '#prisma';
 import AppError from '#utils/appError';
-import type { PaymentMethodType } from 'xendit-node/payment_request/models/index.js';
+import type { PaymentMethodType } from '#xendit/payment_request/models';
 
 const paymentMethodMap: Record<PaymentMethod, PaymentMethodType> = {
   [PaymentMethod.BANK_TRANSFER]: 'VIRTUAL_ACCOUNT',

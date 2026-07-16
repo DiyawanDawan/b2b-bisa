@@ -15,16 +15,13 @@ import {
   type EWalletChannelProperties,
   type OverTheCounterChannelCode,
   type OverTheCounterChannelProperties,
-} from 'xendit-node/payment_request/models/index.js';
+} from '#xendit/payment_request/models';
 import {
   CreateRefundReasonEnum as RefundReason,
   type Refund,
   type CreateRefundReasonEnum,
-} from 'xendit-node/refund/models/index.js';
-import type {
-  CreatePayoutRequest,
-  GetPayouts200ResponseDataInner,
-} from 'xendit-node/payout/models/index.js';
+} from '#xendit/refund/models';
+import type { CreatePayoutRequest, GetPayouts200ResponseDataInner } from '#xendit/payout/models';
 import { PaymentMethod } from '#prisma';
 import { mapMethodToXenditType } from '#utils/paymentMethod.util';
 import { roundIdrAmount } from '#utils/currency.util';

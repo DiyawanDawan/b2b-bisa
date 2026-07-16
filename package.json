@@ -50,7 +50,10 @@
     "#validations/*": "./src/validations/*.ts",
     "#constants/*": "./src/constants/*.ts",
     "#crons/*": "./src/crons/*.ts",
-    "#worker/*": "./src/workers/*.ts"
+    "#worker/*": "./src/workers/*.ts",
+    "#xendit/payment_request/models": "./src/xendit/payment_request/models.ts",
+    "#xendit/refund/models": "./src/xendit/refund/models.ts",
+    "#xendit/payout/models": "./src/xendit/payout/models.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1015.0",

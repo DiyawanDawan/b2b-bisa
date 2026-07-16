@@ -21,7 +21,10 @@
       "#crons/*": ["./src/crons/*"],
       "#worker/*": ["./src/workers/*"],
       "#validations/*": ["./src/validations/*"],
-      "#constants/*": ["./src/constants/*"]
+      "#constants/*": ["./src/constants/*"],
+      "#xendit/payment_request/models": ["./src/xendit/payment_request/models.ts"],
+      "#xendit/refund/models": ["./src/xendit/refund/models.ts"],
+      "#xendit/payout/models": ["./src/xendit/payout/models.ts"]
     }
   },
   "include": ["**/*.ts"],
