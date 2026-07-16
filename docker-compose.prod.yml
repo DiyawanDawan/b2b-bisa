@@ -6,7 +6,7 @@ services:
     pull_policy: always
     container_name: bisa-app
     ports:
-      - "${APP_PORT:-3000}:3000"
+      - '${APP_PORT:-3000}:3000'
     env_file:
       - .env
     environment:
@@ -48,7 +48,7 @@ services:
       PUSHER_SECRET: ${PUSHER_SECRET}
       PUSHER_CLUSTER: ${PUSHER_CLUSTER}
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - 'host.docker.internal:host-gateway'
     depends_on:
       - redis
       - mysql
@@ -56,7 +56,7 @@ services:
     networks:
       - bisa-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://127.0.0.1:3000/health"]
+      test: ['CMD', 'curl', '-f', 'http://127.0.0.1:3000/health']
       interval: 15s
       timeout: 10s
       retries: 5
@@ -69,16 +69,16 @@ services:
       restart_policy:
         condition: on-failure
     logging:
-      driver: "json-file"
+      driver: 'json-file'
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: '10m'
+        max-file: '3'
 
   redis:
     image: redis:7-alpine
     container_name: backend-redis
     ports:
-      - "6379:6379"
+      - '6379:6379'
     volumes:
       - redis_data:/data
     restart: unless-stopped
@@ -93,14 +93,14 @@ services:
       MYSQL_USER: ${DATABASE_USER}
       DATABASE_PASSWORD: ${DATABASE_PASSWORD}
     ports:
-      - "3306:3306"
+      - '3306:3306'
     volumes:
       - mysql_data:/var/lib/mysql
     networks:
       - bisa-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost']
       timeout: 20s
       interval: 30s
       retries: 3

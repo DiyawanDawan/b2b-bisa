@@ -38,8 +38,7 @@ export const authorizeChannel = catchAsync(async (req: AuthRequest, res: Respons
       select: { buyerId: true, sellerId: true },
     });
     if (!negotiation) throw new AppError('Negosiasi tidak ditemukan.', 404);
-    const isParty =
-      negotiation.buyerId === userId || negotiation.sellerId === userId;
+    const isParty = negotiation.buyerId === userId || negotiation.sellerId === userId;
     const isAdminMediator = userRole === UserRole.ADMIN;
     if (!isParty && !isAdminMediator) {
       throw new AppError('Bukan participant negosiasi ini.', 403);

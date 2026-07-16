@@ -25,10 +25,7 @@ const fetchCategories = async ({
       ...(productMode && { productMode }),
       ...(biomassaType && { biomassaType }),
       ...(q && {
-        OR: [
-          { name: { contains: q } },
-          { description: { contains: q } },
-        ],
+        OR: [{ name: { contains: q } }, { description: { contains: q } }],
       }),
     },
     orderBy: { name: 'asc' },

@@ -1041,10 +1041,7 @@ export const listAdminIotDevices = async (
 
   const where = q
     ? {
-        OR: [
-          { name: { contains: q } },
-          { deviceId: { contains: q } },
-        ],
+        OR: [{ name: { contains: q } }, { deviceId: { contains: q } }],
       }
     : {};
 
@@ -1066,20 +1063,20 @@ export const listAdminIotDevices = async (
         thresholdMin: true,
         thresholdMax: true,
         user: { select: { id: true, fullName: true, email: true } },
-        readings: { 
+        readings: {
           select: {
             temperature: true,
             humidity: true,
             co2Level: true,
             recordedAt: true,
           },
-          orderBy: { recordedAt: 'desc' }, 
-          take: 1 
+          orderBy: { recordedAt: 'desc' },
+          take: 1,
         },
-        alerts: { 
+        alerts: {
           select: { id: true },
-          where: { isRead: false }, 
-          take: 1 
+          where: { isRead: false },
+          take: 1,
         },
       },
     }),

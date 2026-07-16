@@ -3,12 +3,12 @@ version: '3.8'
 services:
   # Optional: App container for isolated development (usually run locally via npm run dev instead)
   app:
-    build: 
+    build:
       context: .
       dockerfile: Dockerfile.dev
     container_name: bisa-app-dev
     ports:
-      - "5001:5001"
+      - '5001:5001'
     env_file:
       - .env
     environment:
@@ -31,13 +31,13 @@ services:
     image: redis:7-alpine
     container_name: bisa-redis-dev
     ports:
-      - "6379:6379"
+      - '6379:6379'
     volumes:
       - redis_data_dev:/data
     networks:
       - bisa-dev-network
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 30s
       timeout: 10s
       retries: 3
@@ -46,7 +46,7 @@ services:
     image: mysql:8.0
     container_name: bisa-mysql-dev
     ports:
-      - "3306:3306"
+      - '3306:3306'
     environment:
       MYSQL_ROOT_PASSWORD: ${DATABASE_PASSWORD}
       MYSQL_DATABASE: ${DATABASE_NAME}

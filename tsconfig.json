@@ -9,7 +9,7 @@
     "outDir": "./dist",
     "rootDir": "./",
     "paths": {
-      "#prisma": ["./generated/prisma/client.js"],
+      "#prisma": ["./generated/prisma/client.ts"],
       "#db": ["./src/config/prisma.ts"],
       "#types/*": ["./src/types/*"],
       "#controllers/*": ["./src/controllers/*"],
