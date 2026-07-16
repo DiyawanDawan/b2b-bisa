@@ -21,8 +21,10 @@ COPY . .
 # prisma.config.ts, so provide a harmless build-time placeholder for this command.
 RUN DATABASE_URL=mysql://user:password@localhost:3306/bisa npx prisma generate
 
-# Build TypeScript code
-RUN npm run build
+# Build TypeScript app + compile Prisma generated client.ts → client.js
+RUN npm run build \
+  && test -f generated/prisma/client.js \
+  && test -f dist/src/index.js
 
 # Expose port
 EXPOSE 3000
