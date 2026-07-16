@@ -1,4 +1,4 @@
-import AppError from './appError';
+import AppError from '#utils/appError';
 import { isXenditWebhookDevMode } from '#utils/xenditWebhookDev.util';
 
 /** 403 / REQUEST_FORBIDDEN — biasanya API key belum punya scope Payment Requests. */

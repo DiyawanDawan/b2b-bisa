@@ -21,10 +21,13 @@ COPY . .
 # prisma.config.ts, so provide a harmless build-time placeholder for this command.
 RUN DATABASE_URL=mysql://user:password@localhost:3306/bisa npx prisma generate
 
-# Build TypeScript app + compile Prisma generated client.ts → client.js
-RUN npm run build \
+# Build TypeScript app + compile Prisma client + rewrite imports for Node ESM
+RUN npm run build:docker \
   && test -f generated/prisma/client.js \
-  && test -f dist/src/index.js
+  && test -f dist/src/index.js \
+  && test -f dist/src/routes/pusher.js \
+  && test -f dist/src/controllers/pusher.controller.js \
+  && node -e "const p=require('./package.json'); if(!String(p.imports['#routes/*']||'').includes('/dist/')) { console.error('imports not rewritten'); process.exit(1); }"
 
 # Expose port
 EXPOSE 3000

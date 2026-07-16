@@ -13,7 +13,8 @@
     "db:setup": "prisma migrate deploy && npm run generate",
     "seed": "prisma db seed",
     "seed:forum-groups": "tsx prisma/seed/run-forum-groups.js",
-    "build": "tsc -p tsconfig.build.json && node scripts/compile-prisma-client.mjs && node scripts/copy-ejs-templates.mjs",
+    "build": "tsc -p tsconfig.build.json && node scripts/compile-prisma-client.mjs && node scripts/fix-dist-esm-imports.mjs && node scripts/copy-ejs-templates.mjs",
+    "build:docker": "npm run build && node scripts/prepare-prod-package.mjs",
     "start:prod": "dotenv -e .env.production -- node dist/src/index.js",
     "pm2:start:dev": "pm2 start ecosystem.config.cjs --only buka-lombok-be --env development",
     "pm2:start:prod": "pm2 start ecosystem.config.cjs --only buka-lombok-be-prod --env production",
@@ -46,7 +47,10 @@
     "#utils/*": "./src/utils/*.ts",
     "#routes/*": "./src/routes/*.ts",
     "#config/*": "./src/config/*.ts",
-    "#validations/*": "./src/validations/*.ts"
+    "#validations/*": "./src/validations/*.ts",
+    "#constants/*": "./src/constants/*.ts",
+    "#crons/*": "./src/crons/*.ts",
+    "#worker/*": "./src/workers/*.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1015.0",

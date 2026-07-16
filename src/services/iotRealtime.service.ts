@@ -1,8 +1,8 @@
 import prisma from '#config/prisma';
 import AppError from '#utils/appError';
 import { BiomassaType, UserRole } from '#prisma';
-import { predictBiocharQuality } from './ai.service';
-import { assertDeviceAccess } from './iot.service';
+import { predictBiocharQuality } from '#services/ai.service';
+import { assertDeviceAccess } from '#services/iot.service';
 
 /** Sesi pirolisis aktif per device (in-memory — reset saat server restart). */
 type PyrolysisSession = {

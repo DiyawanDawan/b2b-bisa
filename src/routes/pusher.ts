@@ -1,10 +1,6 @@
 import { Router } from 'express';
-// Relative import (bukan #controllers alias) karena TS Server di IDE punya bug
-// kadang tidak re-index file baru pasca delete+recreate. tsc CLI menerima
-// kedua bentuk tanpa masalah. Saat IDE di-Restart TS Server boleh dikembalikan
-// ke `#controllers/pusher.controller` untuk konsistensi.
-import * as pusherController from '../controllers/pusher.controller';
-import { requireAuth } from '../middlewares/authMiddleware';
+import * as pusherController from '#controllers/pusher.controller';
+import { requireAuth } from '#middlewares/authMiddleware';
 
 const router = Router();
 

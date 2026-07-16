@@ -2,7 +2,7 @@ import { randomBytes } from 'crypto';
 import prisma from '#config/prisma';
 import AppError from '#utils/appError';
 import { sealProviderActions } from '#utils/encryption.util';
-import { createNotification } from './notification.service';
+import { createNotification } from '#services/notification.service';
 import {
   NotificationType,
   NotificationPriority,
