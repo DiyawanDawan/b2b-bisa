@@ -76,20 +76,16 @@ jobs:
     if: github.ref == 'refs/heads/develop'
     environment: development
     env:
-      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || secrets.DEVELOPMENT_HOST_IP }}
-      DEPLOY_USER: ${{ secrets.DEPLOY_USER || secrets.DEVELOPMENT_USERNAME }}
-      DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY || secrets.DEVELOPMENT_SSH_PRIVATE_KEY }}
       DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/var/www/app/bisa-backend/b2b-bisa' }}
-      DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
 
     steps:
       - name: Deploy to development server
         uses: appleboy/ssh-action@master
         with:
-          host: ${{ env.DEPLOY_HOST }}
-          username: ${{ env.DEPLOY_USER }}
-          key: ${{ env.DEPLOY_KEY }}
-          port: ${{ env.DEPLOY_PORT }}
+          host: ${{ secrets.DEPLOY_HOST || secrets.DEVELOPMENT_HOST_IP }}
+          username: ${{ secrets.DEPLOY_USER || secrets.DEVELOPMENT_USERNAME }}
+          key: ${{ secrets.DEPLOY_KEY || secrets.DEPLOY_SSH_PRIVATE_KEY || secrets.DEVELOPMENT_SSH_PRIVATE_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
           envs: DEPLOY_PATH
           script: |
             set -e
@@ -249,20 +245,16 @@ jobs:
     if: github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/code-optimazed' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
     environment: staging
     env:
-      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || secrets.STAGING_HOST_IP }}
-      DEPLOY_USER: ${{ secrets.DEPLOY_USER || secrets.STAGING_USERNAME }}
-      DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY || secrets.STAGING_SSH_PRIVATE_KEY }}
       DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/var/www/app/bisa-backend/b2b-bisa' }}
-      DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
 
     steps:
       - name: Deploy to staging server
         uses: appleboy/ssh-action@master
         with:
-          host: ${{ env.DEPLOY_HOST }}
-          username: ${{ env.DEPLOY_USER }}
-          key: ${{ env.DEPLOY_KEY }}
-          port: ${{ env.DEPLOY_PORT }}
+          host: ${{ secrets.DEPLOY_HOST || secrets.STAGING_HOST_IP }}
+          username: ${{ secrets.DEPLOY_USER || secrets.STAGING_USERNAME }}
+          key: ${{ secrets.DEPLOY_KEY || secrets.DEPLOY_SSH_PRIVATE_KEY || secrets.STAGING_SSH_PRIVATE_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
           envs: DEPLOY_PATH
           script: |
             set -e  # Stop on error
@@ -672,20 +664,16 @@ jobs:
     if: github.ref == 'refs/heads/main'
     environment: production
     env:
-      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || secrets.HOST }}
-      DEPLOY_USER: ${{ secrets.DEPLOY_USER || secrets.USERNAME }}
-      DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY || secrets.SSH_PRIVATE_KEY }}
       DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/var/www/app/bisa-backend/b2b-bisa' }}
-      DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
 
     steps:
       - name: Deploy to production server
         uses: appleboy/ssh-action@master
         with:
-          host: ${{ env.DEPLOY_HOST }}
-          username: ${{ env.DEPLOY_USER }}
-          key: ${{ env.DEPLOY_KEY }}
-          port: ${{ env.DEPLOY_PORT }}
+          host: ${{ secrets.DEPLOY_HOST || secrets.HOST }}
+          username: ${{ secrets.DEPLOY_USER || secrets.USERNAME }}
+          key: ${{ secrets.DEPLOY_KEY || secrets.DEPLOY_SSH_PRIVATE_KEY || secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
           envs: DEPLOY_PATH
           script: |
             set -e  # Stop on error
