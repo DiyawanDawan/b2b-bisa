@@ -239,6 +239,12 @@ jobs:
               echo "✅ docker-compose.prod.yml already exists"
             fi
 
+            echo "Cleaning Docker disk before pull..."
+            docker container prune -f || true
+            docker builder prune -af || true
+            docker image prune -af || true
+            df -h / || true
+
             dc -f docker-compose.prod.yml pull || true
             dc -f docker-compose.prod.yml up -d app || true
             sleep 20
@@ -544,9 +550,28 @@ jobs:
             chmod 600 .env
             echo "✅ .env file automatically created from GitHub Secrets!"
 
-            # PHASE 2: PULL LATEST IMAGE
+            # PHASE 2: FREE DISK + PULL LATEST IMAGE
             echo ""
-            echo "📦 PHASE 2: PULLING LATEST IMAGE"
+            echo "🧹 PHASE 2a: FREE DISK SPACE"
+            echo "=========================================="
+            df -h / || true
+            docker system df || true
+            docker container prune -f || true
+            docker builder prune -af || true
+            docker image prune -af || true
+            # Drop unused dangling containerd leftovers if tool exists
+            if command -v ctr >/dev/null 2>&1; then
+              ctr -n moby content ls 2>/dev/null | awk 'NR>1 {print $1}' | head -n 0 || true
+            fi
+            echo "Disk after cleanup:"
+            df -h / || true
+            AVAIL_KB=$(df -Pk / | awk 'NR==2 {print $4}')
+            if [ -n "$AVAIL_KB" ] && [ "$AVAIL_KB" -lt 1048576 ]; then
+              echo "WARNING: less than 1GiB free on /. Pull may still fail — free more disk on the VPS."
+            fi
+
+            echo ""
+            echo "📦 PHASE 2b: PULLING LATEST IMAGE"
             echo "=========================================="
             echo "⬇️ Pulling latest image..."
             dc -f docker-compose.prod.yml pull
@@ -983,9 +1008,28 @@ jobs:
             chmod 600 .env
             echo "✅ .env file automatically created from GitHub Secrets!"
 
-            # PHASE 2: PULL LATEST IMAGE
+            # PHASE 2: FREE DISK + PULL LATEST IMAGE
             echo ""
-            echo "📦 PHASE 2: PULLING LATEST IMAGE"
+            echo "🧹 PHASE 2a: FREE DISK SPACE"
+            echo "=========================================="
+            df -h / || true
+            docker system df || true
+            docker container prune -f || true
+            docker builder prune -af || true
+            docker image prune -af || true
+            # Drop unused dangling containerd leftovers if tool exists
+            if command -v ctr >/dev/null 2>&1; then
+              ctr -n moby content ls 2>/dev/null | awk 'NR>1 {print $1}' | head -n 0 || true
+            fi
+            echo "Disk after cleanup:"
+            df -h / || true
+            AVAIL_KB=$(df -Pk / | awk 'NR==2 {print $4}')
+            if [ -n "$AVAIL_KB" ] && [ "$AVAIL_KB" -lt 1048576 ]; then
+              echo "WARNING: less than 1GiB free on /. Pull may still fail — free more disk on the VPS."
+            fi
+
+            echo ""
+            echo "📦 PHASE 2b: PULLING LATEST IMAGE"
             echo "=========================================="
             echo "⬇️ Pulling latest image..."
             dc -f docker-compose.prod.yml pull
