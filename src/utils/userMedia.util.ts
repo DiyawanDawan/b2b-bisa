@@ -4,12 +4,12 @@ type UserWithProfile = {
   avatarUrl?: string | null;
 };
 
-/** Attach public CDN URLs for avatar on API responses */
+/** Attach R2 storage keys for avatar on API responses (client resolves CDN). */
 export const attachUserMediaUrls = <T extends UserWithProfile>(user: T): T => {
   if (!user.avatarUrl) return user;
   return {
     ...user,
-    avatarUrl: storageService.getPublicUrl(user.avatarUrl) ?? user.avatarUrl,
+    avatarUrl: storageService.toMediaResponsePath(user.avatarUrl) ?? user.avatarUrl,
   };
 };
 

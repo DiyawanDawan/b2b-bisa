@@ -20,7 +20,7 @@ type OrderLike = {
 };
 
 const resolveStorageUrl = (path: string | null | undefined): string | null =>
-  path ? storageService.getPublicUrl(path) : null;
+  path ? storageService.toMediaResponsePath(path) : null;
 
 const attachOrderItemMedia = <T extends OrderItemLike>(item: T): T => {
   if (!item.product) return item;

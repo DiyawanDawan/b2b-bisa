@@ -580,13 +580,19 @@ export const listUsers = async (params: {
         createdAt: true,
         isEmailVerified: true,
         isPhoneVerified: true,
+        avatarUrl: true,
       },
     }),
     prisma.user.count({ where }),
   ]);
 
+  const mappedUsers = users.map((user) => ({
+    ...user,
+    avatarUrl: storageService.toMediaResponsePath(user.avatarUrl),
+  }));
+
   return {
-    users,
+    users: mappedUsers,
     pagination: {
       total,
       page,
@@ -681,6 +687,7 @@ export const getUserDossier = async (
 
   const profile = {
     ...user,
+    avatarUrl: storageService.toMediaResponsePath(user.avatarUrl),
     profile: user.profile
       ? {
           ...user.profile,
@@ -1213,7 +1220,7 @@ export const getDisputeDetail = async (orderId: string) => {
     return urls
       .map((raw) => {
         if (typeof raw !== 'string' || !raw.trim()) return null;
-        return raw.startsWith('http') ? raw : storageService.getPublicUrl(raw);
+        return raw.startsWith('http') ? raw : storageService.toMediaResponsePath(raw);
       })
       .filter((url): url is string => Boolean(url));
   };

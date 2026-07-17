@@ -16,6 +16,7 @@ import * as negotiationService from '#services/negotiation.service';
 import { invalidatePolicies } from '#utils/cache.util';
 import { POLICY_KEYS } from '#services/policy.service';
 import { CATEGORY_TYPE } from '#prisma';
+import { attachOrderMediaUrls } from '#utils/orderMedia.util';
 
 export const listOrders = async (params: {
   page: number;
@@ -280,13 +281,20 @@ export const getOrderDetail = async (orderId: string) => {
           id: true,
           quantity: true,
           pricePerUnit: true,
-          product: { select: { id: true, name: true } },
+          product: {
+            select: {
+              id: true,
+              name: true,
+              thumbnailUrl: true,
+              images: { select: { url: true }, take: 1 },
+            },
+          },
         },
       },
     },
   });
   if (!order) throw new AppError('Order tidak ditemukan', 404);
-  return order;
+  return attachOrderMediaUrls(order);
 };
 
 export const listCartItems = async (params: { page: number; limit: number; search?: string }) => {
