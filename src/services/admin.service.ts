@@ -1236,8 +1236,107 @@ export const getDisputeDetail = async (orderId: string) => {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
     include: {
-setalh itu commit push
+      buyer: { select: { fullName: true, email: true, phone: true, avatarUrl: true } },
+      seller: { select: { fullName: true, email: true, phone: true, avatarUrl: true } },
+      items: {
+        include: {
+          product: {
+            select: {
+              id: true,
+              name: true,
+              thumbnailUrl: true,
+              unit: true,
+            },
+          },
+        },
+      },
+      shipment: true,
+      transaction: true,
+      negotiation: true,
+      dispute: true,
+    },
+  });
 
+  if (!order) {
+    throw new AppError('Sengketa order tidak ditemukan.', 404);
+  }
+
+  let disputeRow = order.dispute;
+  if (!disputeRow && order.status === OrderStatus.DISPUTED) {
+    disputeRow = await ensureOrderDisputeRecord(orderId);
+  }
+
+  let negotiation = order.negotiation;
+  if (!negotiation && order.status === OrderStatus.DISPUTED && disputeRow) {
+    const room = await ensureDisputeNegotiationRoom(orderId);
+    negotiation = room;
+  }
+
+  const resolveDisputeEvidenceUrls = (urls: unknown): string[] => {
+    if (!Array.isArray(urls)) return [];
+    return urls
+      .map((raw) => {
+        if (typeof raw !== 'string' || !raw.trim()) return null;
+        return raw.startsWith('http') ? raw : storageService.toMediaResponsePath(raw);
+      })
+      .filter((url): url is string => Boolean(url));
+  };
+
+  const disputeWithUrls = disputeRow
+    ? {
+        ...disputeRow,
+        evidenceUrls: resolveDisputeEvidenceUrls(disputeRow.evidenceUrls),
+        sellerEvidenceUrls: resolveDisputeEvidenceUrls(disputeRow.sellerEvidenceUrls),
+      }
+    : null;
+
+  const buyer = attachUserMediaUrls({ ...order.buyer });
+  const seller = attachUserMediaUrls({ ...order.seller });
+  const items = order.items.map((item) => {
+    const product = item.product ? attachProductMediaUrls({ ...item.product }) : null;
+    return {
+      ...item,
+      product: product
+        ? {
+            id: product.id,
+            name: product.name,
+            thumbnailUrl: product.thumbnailUrl ?? null,
+            unit: product.unit ?? null,
+          }
+        : null,
+    };
+  });
+
+  const mediation = await buildDisputeMediationMeta({
+    id: order.id,
+    status: order.status,
+    negotiation: negotiation ? { id: negotiation.id } : null,
+    dispute: disputeWithUrls
+      ? {
+          mediationStartedAt: disputeWithUrls.mediationStartedAt,
+          readyToResolveAt: disputeWithUrls.readyToResolveAt,
+          sellerRespondedAt: disputeWithUrls.sellerRespondedAt,
+          status: disputeWithUrls.status,
+        }
+      : null,
+  });
+
+  return {
+    ...order,
+    buyer: {
+      fullName: buyer.fullName,
+      email: buyer.email,
+      phone: buyer.phone,
+      avatarUrl: buyer.avatarUrl ?? null,
+    },
+    seller: {
+      fullName: seller.fullName,
+      email: seller.email,
+      phone: seller.phone,
+      avatarUrl: seller.avatarUrl ?? null,
+    },
+    items,
+    dispute: disputeWithUrls,
     negotiation,
     negotiationId: mediation.negotiationId,
     mediation,
