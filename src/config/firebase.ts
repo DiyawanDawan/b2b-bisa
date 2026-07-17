@@ -8,25 +8,72 @@ import logger from '#config/logger';
 let serviceAccount: ServiceAccount | undefined;
 let _messaging: Messaging | null = null;
 
-/** Normalize FIREBASE_SERVICE_ACCOUNT from .env / Docker (often over-escaped). */
-function parseFirebaseServiceAccount(raw: string): ServiceAccount {
-  let value = raw.trim();
+/** Strip outer quotes and unescape common .env escaping. */
+function stripEnvQuotes(value: string): string {
+  let v = value.trim();
   if (
-    (value.startsWith('"') && value.endsWith('"')) ||
-    (value.startsWith("'") && value.endsWith("'"))
+    (v.startsWith('"') && v.endsWith('"')) ||
+    (v.startsWith("'") && v.endsWith("'"))
   ) {
-    value = value.slice(1, -1);
+    v = v.slice(1, -1);
   }
-  // .env sometimes keeps backslash-escaped quotes: {\"type\":...}
-  if (value.includes('\\"')) {
-    value = value.replace(/\\"/g, '"');
+  if (v.includes('\\"')) {
+    v = v.replace(/\\"/g, '"');
+  }
+  return v;
+}
+
+/**
+ * Fix PEM pasted with real line breaks inside private_key (invalid JSON).
+ * Converts literal newlines to escaped \\n for JSON.parse.
+ */
+function fixPrivateKeyLiteralNewlines(json: string): string {
+  return json.replace(
+    /"private_key"\s*:\s*"([\s\S]*?)"\s*,\s*"client_email"/,
+    (_match, pem: string) => {
+      const normalized = pem
+        .replace(/\r\n/g, '\n')
+        .replace(/\r/g, '\n')
+        .replace(/\\n/g, '\n')
+        .replace(/\n/g, '\\n');
+      return `"private_key":"${normalized}","client_email"`;
+    },
+  );
+}
+
+/** Normalize FIREBASE_SERVICE_ACCOUNT from .env / Docker (often over-escaped or multiline). */
+function parseFirebaseServiceAccount(raw: string): ServiceAccount {
+  const base = stripEnvQuotes(raw);
+  const candidates = [
+    base,
+    fixPrivateKeyLiteralNewlines(base),
+    base.replace(/\r\n/g, ' ').replace(/\n/g, ' ').replace(/\r/g, ' '),
+    fixPrivateKeyLiteralNewlines(
+      base.replace(/\r\n/g, ' ').replace(/\n/g, ' ').replace(/\r/g, ' '),
+    ),
+  ];
+
+  const uniqueCandidates = [...new Set(candidates)];
+  let lastError: Error | undefined;
+
+  for (const candidate of uniqueCandidates) {
+    try {
+      const parsed = JSON.parse(candidate) as ServiceAccount & { private_key?: string };
+      if (parsed.private_key?.includes('\\n')) {
+        parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
+      }
+      return parsed;
+    } catch (error: unknown) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+    }
   }
 
-  const parsed = JSON.parse(value) as ServiceAccount & { private_key?: string };
-  if (parsed.private_key?.includes('\\n')) {
-    parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
-  }
-  return parsed;
+  throw (
+    lastError ??
+    new Error(
+      'Invalid FIREBASE_SERVICE_ACCOUNT JSON. Use single-line JSON with \\n in private_key, or set FIREBASE_SERVICE_ACCOUNT_PATH to a .json file.',
+    )
+  );
 }
 
 /**
