@@ -214,6 +214,19 @@ export async function seedOrdersAndNegotiations(prisma, users) {
               externalId: `SEED-TXN-${orderNumber.replace(/#/g, '')}`,
             },
           },
+          ...(status === 'DISPUTED'
+            ? {
+                dispute: {
+                  create: {
+                    raisedById: buyer.id,
+                    reason: 'Seed: kualitas atau pengiriman tidak sesuai',
+                    description: `Sengketa demo untuk ${orderNumber}.`,
+                    evidenceUrls: [],
+                    status: 'OPEN',
+                  },
+                },
+              }
+            : {}),
         },
       });
       orderCount++;

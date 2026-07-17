@@ -6,6 +6,8 @@ import { toCsv } from '#utils/csv.util';
 import AppError from '#utils/appError';
 import * as adminService from '#services/admin.service';
 import * as disputeMediationService from '#services/dispute-mediation.service';
+import { CACHE_TTL } from '#constants/cache.constants';
+import { cacheAside, cacheKeys, invalidateAdminAnalytics } from '#utils/cache.util';
 import {
   UserRole,
   UserStatus,
@@ -25,7 +27,9 @@ import {
  * Ambil statistik ringkasan platform (GMV, Akun, Sengketa, dll.)
  */
 export const getDashboardStats = catchAsync(async (req: AuthRequest, res: Response) => {
-  const stats = await adminService.getDashboardStats();
+  const stats = await cacheAside(cacheKeys.adminDashStats(), CACHE_TTL.ADMIN_ANALYTICS, () =>
+    adminService.getDashboardStats(),
+  );
   successResponse(res, stats, 'Statistik dashboard berhasil diambil');
 });
 
@@ -33,7 +37,9 @@ export const getDashboardStats = catchAsync(async (req: AuthRequest, res: Respon
  * GET /api/v1/admin/dashboard/biomass-trend
  */
 export const getBiomassTrend = catchAsync(async (req: AuthRequest, res: Response) => {
-  const trend = await adminService.getBiomassTrend();
+  const trend = await cacheAside(cacheKeys.adminBiomassTrend(), CACHE_TTL.ADMIN_ANALYTICS, () =>
+    adminService.getBiomassTrend(),
+  );
   successResponse(res, trend, 'Data tren biomassa berhasil diambil');
 });
 
@@ -41,7 +47,9 @@ export const getBiomassTrend = catchAsync(async (req: AuthRequest, res: Response
  * GET /api/v1/admin/dashboard/charts/revenue
  */
 export const getRevenueAnalytics = catchAsync(async (req: AuthRequest, res: Response) => {
-  const data = await adminService.getRevenueAnalytics();
+  const data = await cacheAside(cacheKeys.adminRevenue(), CACHE_TTL.ADMIN_ANALYTICS, () =>
+    adminService.getRevenueAnalytics(),
+  );
   successResponse(res, data, 'Data revenue analytics berhasil diambil');
 });
 
@@ -49,7 +57,9 @@ export const getRevenueAnalytics = catchAsync(async (req: AuthRequest, res: Resp
  * GET /api/v1/admin/dashboard/charts/users
  */
 export const getUserAnalytics = catchAsync(async (req: AuthRequest, res: Response) => {
-  const data = await adminService.getUserAnalytics();
+  const data = await cacheAside(cacheKeys.adminUsersChart(), CACHE_TTL.ADMIN_ANALYTICS, () =>
+    adminService.getUserAnalytics(),
+  );
   successResponse(res, data, 'Data user analytics berhasil diambil');
 });
 
@@ -57,7 +67,9 @@ export const getUserAnalytics = catchAsync(async (req: AuthRequest, res: Respons
  * GET /api/v1/admin/dashboard/charts/categories
  */
 export const getCategoryAnalytics = catchAsync(async (req: AuthRequest, res: Response) => {
-  const data = await adminService.getCategoryAnalytics();
+  const data = await cacheAside(cacheKeys.adminCategoriesChart(), CACHE_TTL.ADMIN_ANALYTICS, () =>
+    adminService.getCategoryAnalytics(),
+  );
   successResponse(res, data, 'Data category analytics berhasil diambil');
 });
 
@@ -65,7 +77,9 @@ export const getCategoryAnalytics = catchAsync(async (req: AuthRequest, res: Res
  * GET /api/v1/admin/dashboard/charts/performance
  */
 export const getTopSuppliers = catchAsync(async (req: AuthRequest, res: Response) => {
-  const data = await adminService.getTopSuppliers();
+  const data = await cacheAside(cacheKeys.adminTopSuppliers(), CACHE_TTL.ADMIN_ANALYTICS, () =>
+    adminService.getTopSuppliers(),
+  );
   successResponse(res, data, 'Data top suppliers berhasil diambil');
 });
 
@@ -73,7 +87,11 @@ export const getTopSuppliers = catchAsync(async (req: AuthRequest, res: Response
  * GET /api/v1/admin/dashboard/analytics/platform
  */
 export const getDashboardPlatformAnalytics = catchAsync(async (req: AuthRequest, res: Response) => {
-  const data = await adminService.getDashboardPlatformAnalytics();
+  const data = await cacheAside(
+    cacheKeys.adminPlatformAnalytics(),
+    CACHE_TTL.ADMIN_ANALYTICS,
+    () => adminService.getDashboardPlatformAnalytics(),
+  );
   successResponse(res, data, 'Analitik platform berhasil diambil');
 });
 
@@ -81,7 +99,9 @@ export const getDashboardPlatformAnalytics = catchAsync(async (req: AuthRequest,
  * GET /api/v1/admin/dashboard/visual-gallery
  */
 export const getDashboardVisualGallery = catchAsync(async (req: AuthRequest, res: Response) => {
-  const data = await adminService.getDashboardVisualGallery();
+  const data = await cacheAside(cacheKeys.adminVisualGallery(), CACHE_TTL.ADMIN_GALLERY, () =>
+    adminService.getDashboardVisualGallery(),
+  );
   successResponse(res, data, 'Galeri visual dashboard berhasil diambil');
 });
 
@@ -333,7 +353,9 @@ export const markDisputeReadyToResolve = catchAsync(async (req: AuthRequest, res
  * GET /api/v1/admin/finance/stats
  */
 export const getFinanceStats = catchAsync(async (req: AuthRequest, res: Response) => {
-  const stats = await adminService.getFinanceStats();
+  const stats = await cacheAside(cacheKeys.adminFinanceStats(), CACHE_TTL.ADMIN_ANALYTICS, () =>
+    adminService.getFinanceStats(),
+  );
   successResponse(res, stats, 'Statistik keuangan berhasil diambil');
 });
 
@@ -364,7 +386,9 @@ export const moderateProduct = catchAsync(async (req: AuthRequest, res: Response
  * GET /api/v1/admin/finance/fees
  */
 export const listFees = catchAsync(async (req: AuthRequest, res: Response) => {
-  const fees = await adminService.listPlatformFees();
+  const fees = await cacheAside(cacheKeys.adminFinanceFees(), CACHE_TTL.ADMIN_GALLERY, () =>
+    adminService.listPlatformFees(),
+  );
   successResponse(res, fees, 'Pengaturan biaya platform berhasil diambil');
 });
 
@@ -388,6 +412,7 @@ export const updateFee = catchAsync(async (req: AuthRequest, res: Response) => {
     },
   });
 
+  void invalidateAdminAnalytics();
   successResponse(res, result, 'Pengaturan biaya platform berhasil diperbarui');
 });
 

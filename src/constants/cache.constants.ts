@@ -11,6 +11,9 @@ export const CACHE_TTL = {
   SHIP_VEHICLES: 6 * 3600,
   SHIP_DEST: 24 * 3600,
   PROD_COLLECTIONS: 3600,
+  /** Agregat dashboard/CRM/finance — short TTL, bukan stok produk */
+  ADMIN_ANALYTICS: 60,
+  ADMIN_GALLERY: 120,
 } as const;
 
 export const CACHE_PREFIX = {

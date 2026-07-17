@@ -7,15 +7,23 @@ import {
   attachAdminChatThreadMedia,
   attachNegotiationMessageMedia,
 } from '#utils/mediaResolver.util';
+import { CACHE_TTL } from '#constants/cache.constants';
+import { cacheAside, cacheKeys } from '#utils/cache.util';
 import { NegotiationStatus, OrderStatus, PostStatus } from '#prisma';
 
 export const getOrderAnalytics = catchAsync(async (_req: AuthRequest, res: Response) => {
-  const data = await extended.getOrderAnalytics();
+  const data = await cacheAside(cacheKeys.adminOrderAnalytics(), CACHE_TTL.ADMIN_ANALYTICS, () =>
+    extended.getOrderAnalytics(),
+  );
   return successResponse(res, data, 'Statistik order berhasil diambil');
 });
 
 export const getIntegrationHealth = catchAsync(async (_req: AuthRequest, res: Response) => {
-  const data = await extended.getIntegrationHealth();
+  const data = await cacheAside(
+    cacheKeys.adminIntegrationHealth(),
+    CACHE_TTL.ADMIN_ANALYTICS,
+    () => extended.getIntegrationHealth(),
+  );
   return successResponse(res, data, 'Ringkasan health integrasi berhasil diambil');
 });
 

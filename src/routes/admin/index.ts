@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAuth } from '#middlewares/authMiddleware';
 import { isAdmin } from '#middlewares/isAdmin';
+import { adminActionLimiter } from '#middlewares/rateLimiter';
 import dashboardRoutes from '#routes/admin/dashboard.routes';
 import userRoutes from '#routes/admin/users.routes';
 import financeRoutes from '#routes/admin/finance.routes';
@@ -25,6 +26,8 @@ const router = Router();
 
 // Semua route di /api/v1/admin/* wajib Authenticated & Role ADMIN
 router.use(requireAuth, isAdmin);
+// Batasi mutasi (POST/PATCH/DELETE); GET di-skip di dalam limiter
+router.use(adminActionLimiter);
 
 // Sub-Modul Admin
 router.use('/dashboard', dashboardRoutes);

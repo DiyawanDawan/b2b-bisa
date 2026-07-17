@@ -31,10 +31,15 @@ const iotIngestKey = (req: Request): string => {
 
 export const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 300,
+  max: 600,
   standardHeaders: true,
   legacyHeaders: false,
-  skip: () => NODE_ENV === 'development',
+  skip: (req) => {
+    if (NODE_ENV === 'development') return true;
+    // Panel admin butuh throughput tinggi (list + polling). Mutasi dibatasi adminActionLimiter.
+    const path = (req.originalUrl || req.url || req.path || '').split('?')[0];
+    return path.startsWith('/api/v1/admin') || path.includes('/api/v1/admin');
+  },
   keyGenerator: (req) => {
     return req.ip || 'unknown';
   },
@@ -91,18 +96,20 @@ export const financialLimiter = rateLimit({
 });
 
 /**
- * Admin action limiter: Dispute resolution, user management, payouts
- * Prevents admin panel abuse
+ * Admin write limiter: dispute resolve, KYC review, payouts, dll.
+ * GET/HEAD/OPTIONS di-skip — jangan blok list/polling panel admin.
  */
 export const adminActionLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 50, // Max 50 admin actions per hour
+  max: 120,
   standardHeaders: true,
   legacyHeaders: false,
-  skip: () => NODE_ENV === 'development',
-  keyGenerator: (req) => {
-    return req.ip || 'unknown';
+  skip: (req) => {
+    if (NODE_ENV === 'development') return true;
+    const method = req.method.toUpperCase();
+    return method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
   },
+  keyGenerator: compositeKey,
   message: {
     meta: {
       success: false,

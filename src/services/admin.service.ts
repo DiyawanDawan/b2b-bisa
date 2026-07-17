@@ -29,6 +29,7 @@ import {
   buildDisputeMediationMeta,
   countAdminMediationMessages,
   ensureDisputeNegotiationRoom,
+  ensureOrderDisputeRecord,
   postDisputeResolvedChatMessage,
 } from '#services/dispute-mediation.service';
 import {
@@ -955,10 +956,22 @@ export const listDisputes = async (params: {
     prisma.order.findMany({
       where,
       include: {
-        buyer: { select: { fullName: true } },
-        seller: { select: { fullName: true } },
+        buyer: { select: { fullName: true, avatarUrl: true } },
+        seller: { select: { fullName: true, avatarUrl: true } },
         negotiation: { select: { id: true } },
         dispute: true,
+        items: {
+          take: 1,
+          include: {
+            product: {
+              select: {
+                id: true,
+                name: true,
+                thumbnailUrl: true,
+              },
+            },
+          },
+        },
       },
       orderBy: { updatedAt: 'desc' },
       skip,
@@ -975,8 +988,36 @@ export const listDisputes = async (params: {
         negotiation = { id: room.id };
       }
 
+      const items = order.items.map((item) => {
+        const product = item.product
+          ? attachProductMediaUrls({ ...item.product })
+          : null;
+        return {
+          ...item,
+          product: product
+            ? {
+                id: product.id,
+                name: product.name,
+                thumbnailUrl: product.thumbnailUrl ?? null,
+              }
+            : null,
+        };
+      });
+
+      const buyer = attachUserMediaUrls({ ...order.buyer });
+      const seller = attachUserMediaUrls({ ...order.seller });
+
       return {
         ...order,
+        buyer: {
+          fullName: buyer.fullName,
+          avatarUrl: buyer.avatarUrl ?? null,
+        },
+        seller: {
+          fullName: seller.fullName,
+          avatarUrl: seller.avatarUrl ?? null,
+        },
+        items,
         negotiation,
         mediation: await buildDisputeMediationMeta({
           id: order.id,
@@ -1195,61 +1236,8 @@ export const getDisputeDetail = async (orderId: string) => {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
     include: {
-      buyer: { select: { fullName: true, email: true, phone: true } },
-      seller: { select: { fullName: true, email: true, phone: true } },
-      items: { include: { product: true } },
-      shipment: true,
-      transaction: true,
-      negotiation: true,
-      dispute: true,
-    },
-  });
+setalh itu commit push
 
-  if (!order) {
-    throw new AppError('Sengketa order tidak ditemukan.', 404);
-  }
-
-  let negotiation = order.negotiation;
-  if (!negotiation && order.status === OrderStatus.DISPUTED && order.dispute) {
-    const room = await ensureDisputeNegotiationRoom(orderId);
-    negotiation = room;
-  }
-
-  const resolveDisputeEvidenceUrls = (urls: unknown): string[] => {
-    if (!Array.isArray(urls)) return [];
-    return urls
-      .map((raw) => {
-        if (typeof raw !== 'string' || !raw.trim()) return null;
-        return raw.startsWith('http') ? raw : storageService.toMediaResponsePath(raw);
-      })
-      .filter((url): url is string => Boolean(url));
-  };
-
-  const disputeWithUrls = order.dispute
-    ? {
-        ...order.dispute,
-        evidenceUrls: resolveDisputeEvidenceUrls(order.dispute.evidenceUrls),
-        sellerEvidenceUrls: resolveDisputeEvidenceUrls(order.dispute.sellerEvidenceUrls),
-      }
-    : null;
-
-  const mediation = await buildDisputeMediationMeta({
-    id: order.id,
-    status: order.status,
-    negotiation: negotiation ? { id: negotiation.id } : null,
-    dispute: disputeWithUrls
-      ? {
-          mediationStartedAt: disputeWithUrls.mediationStartedAt,
-          readyToResolveAt: disputeWithUrls.readyToResolveAt,
-          sellerRespondedAt: disputeWithUrls.sellerRespondedAt,
-          status: disputeWithUrls.status,
-        }
-      : null,
-  });
-
-  return {
-    ...order,
-    dispute: disputeWithUrls,
     negotiation,
     negotiationId: mediation.negotiationId,
     mediation,

@@ -751,6 +751,19 @@ export async function seedRegionalMarketSales(prisma) {
             createdAt,
           },
         },
+        ...(status === 'DISPUTED'
+          ? {
+              dispute: {
+                create: {
+                  raisedById: buyer.id,
+                  reason: 'Seed: kualitas atau pengiriman tidak sesuai',
+                  description: `Sengketa demo untuk ${orderNumber} (${buyer.province}).`,
+                  evidenceUrls: [],
+                  status: 'OPEN',
+                },
+              },
+            }
+          : {}),
       },
     });
     createdOrders++;

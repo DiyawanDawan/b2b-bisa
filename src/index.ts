@@ -14,7 +14,6 @@ import {
   globalLimiter,
   authLimiter,
   financialLimiter,
-  adminActionLimiter,
   publicApiLimiter,
 } from '#middlewares/rateLimiter';
 import AppError from '#utils/appError';
@@ -214,7 +213,7 @@ app.use('/api/v1/iot', iotRoutes);
 app.use('/api/v1/forum', forumRoutes);
 app.use('/api/v1/chatbot', publicApiLimiter, chatbotRoutes);
 app.use('/api/v1/articles', articlesRoutes);
-app.use('/api/v1/admin', adminActionLimiter, adminRoutes);
+app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/system', publicApiLimiter, systemRoutes);
 app.use('/api/v1/media/uploads', mediaUploadRoutes);
 app.use('/api/v1/notifications', notificationsRoutes);

@@ -90,6 +90,47 @@ const DISPUTE_CHAT_MESSAGE_SELECT = {
   sender: { select: { id: true, fullName: true, avatarUrl: true, role: true } },
 } as const;
 
+/**
+ * Seed/legacy: order bisa status DISPUTED tanpa baris OrderDispute.
+ * Pulihkan agar admin bisa mulai mediasi.
+ */
+export const ensureOrderDisputeRecord = async (orderId: string) => {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: {
+      id: true,
+      status: true,
+      buyerId: true,
+      orderNumber: true,
+      dispute: true,
+    },
+  });
+
+  if (!order) throw new AppError('Order tidak ditemukan', 404);
+  if (order.status !== OrderStatus.DISPUTED) {
+    throw new AppError('Order tidak dalam status sengketa', 400);
+  }
+  if (order.dispute) return order.dispute;
+
+  try {
+    return await prisma.orderDispute.create({
+      data: {
+        orderId: order.id,
+        raisedById: order.buyerId,
+        reason: 'Sengketa (data dipulihkan)',
+        description: `Order ${order.orderNumber} berstatus DISPUTED tanpa baris sengketa. Data dibuat otomatis agar admin dapat membuka mediasi.`,
+        evidenceUrls: [],
+        status: DisputeStatus.OPEN,
+      },
+    });
+  } catch (err) {
+    // Race: request lain sudah membuat baris sengketa
+    const existing = await prisma.orderDispute.findUnique({ where: { orderId } });
+    if (existing) return existing;
+    throw err;
+  }
+};
+
 const loadDisputedOrderContext = async (orderId: string) => {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
@@ -108,9 +149,8 @@ const loadDisputedOrderContext = async (orderId: string) => {
   if (order.status !== OrderStatus.DISPUTED) {
     throw new AppError('Order tidak dalam status sengketa', 400);
   }
-  if (!order.dispute) throw new AppError('Data sengketa tidak ditemukan', 404);
 
-  const dispute = order.dispute;
+  const dispute = order.dispute ?? (await ensureOrderDisputeRecord(orderId));
   let negotiation = order.negotiation;
   if (!negotiation) {
     const room = await ensureDisputeNegotiationRoom(orderId);

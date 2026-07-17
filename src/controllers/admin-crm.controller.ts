@@ -5,9 +5,13 @@ import { successResponse, paginatedResponse } from '#utils/response.util';
 import * as crm from '#services/admin-crm.service';
 import { UserRole } from '#prisma';
 import type { CrmStage } from '#services/admin-crm.service';
+import { CACHE_TTL } from '#constants/cache.constants';
+import { cacheAside, cacheKeys } from '#utils/cache.util';
 
 export const getCrmOverview = catchAsync(async (_req: AuthRequest, res: Response) => {
-  const data = await crm.getCrmOverview();
+  const data = await cacheAside(cacheKeys.adminCrmOverview(), CACHE_TTL.ADMIN_ANALYTICS, () =>
+    crm.getCrmOverview(),
+  );
   return successResponse(res, data, 'Ringkasan CRM berhasil diambil');
 });
 
