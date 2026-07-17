@@ -43,7 +43,8 @@ const corsOriginDelegate: cors.CorsOptions['origin'] = (origin, callback) => {
     callback(null, true);
     return;
   }
-  callback(new Error(`CORS blocked origin: ${origin}`));
+  // Jangan throw Error — preflight OPTIONS jadi non-2xx tanpa header CORS yang jelas.
+  callback(null, false);
 };
 
 import authRoutes from '#routes/auth';
