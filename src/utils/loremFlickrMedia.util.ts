@@ -1,16 +1,16 @@
 /**
- * Path relatif di MySQL + resolve ke URL publik LoremFlickr.
- * @see https://loremflickr.com/
+ * Path relatif di MySQL + resolve ke URL publik placeholder.
+ * Path DB tetap `external/loremflickr/...` (kompatibel seed lama).
+ * Resolve ke Picsum — LoremFlickr sering 5xx / hotlink block.
  *
  * DB: external/loremflickr/{w}/{h}/{keywords}/lock/{n}/random/{m}
- * API: https://loremflickr.com/{w}/{h}/{keywords}?lock=n&random=m
+ * API: https://picsum.photos/seed/bisa-lf-{lock}/.../{w}/{h}
  */
 
 export const LOREM_FLICKR_DB_PREFIX = 'external/loremflickr/';
 
 const DEFAULT_WIDTH = 640;
 const DEFAULT_HEIGHT = 480;
-const PUBLIC_BASE = 'https://loremflickr.com';
 
 const encodeKeyword = (keyword: string): string =>
   String(keyword)
@@ -70,6 +70,11 @@ export const avatarSeedPath = (lock: number): string => {
 export const isLoremFlickrDbPath = (value: string | null | undefined): boolean =>
   !!value?.trim().startsWith(LOREM_FLICKR_DB_PREFIX);
 
+const picsumUrl = (width: string, height: string, seed: string): string => {
+  const safeSeed = seed.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64) || 'bisa';
+  return `https://picsum.photos/seed/${safeSeed}/${width}/${height}`;
+};
+
 /** Ubah path DB → URL HTTPS untuk client (mobile/web). */
 export const loremFlickrDbPathToUrl = (dbPath: string): string => {
   if (!isLoremFlickrDbPath(dbPath)) return dbPath;
@@ -87,18 +92,19 @@ export const loremFlickrDbPathToUrl = (dbPath: string): string => {
     i += 1;
   }
 
-  const keywordPath = keywordParts.join('/');
-  const url = new URL(`${PUBLIC_BASE}/${width}/${height}/${keywordPath}`);
-
+  let lock = '0';
+  let random = '';
   if (segments[i] === 'lock' && segments[i + 1]) {
-    url.searchParams.set('lock', segments[i + 1]);
+    lock = segments[i + 1];
     i += 2;
   }
   if (segments[i] === 'random' && segments[i + 1]) {
-    url.searchParams.set('random', segments[i + 1]);
+    random = segments[i + 1];
   }
 
-  return url.toString();
+  const kw = keywordParts.join('-').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24);
+  const seed = `bisa-lf-${lock}${random ? `-r${random}` : ''}${kw ? `-${kw}` : ''}`;
+  return picsumUrl(width, height, seed);
 };
 
 const ORGANIC_KEYWORDS_BY_CROP: Record<string, string[][]> = {
