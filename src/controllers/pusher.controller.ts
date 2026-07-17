@@ -10,6 +10,7 @@ import { AuthRequest, UserRole } from '#types/index';
  *
  * Pola channel yang didukung:
  *   - `private-negotiation-{negotiationId}` → buyerId|sellerId, atau ADMIN (mediasi 3 pihak).
+ *   - `private-support-{ticketId}`          → pemilik tiket, atau ADMIN (CS inbox).
  *   - `private-user-{userId}`               → cek user.id === userId (notifikasi pribadi).
  *
  * Untuk channel lain, default DENY agar tidak menjadi bypass.
@@ -42,6 +43,24 @@ export const authorizeChannel = catchAsync(async (req: AuthRequest, res: Respons
     const isAdminMediator = userRole === UserRole.ADMIN;
     if (!isParty && !isAdminMediator) {
       throw new AppError('Bukan participant negosiasi ini.', 403);
+    }
+    const auth = pusher.authorizeChannel(socketId, channelName);
+    return res.json(auth);
+  }
+
+  // Pattern: private-support-{ticketId}
+  const supportMatch = channelName.match(/^private-support-([0-9a-fA-F-]{8,})$/);
+  if (supportMatch) {
+    const ticketId = supportMatch[1];
+    const ticket = await prisma.supportTicket.findUnique({
+      where: { id: ticketId },
+      select: { userId: true },
+    });
+    if (!ticket) throw new AppError('Tiket dukungan tidak ditemukan.', 404);
+    const isOwner = ticket.userId === userId;
+    const isAdminCs = userRole === UserRole.ADMIN;
+    if (!isOwner && !isAdminCs) {
+      throw new AppError('Bukan participant tiket dukungan ini.', 403);
     }
     const auth = pusher.authorizeChannel(socketId, channelName);
     return res.json(auth);

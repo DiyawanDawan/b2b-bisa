@@ -19,6 +19,7 @@ import crmRoutes from '#routes/admin/crm.routes';
 import iotRoutes from '#routes/admin/iot.routes';
 import vouchersRoutes from '#routes/admin/vouchers.routes';
 import knowledgeRoutes from '#routes/admin/knowledge.routes';
+import supportRoutes from '#routes/admin/support.routes';
 
 const router = Router();
 
@@ -44,5 +45,6 @@ router.use('/crm', crmRoutes);
 router.use('/iot', iotRoutes);
 router.use('/vouchers', vouchersRoutes);
 router.use('/knowledge', knowledgeRoutes);
+router.use('/support', supportRoutes);
 
 export default router;

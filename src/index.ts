@@ -86,6 +86,7 @@ import commerceRoutes from '#routes/commerce';
 import referralsRoutes from '#routes/referrals';
 import integrationsRoutes from '#routes/integrations';
 import liveSessionsRoutes from '#routes/live-sessions';
+import supportRoutes from '#routes/support';
 
 const app = express();
 const IGNORED_404_PATHS = new Set([
@@ -235,6 +236,7 @@ app.use('/api/v1/commerce', commerceRoutes);
 app.use('/api/v1/referrals', referralsRoutes);
 app.use('/api/v1/integrations', integrationsRoutes);
 app.use('/api/v1/live-sessions', liveSessionsRoutes);
+app.use('/api/v1/support', supportRoutes);
 
 // 404
 app.use('*', (req: Request, _res: Response, next: NextFunction) => {

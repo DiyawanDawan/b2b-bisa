@@ -2,6 +2,7 @@ import { Response } from 'express';
 import catchAsync from '#utils/catchAsync';
 import { successResponse } from '#utils/response.util';
 import * as aiService from '#services/ai.service';
+import * as supportService from '#services/support.service';
 import { AuthRequest } from '#types/index';
 
 /**
@@ -17,6 +18,7 @@ export const predictQuality = catchAsync(async (req: AuthRequest, res: Response)
  */
 export const chatAssistant = catchAsync(async (req: AuthRequest, res: Response) => {
   const { question } = req.body;
+  await supportService.assertAiAvailable(req.user!.id);
   const answer = await aiService.askAssistant(question);
   successResponse(res, { answer }, 'Jawaban asisten AI');
 });

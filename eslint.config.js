@@ -1,6 +1,5 @@
 import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
-import airbnbBase from 'eslint-config-airbnb-base';
 import importPlugin from 'eslint-plugin-import';
 import prettierPlugin from 'eslint-plugin-prettier/recommended';
 
@@ -20,7 +19,6 @@ export default tseslint.config(
       },
     },
     rules: {
-      ...airbnbBase.rules,
       // Dimatikan: proyek menggunakan path aliases (#config/*, #services/*, dll)
       // yang tidak bisa di-resolve oleh eslint-plugin-import → false positive.
       // TypeScript compiler sudah menjamin resolusi modul via tsconfig.json paths.

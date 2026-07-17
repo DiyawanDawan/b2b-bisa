@@ -118,6 +118,40 @@ enum NotificationType {
   RFQ
   PARTNERSHIP
   BOOKING
+  SUPPORT
+}
+
+enum SupportTicketStatus {
+  OPEN
+  ASSIGNED
+  WAITING_USER
+  RESOLVED
+  CLOSED
+}
+
+enum SupportTicketCategory {
+  ACCOUNT
+  PAYMENT
+  KYC
+  ORDER
+  OTHER
+}
+
+enum SupportTicketPriority {
+  LOW
+  NORMAL
+  HIGH
+}
+
+enum SupportTicketSource {
+  AI_HANDOFF
+  HELP_CENTER
+}
+
+enum SupportMessageSenderType {
+  USER
+  ADMIN
+  SYSTEM
 }
 
 enum BookingStatus {
@@ -422,6 +456,9 @@ model User {
   supplierPartnerships BuyerSupplierPartnership[] @relation("SupplierPartnerships")
   buyerBookings     Booking[] @relation("BuyerBookings")
   supplierBookings  Booking[] @relation("SupplierBookings")
+  supportTickets    SupportTicket[] @relation("SupportTicketOwner")
+  assignedSupportTickets SupportTicket[] @relation("SupportTicketAssignee")
+  supportMessages   SupportMessage[] @relation("SupportMessageSender")
 
   @@index([role])
   @@index([referralCode])
@@ -1239,6 +1276,50 @@ model ChatMessage {
   @@index([negotiationId])
   @@index([createdAt])
   @@map("chat_messages")
+}
+
+model SupportTicket {
+  id              String                @id @default(uuid())
+  userId          String                @map("user_id")
+  status          SupportTicketStatus   @default(OPEN)
+  subject         String
+  category        SupportTicketCategory @default(OTHER)
+  priority        SupportTicketPriority @default(NORMAL)
+  source          SupportTicketSource   @default(HELP_CENTER)
+  assignedAdminId String?               @map("assigned_admin_id")
+  aiTranscript    Json?                 @map("ai_transcript")
+  handoffAt       DateTime?             @map("handoff_at")
+  resolvedAt      DateTime?             @map("resolved_at")
+  closedAt        DateTime?             @map("closed_at")
+  createdAt       DateTime              @default(now()) @map("created_at")
+  updatedAt       DateTime              @updatedAt @map("updated_at")
+
+  user            User                  @relation("SupportTicketOwner", fields: [userId], references: [id], onDelete: Cascade)
+  assignedAdmin   User?                 @relation("SupportTicketAssignee", fields: [assignedAdminId], references: [id], onDelete: SetNull)
+  messages        SupportMessage[]
+
+  @@index([userId, status])
+  @@index([status, updatedAt])
+  @@index([assignedAdminId, status])
+  @@index([category, priority])
+  @@map("support_tickets")
+}
+
+model SupportMessage {
+  id            String                   @id @default(uuid())
+  ticketId      String                   @map("ticket_id")
+  senderId      String?                  @map("sender_id")
+  senderType    SupportMessageSenderType
+  content       String                   @db.Text
+  attachmentUrl String?                  @db.Text @map("attachment_url")
+  createdAt     DateTime                 @default(now()) @map("created_at")
+
+  ticket        SupportTicket            @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  sender        User?                    @relation("SupportMessageSender", fields: [senderId], references: [id], onDelete: SetNull)
+
+  @@index([ticketId, createdAt])
+  @@index([senderId])
+  @@map("support_messages")
 }
 
 model Transaction {
