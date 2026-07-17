@@ -36,6 +36,15 @@ export const registerFCMToken = async (
  * Internal helper to send push notifications to a user's devices.
  * Gracefully skips if Firebase messaging is not initialized.
  */
+/**
+ * Remove FCM token for a user (called on logout).
+ */
+export const deregisterFCMToken = async (userId: string, fcmToken: string) => {
+  return prisma.userDevice.deleteMany({
+    where: { userId, fcmToken },
+  });
+};
+
 export const sendPushNotification = async (
   userId: string,
   title: string,
@@ -72,11 +81,27 @@ export const sendPushNotification = async (
     logger.info(`FCM: Sent ${response.successCount} messages, ${response.failureCount} failed.`);
 
     if (response.failureCount > 0) {
+      const staleTokens: string[] = [];
       response.responses.forEach((resp, idx: number) => {
         if (!resp.success) {
-          logger.warn(`FCM: Failed for token ${tokens[idx]}: ${resp.error?.message}`);
+          const code = resp.error?.code;
+          logger.warn(`FCM: Failed for token ${tokens[idx]}: ${resp.error?.message} (${code})`);
+          if (
+            code === 'messaging/registration-token-not-registered' ||
+            code === 'messaging/invalid-registration-token' ||
+            code === 'messaging/invalid-argument'
+          ) {
+            staleTokens.push(tokens[idx]);
+          }
         }
       });
+
+      if (staleTokens.length > 0) {
+        await prisma.userDevice.deleteMany({
+          where: { fcmToken: { in: staleTokens } },
+        });
+        logger.info(`FCM: Cleaned up ${staleTokens.length} stale token(s).`);
+      }
     }
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
@@ -106,8 +131,7 @@ export const createNotification = async (data: {
     },
   });
 
-  // Trigger push notification asynchrously
-  sendPushNotification(data.userId, data.title, data.body, {
+  await sendPushNotification(data.userId, data.title, data.body, {
     notificationId: notification.id,
     type: data.type,
     refId: data.refId || '',

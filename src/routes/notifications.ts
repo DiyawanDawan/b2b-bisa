@@ -25,6 +25,12 @@ router.post(
 );
 
 /**
+ * @route DELETE /api/v1/notifications/tokens
+ * @desc Deregister FCM token on logout
+ */
+router.delete('/tokens', notificationController.deregisterToken);
+
+/**
  * @route PATCH /api/v1/notifications/read-all
  */
 router.patch('/read-all', notificationController.markAllAsRead);

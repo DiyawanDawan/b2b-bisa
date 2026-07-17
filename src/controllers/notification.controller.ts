@@ -63,6 +63,15 @@ export const registerToken = catchAsync(async (req: AuthRequest, res: Response) 
 });
 
 /**
+ * DELETE /api/v1/notifications/tokens
+ */
+export const deregisterToken = catchAsync(async (req: AuthRequest, res: Response) => {
+  const { fcmToken } = req.body;
+  await notificationService.deregisterFCMToken(req.user!.id, fcmToken);
+  return successResponse(res, null, 'Token FCM berhasil dihapus');
+});
+
+/**
  * DELETE /api/v1/notifications/:id
  */
 export const deleteNotification = catchAsync(async (req: AuthRequest, res: Response) => {
