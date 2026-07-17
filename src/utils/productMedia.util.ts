@@ -20,14 +20,14 @@ type ProductWithMedia = {
   [key: string]: unknown;
 };
 
-const resolveMediaUrl = (url: string | null | undefined): string | null =>
-  storageService.getPublicUrl(url ?? null);
+const resolveMediaPath = (url: string | null | undefined): string | null =>
+  storageService.toMediaResponsePath(url ?? null);
 
 const mapProductVideo = (video: ProductVideoRow | null | undefined) => {
   if (!video) return null;
 
-  const url = resolveMediaUrl(video.url) ?? video.url;
-  const thumbnailUrl = resolveMediaUrl(video.thumbnailUrl ?? null) ?? video.thumbnailUrl ?? null;
+  const url = resolveMediaPath(video.url) ?? video.url;
+  const thumbnailUrl = resolveMediaPath(video.thumbnailUrl ?? null) ?? video.thumbnailUrl ?? null;
 
   return {
     ...video,
@@ -36,16 +36,16 @@ const mapProductVideo = (video: ProductVideoRow | null | undefined) => {
   };
 };
 
-/** Resolve path R2 / external/loremflickr → URL publik untuk response API. */
+/** Resolve path R2 / external/loremflickr → storage key for API response (not full URL). */
 export const attachProductMediaUrls = <T extends ProductWithMedia>(product: T): T => {
   const images = Array.isArray(product.images) ? product.images : [];
 
   const mappedImages = images.map((img) => ({
     ...img,
-    url: resolveMediaUrl(img.url) ?? img.url,
+    url: resolveMediaPath(img.url) ?? img.url,
   }));
 
-  const thumbFromDb = resolveMediaUrl(product.thumbnailUrl);
+  const thumbFromDb = resolveMediaPath(product.thumbnailUrl);
   const thumbFromGallery =
     mappedImages.find((img) => typeof img.url === 'string' && img.url.length > 0)?.url ?? null;
 
@@ -56,7 +56,7 @@ export const attachProductMediaUrls = <T extends ProductWithMedia>(product: T): 
 
   const video = mapProductVideo(product.video ?? null);
   const videoUrl =
-    video?.url ?? resolveMediaUrl(product.videoUrl ?? null) ?? product.videoUrl ?? null;
+    video?.url ?? resolveMediaPath(product.videoUrl ?? null) ?? product.videoUrl ?? null;
 
   return {
     ...product,

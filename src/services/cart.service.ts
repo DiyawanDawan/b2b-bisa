@@ -62,7 +62,7 @@ const mapCartItem = (item: { id: string; quantity: unknown; product: Record<stri
   } & Record<string, unknown>;
   const thumbnailUrl =
     typeof p.thumbnailUrl === 'string' && p.thumbnailUrl
-      ? storageService.getPublicUrl(p.thumbnailUrl)
+      ? storageService.toMediaResponsePath(p.thumbnailUrl)
       : p.thumbnailUrl;
 
   const user = p.user

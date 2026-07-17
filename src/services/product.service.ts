@@ -1579,7 +1579,7 @@ export const getSupplierProductEngagement = async (sellerId: string) => {
   const items = products.map((p) => ({
     productId: p.id,
     name: p.name,
-    thumbnailUrl: storageService.getPublicUrl(p.thumbnailUrl) ?? p.thumbnailUrl,
+    thumbnailUrl: storageService.toMediaResponsePath(p.thumbnailUrl) ?? p.thumbnailUrl,
     pricePerUnit: p.pricePerUnit,
     unit: p.unit,
     totalSold: p.totalSold,

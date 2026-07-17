@@ -165,7 +165,7 @@ const mapBooking = (row: {
       id: row.product.id,
       name: row.product.name,
       thumbnailUrl: row.product.thumbnailUrl
-        ? storageService.getPublicUrl(row.product.thumbnailUrl)
+        ? storageService.toMediaResponsePath(row.product.thumbnailUrl)
         : null,
       productMode: row.product.productMode,
       unit: row.product.unit,

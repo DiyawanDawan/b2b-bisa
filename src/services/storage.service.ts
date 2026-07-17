@@ -61,11 +61,29 @@ export const normalizeStorageKey = (value: string | null | undefined): string | 
     if (assetsIdx !== -1) {
       return decodeURIComponent(url.pathname.slice(assetsIdx + '/storage/assets/'.length));
     }
+
+    // Full CDN URL (e.g. https://cdn.bisaagri.com/products/...) → object key
+    const pathKey = decodeURIComponent(url.pathname.replace(/^\//, ''));
+    if (PUBLIC_ASSET_PREFIXES.some((prefix) => pathKey.startsWith(prefix))) {
+      return pathKey;
+    }
   } catch {
     return trimmed;
   }
 
   return trimmed;
+};
+
+/**
+ * API JSON: return R2 object key only (products/seed-stock/...).
+ * External http(s) and loremflickr paths are returned unchanged.
+ */
+export const toMediaResponsePath = (value: string | null | undefined): string | null => {
+  const normalized = normalizeStorageKey(value);
+  if (!normalized) return null;
+  if (isExternalMediaUrl(normalized)) return normalized;
+  if (isLoremFlickrDbPath(normalized)) return normalized;
+  return normalized.replace(/^\//, '');
 };
 
 export const isExternalMediaUrl = (value: string): boolean =>
