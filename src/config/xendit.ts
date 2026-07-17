@@ -28,18 +28,21 @@ import { roundIdrAmount } from '#utils/currency.util';
 
 dotenv.config();
 
-const XENDIT_SECRET_KEY = process.env.XENDIT_SECRET_KEY;
+// Prefer XENDIT_PAYMENT_SECRET_KEY (CI/CD + docker-compose.prod),
+// fallback ke XENDIT_SECRET_KEY (legacy / single-key setup).
+const XENDIT_SECRET_KEY =
+  process.env.XENDIT_PAYMENT_SECRET_KEY || process.env.XENDIT_SECRET_KEY;
 const XENDIT_WEBHOOK_TOKEN = process.env.XENDIT_WEBHOOK_TOKEN;
 
 // Fail fast in production if credentials are missing
 if (!XENDIT_SECRET_KEY) {
   if (process.env.NODE_ENV === 'production') {
     throw new Error(
-      'FATAL: XENDIT_SECRET_KEY must be set in production environment. Payment features will not work.',
+      'FATAL: XENDIT_PAYMENT_SECRET_KEY (or legacy XENDIT_SECRET_KEY) must be set in production. Payment features will not work.',
     );
   }
   console.warn(
-    'WARN: XENDIT_SECRET_KEY not set. Payment features will be disabled in development.',
+    'WARN: XENDIT_PAYMENT_SECRET_KEY / XENDIT_SECRET_KEY not set. Payment features will be disabled in development.',
   );
 }
 
