@@ -18,6 +18,8 @@ const config = {
   idleTimeout: 30000, // Close idle connections after 30s
   acquireTimeout: 10000, // Timeout to get connection from pool
   connectTimeout: 10000, // Connection establishment timeout
+  // MySQL 8 (caching_sha2_password) in Docker often needs this for pool connections.
+  allowPublicKeyRetrieval: true,
   // Enable keep-alive to prevent stale connections
   connectAttributes: {
     program_name: 'bisa_backend',
