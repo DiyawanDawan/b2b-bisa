@@ -75,7 +75,7 @@ try {
   }
 } catch (error: unknown) {
   const msg = error instanceof Error ? error.message : String(error);
-  logger.error('Error initializing Firebase Admin SDK:', msg);
+  logger.error(`Error initializing Firebase Admin SDK: ${msg}`);
 }
 
 export const messaging = _messaging;
