@@ -8,6 +8,27 @@ import logger from '#config/logger';
 let serviceAccount: ServiceAccount | undefined;
 let _messaging: Messaging | null = null;
 
+/** Normalize FIREBASE_SERVICE_ACCOUNT from .env / Docker (often over-escaped). */
+function parseFirebaseServiceAccount(raw: string): ServiceAccount {
+  let value = raw.trim();
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    value = value.slice(1, -1);
+  }
+  // .env sometimes keeps backslash-escaped quotes: {\"type\":...}
+  if (value.includes('\\"')) {
+    value = value.replace(/\\"/g, '"');
+  }
+
+  const parsed = JSON.parse(value) as ServiceAccount & { private_key?: string };
+  if (parsed.private_key?.includes('\\n')) {
+    parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
+  }
+  return parsed;
+}
+
 /**
  * Firebase Admin credential resolver
  *
@@ -26,8 +47,8 @@ const serviceAccountPath = serviceAccountPathEnv
   : undefined;
 
 try {
-  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-    serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+  if (process.env.FIREBASE_SERVICE_ACCOUNT?.trim()) {
+    serviceAccount = parseFirebaseServiceAccount(process.env.FIREBASE_SERVICE_ACCOUNT);
     logger.info('Firebase Admin: Loading credentials from ENV (FIREBASE_SERVICE_ACCOUNT)');
   } else if (serviceAccountPath && fs.existsSync(serviceAccountPath)) {
     serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
