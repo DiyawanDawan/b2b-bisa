@@ -212,7 +212,7 @@ jobs:
                   MYSQL_ROOT_PASSWORD: $${DATABASE_PASSWORD}
                   MYSQL_DATABASE: $${DATABASE_NAME}
                   MYSQL_USER: $${DATABASE_USER}
-                  DATABASE_PASSWORD: $${DATABASE_PASSWORD}
+                  MYSQL_PASSWORD: $${DATABASE_PASSWORD}
                 ports:
                   - "3306:3306"
                 volumes:
@@ -404,7 +404,7 @@ jobs:
                   MYSQL_ROOT_PASSWORD: $${DATABASE_PASSWORD}
                   MYSQL_DATABASE: $${DATABASE_NAME}
                   MYSQL_USER: $${DATABASE_USER}
-                  DATABASE_PASSWORD: $${DATABASE_PASSWORD}
+                  MYSQL_PASSWORD: $${DATABASE_PASSWORD}
                 ports:
                   - "3306:3306"
                 volumes:
@@ -550,6 +550,50 @@ jobs:
             chmod 600 .env
             echo "✅ .env file automatically created from GitHub Secrets!"
 
+            # Force DATABASE_URL host to compose service `mysql` (secrets often use localhost).
+            sed 's/^            //' > /tmp/rewrite-compose-database-url.py <<'PY'
+            from pathlib import Path
+            import re
+            from urllib.parse import quote
+
+            path = Path(".env")
+            text = path.read_text(encoding="utf-8")
+
+            def get(key: str) -> str:
+                m = re.search(rf"^{re.escape(key)}=(.*)$", text, re.M)
+                return (m.group(1).strip().strip('"').strip("'") if m else "")
+
+            def put(key: str, value: str) -> None:
+                nonlocal text
+                line = f"{key}={value}"
+                if re.search(rf"^{re.escape(key)}=", text, re.M):
+                    text = re.sub(rf"^{re.escape(key)}=.*$", line, text, count=1, flags=re.M)
+                else:
+                    text = text.rstrip("\n") + "\n" + line + "\n"
+
+            user = get("DATABASE_USER") or "root"
+            password = get("DATABASE_PASSWORD")
+            name = get("DATABASE_NAME") or "bisa_db"
+            if not password:
+                raise SystemExit("DATABASE_PASSWORD missing in .env")
+            put(
+                "DATABASE_URL",
+                f"mysql://{quote(user, safe='')}:{quote(password, safe='')}@mysql:3306/{quote(name, safe='')}",
+            )
+            put("DATABASE_HOST", "mysql")
+            redis_url = get("REDIS_URL")
+            if (not redis_url) or ("localhost" in redis_url) or ("127.0.0.1" in redis_url):
+                put("REDIS_URL", "redis://redis:6379")
+            path.write_text(text, encoding="utf-8")
+            print("DATABASE_URL rewritten for docker-compose host 'mysql'")
+            PY
+            python3 /tmp/rewrite-compose-database-url.py
+
+            # Patch stale compose on server (older deploys used wrong MYSQL_PASSWORD key).
+            if [ -f docker-compose.prod.yml ]; then
+              sed -i 's/DATABASE_PASSWORD: \${DATABASE_PASSWORD}/MYSQL_PASSWORD: ${DATABASE_PASSWORD}/g' docker-compose.prod.yml || true
+            fi
+
             # PHASE 2: FREE DISK + PULL LATEST IMAGE
             echo ""
             echo "🧹 PHASE 2a: FREE DISK SPACE"
@@ -592,7 +636,28 @@ jobs:
             docker rm -f bisa-mysql bisa-app backend-redis 2>/dev/null || true
             docker ps -aq --filter "name=-mysql" | xargs -r docker rm -f 2>/dev/null || true
 
-            # Start app container temporarily to run migrations
+            # Start MySQL + Redis first, wait until MySQL accepts connections
+            echo "Starting MySQL and Redis..."
+            dc -f docker-compose.prod.yml up -d mysql redis
+
+            echo "Waiting for MySQL to be ready..."
+            MYSQL_READY=0
+            for i in $(seq 1 36); do
+              if docker exec bisa-mysql mysqladmin ping -h localhost --silent 2>/dev/null; then
+                echo "✅ MySQL is ready (attempt $i)"
+                MYSQL_READY=1
+                break
+              fi
+              echo " MySQL not ready yet... ($i/36)"
+              sleep 5
+            done
+            if [ "$MYSQL_READY" -ne 1 ]; then
+              echo "❌ MySQL failed to become ready"
+              docker logs bisa-mysql --tail 50 || true
+              exit 1
+            fi
+
+            # Start app container after DB is reachable
             echo "Starting app container for migrations..."
             dc -f docker-compose.prod.yml up -d app
 
@@ -629,6 +694,13 @@ jobs:
             fi
 
             echo "App is ready!"
+
+            # Quick DB reachability check from app container (helps diagnose P1001)
+            echo "Checking DB connectivity from app container..."
+            docker exec bisa-app sh -c 'node -e "
+              const u = new URL(process.env.DATABASE_URL);
+              console.log(\"DB host=\", u.hostname, \"port=\", u.port || \"3306\", \"db=\", u.pathname);
+            "' || true
 
             # Run Prisma migrations
             echo "🗄️ Running Prisma migrations..."
@@ -865,7 +937,7 @@ jobs:
                   MYSQL_ROOT_PASSWORD: $${DATABASE_PASSWORD}
                   MYSQL_DATABASE: $${DATABASE_NAME}
                   MYSQL_USER: $${DATABASE_USER}
-                  DATABASE_PASSWORD: $${DATABASE_PASSWORD}
+                  MYSQL_PASSWORD: $${DATABASE_PASSWORD}
                 ports:
                   - "3306:3306"
                 volumes:
@@ -1011,6 +1083,50 @@ jobs:
             chmod 600 .env
             echo "✅ .env file automatically created from GitHub Secrets!"
 
+            # Force DATABASE_URL host to compose service `mysql` (secrets often use localhost).
+            sed 's/^            //' > /tmp/rewrite-compose-database-url.py <<'PY'
+            from pathlib import Path
+            import re
+            from urllib.parse import quote
+
+            path = Path(".env")
+            text = path.read_text(encoding="utf-8")
+
+            def get(key: str) -> str:
+                m = re.search(rf"^{re.escape(key)}=(.*)$", text, re.M)
+                return (m.group(1).strip().strip('"').strip("'") if m else "")
+
+            def put(key: str, value: str) -> None:
+                nonlocal text
+                line = f"{key}={value}"
+                if re.search(rf"^{re.escape(key)}=", text, re.M):
+                    text = re.sub(rf"^{re.escape(key)}=.*$", line, text, count=1, flags=re.M)
+                else:
+                    text = text.rstrip("\n") + "\n" + line + "\n"
+
+            user = get("DATABASE_USER") or "root"
+            password = get("DATABASE_PASSWORD")
+            name = get("DATABASE_NAME") or "bisa_db"
+            if not password:
+                raise SystemExit("DATABASE_PASSWORD missing in .env")
+            put(
+                "DATABASE_URL",
+                f"mysql://{quote(user, safe='')}:{quote(password, safe='')}@mysql:3306/{quote(name, safe='')}",
+            )
+            put("DATABASE_HOST", "mysql")
+            redis_url = get("REDIS_URL")
+            if (not redis_url) or ("localhost" in redis_url) or ("127.0.0.1" in redis_url):
+                put("REDIS_URL", "redis://redis:6379")
+            path.write_text(text, encoding="utf-8")
+            print("DATABASE_URL rewritten for docker-compose host 'mysql'")
+            PY
+            python3 /tmp/rewrite-compose-database-url.py
+
+            # Patch stale compose on server (older deploys used wrong MYSQL_PASSWORD key).
+            if [ -f docker-compose.prod.yml ]; then
+              sed -i 's/DATABASE_PASSWORD: \${DATABASE_PASSWORD}/MYSQL_PASSWORD: ${DATABASE_PASSWORD}/g' docker-compose.prod.yml || true
+            fi
+
             # PHASE 2: FREE DISK + PULL LATEST IMAGE
             echo ""
             echo "🧹 PHASE 2a: FREE DISK SPACE"
@@ -1053,7 +1169,28 @@ jobs:
             docker rm -f bisa-mysql bisa-app backend-redis 2>/dev/null || true
             docker ps -aq --filter "name=-mysql" | xargs -r docker rm -f 2>/dev/null || true
 
-            # Start app container temporarily to run migrations
+            # Start MySQL + Redis first, wait until MySQL accepts connections
+            echo "Starting MySQL and Redis..."
+            dc -f docker-compose.prod.yml up -d mysql redis
+
+            echo "Waiting for MySQL to be ready..."
+            MYSQL_READY=0
+            for i in $(seq 1 36); do
+              if docker exec bisa-mysql mysqladmin ping -h localhost --silent 2>/dev/null; then
+                echo "✅ MySQL is ready (attempt $i)"
+                MYSQL_READY=1
+                break
+              fi
+              echo " MySQL not ready yet... ($i/36)"
+              sleep 5
+            done
+            if [ "$MYSQL_READY" -ne 1 ]; then
+              echo "❌ MySQL failed to become ready"
+              docker logs bisa-mysql --tail 50 || true
+              exit 1
+            fi
+
+            # Start app container after DB is reachable
             echo "Starting app container for migrations..."
             dc -f docker-compose.prod.yml up -d app
 
@@ -1090,6 +1227,13 @@ jobs:
             fi
 
             echo "App is ready!"
+
+            # Quick DB reachability check from app container (helps diagnose P1001)
+            echo "Checking DB connectivity from app container..."
+            docker exec bisa-app sh -c 'node -e "
+              const u = new URL(process.env.DATABASE_URL);
+              console.log(\"DB host=\", u.hostname, \"port=\", u.port || \"3306\", \"db=\", u.pathname);
+            "' || true
 
             # Run Prisma migrations
             echo "🗄️ Running Prisma migrations..."
