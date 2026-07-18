@@ -120,10 +120,10 @@ jobs:
             }
             echo "Compose CLI:"
             dc version 2>/dev/null || dc --version
-            # Ensure docker-compose file exists
-            if [ ! -f docker-compose.prod.yml ]; then
-              echo "Creating docker-compose.prod.yml..."
-              cat > docker-compose.prod.yml << 'ComposeEOF'
+
+            # Always rewrite compose on development deploys (heals broken YAML from prior sed patches).
+            echo "Writing docker-compose.prod.yml for development..."
+            cat > docker-compose.prod.yml << 'ComposeEOF'
             version: '3.8'
 
             services:
@@ -240,50 +240,240 @@ jobs:
               redis_data:
               mysql_data:
             ComposeEOF
-              echo "✅ docker-compose.prod.yml created"
-            else
-              echo "✅ docker-compose.prod.yml already exists"
-            fi
+            echo "✅ docker-compose.prod.yml written (development)"
 
-            echo "🔧 Forcing development runtime env (NODE_ENV + rate limits)..."
-            if [ -f docker-compose.prod.yml ]; then
-              sed -i 's/NODE_ENV:[[:space:]]*production/NODE_ENV: development/g' docker-compose.prod.yml || true
-              sed -i 's/NODE_ENV=production/NODE_ENV=development/g' docker-compose.prod.yml || true
-              if ! grep -q 'RELAX_RATE_LIMITS' docker-compose.prod.yml; then
-                sed -i '/NODE_ENV:/a\                  RELAX_RATE_LIMITS: "true"' docker-compose.prod.yml || true
-              else
-                sed -i 's/RELAX_RATE_LIMITS:.*/RELAX_RATE_LIMITS: "true"/g' docker-compose.prod.yml || true
-              fi
-            fi
-            if [ -f .env ]; then
-              if grep -q '^NODE_ENV=' .env; then
-                sed -i 's/^NODE_ENV=.*/NODE_ENV=development/' .env
-              else
-                echo 'NODE_ENV=development' >> .env
-              fi
-              if grep -q '^RELAX_RATE_LIMITS=' .env; then
-                sed -i 's/^RELAX_RATE_LIMITS=.*/RELAX_RATE_LIMITS=true/' .env
-              else
-                echo 'RELAX_RATE_LIMITS=true' >> .env
-              fi
-              echo "📄 .env NODE_ENV=$(grep '^NODE_ENV=' .env || true)"
-            fi
+            # Validate compose file before continuing
+            dc -f docker-compose.prod.yml config >/dev/null
+            echo "✅ docker-compose.prod.yml YAML OK"
 
-            echo "Cleaning Docker disk before pull..."
+            # PHASE 1: PRE-DEPLOYMENT CHECK
+            echo ""
+            echo "🔍 PHASE 1: PRE-DEPLOYMENT CHECK"
+            echo "=========================================="
+            echo "📋 Current image before deploy:"
+            docker images | grep -E 'bisa|backend' || echo "No existing image found"
+            echo "Current container status:"
+            dc -f docker-compose.prod.yml ps || echo "No running containers"
+
+            # PHASE 1.5: CREATE ENVIRONMENT FILE (same as production, NODE_ENV=development)
+            echo ""
+            echo "⚙️ PHASE 1.5: CREATING ENVIRONMENT FILE"
+            echo "=========================================="
+            sed 's/^            //' > .env << 'ENVEOF'
+                        DEPLOYMENT_TIMESTAMP=$(date)
+                        GIT_COMMIT=${{ github.sha }}
+                        DEPLOYED_BY=GitHub Actions
+
+                        DATABASE_URL=${{ secrets.DATABASE_URL }}
+                        DATABASE_NAME=${{ secrets.DATABASE_NAME }}
+                        DATABASE_PORT=${{ secrets.DATABASE_PORT }}
+                        DATABASE_PASSWORD=${{ secrets.DATABASE_PASSWORD }}
+                        DATABASE_USER=${{ secrets.DATABASE_USER }}
+                        DATABASE_HOST=${{ secrets.DATABASE_HOST }}
+
+                        NODE_ENV=development
+                        RELAX_RATE_LIMITS=true
+                        PORT=3000
+                        CORS_ORIGINS=${{ secrets.CORS_ORIGINS }}
+
+                        JWT_SECRET=${{ secrets.JWT_SECRET }}
+                        JWT_EXPIRES_IN=${{ secrets.JWT_EXPIRES_IN || '1d' }}
+                        JWT_REFRESH_EXPIRES_IN=${{ secrets.JWT_REFRESH_EXPIRES_IN || '30d' }}
+                        ENCRYPTION_KEY=${{ secrets.ENCRYPTION_KEY }}
+                        ENCRYPTION_KEY_V2=${{ secrets.ENCRYPTION_KEY_V2 }}
+
+                        CLIENT_HOST=${{ secrets.CLIENT_HOST }}
+
+                        EMAIL_SMTP_SECURE=${{ secrets.EMAIL_SMTP_SECURE }}
+                        EMAIL_SMTP_USER=${{ secrets.EMAIL_SMTP_USER }}
+                        EMAIL_SMTP_PASS=${{ secrets.EMAIL_SMTP_PASS }}
+                        EMAIL_SMTP_PORT=${{ secrets.EMAIL_SMTP_PORT }}
+                        EMAIL_SMTP_HOST=${{ secrets.EMAIL_SMTP_HOST }}
+                        EMAIL_FROM=${{ secrets.EMAIL_FROM }}
+                        EMAIL_SENDER_NAME=${{ secrets.EMAIL_SENDER_NAME }}
+
+                        PUSHER_APP_ID=${{ secrets.PUSHER_APP_ID }}
+                        PUSHER_KEY=${{ secrets.PUSHER_KEY }}
+                        PUSHER_SECRET=${{ secrets.PUSHER_SECRET }}
+                        PUSHER_CLUSTER=${{ secrets.PUSHER_CLUSTER }}
+
+                        R2_ACCOUNT_ID=${{ secrets.R2_ACCOUNT_ID }}
+                        R2_ACCESS_KEY_ID=${{ secrets.R2_ACCESS_KEY_ID }}
+                        R2_SECRET_ACCESS_KEY=${{ secrets.R2_SECRET_ACCESS_KEY }}
+                        R2_BUCKET_NAME=${{ secrets.R2_BUCKET_NAME }}
+                        R2_PUBLIC_URL=${{ secrets.R2_PUBLIC_URL }}
+
+                        API_PUBLIC_URL=${{ secrets.API_PUBLIC_URL }}
+                        MEDIA_BASE_URL=${{ secrets.MEDIA_BASE_URL }}
+
+                        XENDIT_PAYMENT_SECRET_KEY=${{ secrets.XENDIT_PAYMENT_SECRET_KEY }}
+                        XENDIT_PAYOUT_SECRET_KEY=${{ secrets.XENDIT_PAYOUT_SECRET_KEY }}
+                        XENDIT_REPORT_SECRET_KEY=${{ secrets.XENDIT_REPORT_SECRET_KEY }}
+                        XENDIT_PUBLIC_KEY=${{ secrets.XENDIT_PUBLIC_KEY }}
+                        XENDIT_WEBHOOK_TOKEN=${{ secrets.XENDIT_WEBHOOK_TOKEN }}
+
+                        REDIS_URL=${{ secrets.REDIS_URL }}
+                        REDIS_ENABLED=${{ secrets.REDIS_ENABLED || 'false' }}
+                        REDIS_KEY_PREFIX=${{ secrets.REDIS_KEY_PREFIX || 'bisa:v1' }}
+                        REDIS_DEFAULT_TTL_SECONDS=${{ secrets.REDIS_DEFAULT_TTL_SECONDS || '3600' }}
+
+                        ML_SERVICE_URL=${{ secrets.ML_SERVICE_URL }}
+                        ML_PREDICT_ENABLED=${{ secrets.ML_PREDICT_ENABLED || 'true' }}
+                        LOG_LEVEL=${{ secrets.LOG_LEVEL || 'info' }}
+
+                        CHROMA_HOST=${{ secrets.CHROMA_HOST }}
+                        CHROMA_API_KEY=${{ secrets.CHROMA_API_KEY }}
+                        CHROMA_TENANT=${{ secrets.CHROMA_TENANT }}
+                        CHROMA_DATABASE=${{ secrets.CHROMA_DATABASE }}
+                        CHROMA_COLLECTION=${{ secrets.CHROMA_COLLECTION }}
+                        DEEPSHEEK_API_KEY=${{ secrets.DEEPSHEEK_API_KEY }}
+                        DEEPSHEEK_MODEL=${{ secrets.DEEPSHEEK_MODEL }}
+
+                        USER_ID_RAJA_ONGKIR=${{ secrets.USER_ID_RAJA_ONGKIR }}
+                        SECRET_KEY_RAJA_ONGKIR=${{ secrets.SECRET_KEY_RAJA_ONGKIR }}
+                        SHIPPING_COST_API_KEY=${{ secrets.SHIPPING_COST_API_KEY }}
+                        PAYMENT_API_KEY=${{ secrets.PAYMENT_API_KEY }}
+                        QRISLY_API_KEY=${{ secrets.QRISLY_API_KEY }}
+
+                        PEXELS_API_KEY=${{ secrets.PEXELS_API_KEY }}
+                        PIXABAY_API_KEY=${{ secrets.PIXABAY_API_KEY }}
+
+                        FIREBASE_SERVICE_ACCOUNT=${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+                        FIREBASE_SERVICE_ACCOUNT_PATH=${{ secrets.FIREBASE_SERVICE_ACCOUNT_PATH }}
+
+                        READINESS_GATES_ENABLED=${{ secrets.READINESS_GATES_ENABLED || 'true' }}
+                        READINESS_ENFORCE_ADMIN=${{ secrets.READINESS_ENFORCE_ADMIN || 'false' }}
+                        REQUIRE_KYC_FOR_ACTIVE_PRODUCT=${{ secrets.REQUIRE_KYC_FOR_ACTIVE_PRODUCT || 'false' }}
+
+                        MEDIA_CHUNK_SIZE_BYTES=${{ secrets.MEDIA_CHUNK_SIZE_BYTES || '5242880' }}
+                        MEDIA_UPLOAD_SESSION_TTL_HOURS=${{ secrets.MEDIA_UPLOAD_SESSION_TTL_HOURS || '24' }}
+                        MEDIA_MAX_IMAGE_BYTES=${{ secrets.MEDIA_MAX_IMAGE_BYTES || '52428800' }}
+                        MEDIA_MAX_PDF_BYTES=${{ secrets.MEDIA_MAX_PDF_BYTES || '20971520' }}
+                        MEDIA_UPLOAD_PROXY_MODE=${{ secrets.MEDIA_UPLOAD_PROXY_MODE || 'true' }}
+
+                        PUBLIC_VERIFY_BASE_URL=${{ secrets.PUBLIC_VERIFY_BASE_URL }}
+                        SUPPORT_WHATSAPP=${{ secrets.SUPPORT_WHATSAPP }}
+                        SUPPORT_EMAIL=${{ secrets.SUPPORT_EMAIL }}
+
+                        RAJAONGKIR_BASE_URL=${{ secrets.RAJAONGKIR_BASE_URL }}
+                        RAJAONGKIR_DEFAULT_COURIERS=${{ secrets.RAJAONGKIR_DEFAULT_COURIERS }}
+                        RAG_ENABLED=${{ secrets.RAG_ENABLED || 'true' }}
+            ENVEOF
+            chmod 600 .env
+            # Normalize accidental double keys from older broken sed patches
+            sed -i 's/^NODE_ENV=NODE_ENV=/NODE_ENV=/' .env || true
+            sed -i 's/^RELAX_RATE_LIMITS=RELAX_RATE_LIMITS=/RELAX_RATE_LIMITS=/' .env || true
+            echo "✅ .env created (NODE_ENV=$(grep '^NODE_ENV=' .env | head -1))"
+
+            # PHASE 2: FREE DISK + PULL LATEST IMAGE
+            echo ""
+            echo "🧹 PHASE 2a: FREE DISK SPACE"
+            echo "=========================================="
+            df -h / || true
+            docker system df || true
             docker container prune -f || true
             docker builder prune -af || true
+            docker images "ghcr.io/diyawandawan/b2b-bisa" --format "{{.ID}} {{.Repository}}:{{.Tag}}" || true
             docker image prune -af || true
+            sudo journalctl --vacuum-size=100M 2>/dev/null || journalctl --vacuum-size=100M 2>/dev/null || true
+            sudo apt-get clean 2>/dev/null || true
+            echo "Disk after cleanup:"
             df -h / || true
+            AVAIL_KB=$(df -Pk / | awk 'NR==2 {print $4}')
+            if [ -n "$AVAIL_KB" ] && [ "$AVAIL_KB" -lt 2097152 ]; then
+              echo "ERROR: less than 2GiB free on /. Free disk on the VPS before deploy."
+              exit 1
+            fi
 
-            dc -f docker-compose.prod.yml pull || true
-            dc -f docker-compose.prod.yml up -d app || true
-            sleep 20
-            docker exec backend-app npx prisma migrate deploy || echo "⚠️ Migration failed or no migrations pending"
-            dc -f docker-compose.prod.yml down || true
-            dc -f docker-compose.prod.yml up -d || true
-            sleep 15
-            docker exec backend-app curl -f http://localhost:3000/health || echo "⚠️ Health check failed"
-            echo "Development deployment completed!"
+            echo ""
+            echo "📦 PHASE 2b: PULLING LATEST IMAGE"
+            echo "=========================================="
+            dc -f docker-compose.prod.yml pull
+            docker images | grep bisa | head -1 || true
+
+            # PHASE 3: DATABASE MIGRATIONS
+            echo ""
+            echo "🗄️ PHASE 3: DATABASE MIGRATIONS"
+            echo "=========================================="
+            docker rm -f bisa-mysql bisa-app backend-redis backend-app 2>/dev/null || true
+            docker ps -aq --filter "name=-mysql" | xargs -r docker rm -f 2>/dev/null || true
+
+            echo "Starting app container for migrations..."
+            dc -f docker-compose.prod.yml up -d app
+            echo " Waiting for app to be ready (180 seconds)..."
+            sleep 90
+
+            MAX_RETRIES=18
+            RETRY_COUNT=0
+            until docker exec bisa-app curl -f -s http://localhost:3000/ || [ $RETRY_COUNT -eq $MAX_RETRIES ]; do
+              echo " App not ready, retrying... ($RETRY_COUNT/$MAX_RETRIES)"
+              RETRY_COUNT=$((RETRY_COUNT+1))
+              docker logs bisa-app --tail 20 || true
+              sleep 10
+            done
+
+            if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+              echo " App failed to start. Aborting deployment."
+              docker logs bisa-app || true
+              docker ps -a | grep bisa || true
+              exit 1
+            fi
+
+            echo "App is ready!"
+            docker exec bisa-app npx prisma migrate resolve --rolled-back 20260718150000_partnership_platform_esign \
+              || echo "ℹ️ No failed partnership migration to roll back (ok)"
+            docker exec bisa-app npx prisma migrate deploy
+            echo "✅ Database migrations successfully applied!"
+            docker exec bisa-app npx prisma migrate status || true
+
+            # PHASE 4: RESTART
+            echo ""
+            echo "PHASE 4: RESTARTING APPLICATION"
+            echo "=========================================="
+            dc -f docker-compose.prod.yml down
+            dc -f docker-compose.prod.yml up -d
+            sleep 60
+
+            # PHASE 5: VERIFY
+            echo ""
+            echo "PHASE 5: POST-DEPLOYMENT VERIFICATION"
+            echo "=========================================="
+            dc -f docker-compose.prod.yml ps
+            dc -f docker-compose.prod.yml logs --tail=30 app || true
+
+            HEALTH_RETRY=0
+            HEALTH_MAX=6
+            until docker exec bisa-app curl -f -s http://localhost:3000/ || [ $HEALTH_RETRY -eq $HEALTH_MAX ]; do
+              echo " Health check failed, retrying... ($HEALTH_RETRY/$HEALTH_MAX)"
+              HEALTH_RETRY=$((HEALTH_RETRY+1))
+              sleep 10
+            done
+            if [ $HEALTH_RETRY -eq $HEALTH_MAX ]; then
+              echo " Health check failed after $HEALTH_MAX retries!"
+              exit 1
+            fi
+            echo "Health check passed!"
+            docker exec bisa-app printenv NODE_ENV || true
+            docker exec bisa-app printenv RELAX_RATE_LIMITS || true
+            docker exec bisa-app pm2 status || echo "PM2 not running or not installed"
+
+            # PHASE 6: CLEANUP
+            echo ""
+            echo "PHASE 6: CLEANUP"
+            echo "=========================================="
+            docker image prune -f
+
+            echo ""
+            echo "=========================================="
+            echo "DEVELOPMENT DEPLOYMENT COMPLETED SUCCESSFULLY!"
+            echo "=========================================="
+            echo "Summary:"
+            echo "  Image: Updated"
+            echo "  Database: Migrated"
+            echo "  Containers: Running (bisa-app)"
+            echo "  NODE_ENV: development"
+            echo "  Health Check: Passed"
+            echo "=========================================="
 
       - name: Notify deployment status
         if: always()
