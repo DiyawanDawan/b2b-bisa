@@ -73,7 +73,12 @@ jobs:
   deploy-development:
     needs: build-and-push
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/develop'
+    # Pre-live / hackathon: push main + develop → development server.
+    # Manual: Actions → Run workflow → environment=development
+    if: >
+      github.ref == 'refs/heads/develop' ||
+      github.ref == 'refs/heads/main' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'development')
     environment: development
     env:
       DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/var/www/app/bisa-backend/b2b-bisa' }}
@@ -131,7 +136,8 @@ jobs:
                 env_file:
                   - .env
                 environment:
-                  NODE_ENV: production
+                  NODE_ENV: development
+                  RELAX_RATE_LIMITS: "true"
                   DATABASE_URL: $${DATABASE_URL}
                   PORT: $${PORT:-3000}
                   JWT_SECRET: $${JWT_SECRET}
@@ -237,6 +243,30 @@ jobs:
               echo "✅ docker-compose.prod.yml created"
             else
               echo "✅ docker-compose.prod.yml already exists"
+            fi
+
+            echo "🔧 Forcing development runtime env (NODE_ENV + rate limits)..."
+            if [ -f docker-compose.prod.yml ]; then
+              sed -i 's/NODE_ENV:[[:space:]]*production/NODE_ENV: development/g' docker-compose.prod.yml || true
+              sed -i 's/NODE_ENV=production/NODE_ENV=development/g' docker-compose.prod.yml || true
+              if ! grep -q 'RELAX_RATE_LIMITS' docker-compose.prod.yml; then
+                sed -i '/NODE_ENV:/a\                  RELAX_RATE_LIMITS: "true"' docker-compose.prod.yml || true
+              else
+                sed -i 's/RELAX_RATE_LIMITS:.*/RELAX_RATE_LIMITS: "true"/g' docker-compose.prod.yml || true
+              fi
+            fi
+            if [ -f .env ]; then
+              if grep -q '^NODE_ENV=' .env; then
+                sed -i 's/^NODE_ENV=.*/NODE_ENV=development/' .env
+              else
+                echo 'NODE_ENV=development' >> .env
+              fi
+              if grep -q '^RELAX_RATE_LIMITS=' .env; then
+                sed -i 's/^RELAX_RATE_LIMITS=.*/RELAX_RATE_LIMITS=true/' .env
+              else
+                echo 'RELAX_RATE_LIMITS=true' >> .env
+              fi
+              echo "📄 .env NODE_ENV=$(grep '^NODE_ENV=' .env || true)"
             fi
 
             echo "Cleaning Docker disk before pull..."
@@ -727,7 +757,8 @@ jobs:
   deploy-production:
     needs: build-and-push
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    # Production hanya manual — jangan auto-deploy dari push main (pre-live pakai development).
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production'
     environment: production
     env:
       DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/var/www/app/bisa-backend/b2b-bisa' }}
