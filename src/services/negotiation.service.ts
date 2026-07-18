@@ -460,7 +460,7 @@ export const expireNegotiations = async () => {
         data: {
           negotiationId: negotiation.id,
           senderId: negotiation.sellerId,
-          content: `â± ${reason}`,
+          content: reason,
           isSystemMessage: true,
         },
       }),

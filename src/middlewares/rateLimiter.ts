@@ -1,13 +1,24 @@
 import rateLimit from 'express-rate-limit';
-import { NODE_ENV } from '#utils/env.util';
+import { NODE_ENV, RELAX_RATE_LIMITS } from '#utils/env.util';
 import type { Request } from 'express';
 
 /**
- * NOTE: Semua limiter di-skip saat NODE_ENV=development untuk DX.
- * Pastikan NODE_ENV=production di deploy untuk enforcement.
- * Rate limiter store default = in-memory (cocok untuk single-instance MVP).
- * Untuk multi-instance, migrate ke Redis store (rate-limit-redis).
+ * Rate limit:
+ * - Di-skip jika NODE_ENV !== production ATAU RELAX_RATE_LIMITS=true
+ *   (default true — cocok pre-live / staging / hackathon).
+ * - Set RELAX_RATE_LIMITS=false di env live sungguhan untuk enforcement ketat.
+ * Store default = in-memory (single-instance MVP).
  */
+
+const isProduction = NODE_ENV === 'production';
+const relaxLimits = RELAX_RATE_LIMITS || !isProduction;
+
+const skipRelaxed = (): boolean => relaxLimits;
+
+const isSafeHttpMethod = (req: Request): boolean => {
+  const method = req.method.toUpperCase();
+  return method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
+};
 
 /**
  * Composite key generator: userId (jika authenticated) + IP.
@@ -31,12 +42,11 @@ const iotIngestKey = (req: Request): string => {
 
 export const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 600,
+  max: 2000,
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => {
-    if (NODE_ENV === 'development') return true;
-    // Panel admin butuh throughput tinggi (list + polling). Mutasi dibatasi adminActionLimiter.
+    if (relaxLimits) return true;
     const path = (req.originalUrl || req.url || req.path || '').split('?')[0];
     return path.startsWith('/api/v1/admin') || path.includes('/api/v1/admin');
   },
@@ -55,10 +65,10 @@ export const globalLimiter = rateLimit({
 
 export const authLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 5,
+  max: 30,
   standardHeaders: true,
   legacyHeaders: false,
-  skip: () => NODE_ENV === 'development',
+  skip: skipRelaxed,
   keyGenerator: (req) => {
     return req.ip || 'unknown';
   },
@@ -73,23 +83,25 @@ export const authLimiter = rateLimit({
 });
 
 /**
- * Financial operations limiter: Withdrawals, escrow release, payment init
- * Prevents rapid fund drainage if account is compromised.
- *
- * SEC-BE-015: composite key (userId+IP) — diterapkan saat requireAuth sudah jalan.
+ * Financial operations limiter: Withdrawals, escrow release, payment init.
+ * GET/HEAD/OPTIONS di-skip — list pesanan / detail tidak boleh kena kuota.
+ * Live ketat: 300 mutasi / menit. Pre-live: di-skip via RELAX_RATE_LIMITS.
  */
 export const financialLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // Max 10 financial operations per 15 min
+  windowMs: 60 * 1000,
+  max: 300,
   standardHeaders: true,
   legacyHeaders: false,
-  skip: () => NODE_ENV === 'development',
+  skip: (req) => {
+    if (relaxLimits) return true;
+    return isSafeHttpMethod(req);
+  },
   keyGenerator: compositeKey,
   message: {
     meta: {
       success: false,
       status: 429,
-      message: 'Terlalu banyak transaksi keuangan. Demi keamanan, coba lagi setelah 15 menit.',
+      message: 'Terlalu banyak transaksi keuangan. Demi keamanan, coba lagi setelah 1 menit.',
     },
     data: null,
   },
@@ -100,14 +112,13 @@ export const financialLimiter = rateLimit({
  * GET/HEAD/OPTIONS di-skip — jangan blok list/polling panel admin.
  */
 export const adminActionLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 120,
+  windowMs: 60 * 60 * 1000,
+  max: 500,
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => {
-    if (NODE_ENV === 'development') return true;
-    const method = req.method.toUpperCase();
-    return method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
+    if (relaxLimits) return true;
+    return isSafeHttpMethod(req);
   },
   keyGenerator: compositeKey,
   message: {
@@ -120,16 +131,12 @@ export const adminActionLimiter = rateLimit({
   },
 });
 
-/**
- * Public API limiter for specific heavy or sensitive public routes
- * windowMs: 15 minutes, max: 100 requests
- */
 export const publicApiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: 500,
   standardHeaders: true,
   legacyHeaders: false,
-  skip: () => NODE_ENV === 'development',
+  skip: skipRelaxed,
   keyGenerator: (req) => {
     return req.ip || 'unknown';
   },
@@ -143,16 +150,12 @@ export const publicApiLimiter = rateLimit({
   },
 });
 
-/**
- * Register Email Check Limiter: Prevents email enumeration during registration
- * windowMs: 1 minute, max: 10 requests
- */
 export const emailCheckLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 10,
+  max: 60,
   standardHeaders: true,
   legacyHeaders: false,
-  skip: () => NODE_ENV === 'development',
+  skip: skipRelaxed,
   keyGenerator: (req) => {
     return req.ip || 'unknown';
   },
@@ -166,17 +169,12 @@ export const emailCheckLimiter = rateLimit({
   },
 });
 
-/**
- * Webhook Limiter: Xendit invoice/payout/session webhooks.
- * SEC-BE-006: defense-in-depth on top of constant-time signature check.
- * 60 req/min per IP — Xendit retry policy max 3× dalam 1 jam, jadi 60/min lebih dari cukup.
- */
 export const webhookLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 60,
+  max: 120,
   standardHeaders: true,
   legacyHeaders: false,
-  skip: () => NODE_ENV === 'development',
+  skip: skipRelaxed,
   keyGenerator: (req) => req.ip || 'unknown',
   message: {
     meta: {
@@ -188,16 +186,12 @@ export const webhookLimiter = rateLimit({
   },
 });
 
-/**
- * Chatbot Limiter: AI chatbot (Gemini) per-user limit.
- * SEC-BE-007: prevent quota/biaya API abuse.
- */
 export const chatbotLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 10,
+  max: 60,
   standardHeaders: true,
   legacyHeaders: false,
-  skip: () => NODE_ENV === 'development',
+  skip: skipRelaxed,
   keyGenerator: compositeKey,
   message: {
     meta: {
@@ -209,17 +203,12 @@ export const chatbotLimiter = rateLimit({
   },
 });
 
-/**
- * Register Limiter: pembatasan ketat untuk endpoint registrasi.
- * SEC-BE-008: cegah mass registration / DB bloat / email OTP bombing.
- * 3 req/jam per IP — cukup ketat tapi tetap memungkinkan retry sah.
- */
 export const registerLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  max: 3,
+  max: 30,
   standardHeaders: true,
   legacyHeaders: false,
-  skip: () => NODE_ENV === 'development',
+  skip: skipRelaxed,
   keyGenerator: (req) => req.ip || 'unknown',
   message: {
     meta: {
@@ -231,20 +220,12 @@ export const registerLimiter = rateLimit({
   },
 });
 
-/**
- * Upload Limiter: generic file upload (system/upload).
- * SEC-BE-002 helper: per-user limit untuk hindari storage abuse.
- * 20 req/menit per user — cukup untuk batch upload foto produk.
- */
-/**
- * Chunked media upload session init — 30 sesi/jam per user (bukan per chunk).
- */
 export const mediaUploadInitLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  max: 30,
+  max: 120,
   standardHeaders: true,
   legacyHeaders: false,
-  skip: () => NODE_ENV === 'development',
+  skip: skipRelaxed,
   keyGenerator: compositeKey,
   message: {
     meta: {
@@ -258,10 +239,10 @@ export const mediaUploadInitLimiter = rateLimit({
 
 export const uploadLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 20,
+  max: 120,
   standardHeaders: true,
   legacyHeaders: false,
-  skip: () => NODE_ENV === 'development',
+  skip: skipRelaxed,
   keyGenerator: compositeKey,
   message: {
     meta: {
@@ -273,21 +254,12 @@ export const uploadLimiter = rateLimit({
   },
 });
 
-/**
- * Public Verify/Track Limiter: order verify & track endpoints (QR / logistik).
- * SEC-BE-014: cegah enumeration orderNumber.
- * 30 req/menit per IP — sah untuk pelanggan, ketat untuk bot.
- */
-/**
- * IoT ingest: POST /iot/data — cegah flood telemetry dari device rusak.
- * 120 req/menit per device token (fallback IP jika header belum ada).
- */
 export const iotIngestLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 120,
+  max: 300,
   standardHeaders: true,
   legacyHeaders: false,
-  skip: () => NODE_ENV === 'development',
+  skip: skipRelaxed,
   keyGenerator: iotIngestKey,
   message: {
     meta: {
@@ -301,10 +273,10 @@ export const iotIngestLimiter = rateLimit({
 
 export const publicVerifyLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 30,
+  max: 120,
   standardHeaders: true,
   legacyHeaders: false,
-  skip: () => NODE_ENV === 'development',
+  skip: skipRelaxed,
   keyGenerator: (req) => req.ip || 'unknown',
   message: {
     meta: {

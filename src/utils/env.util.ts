@@ -35,6 +35,12 @@ export const CORS_ORIGINS = optional('CORS_ORIGINS', 'http://localhost:3000');
 export const CLIENT_HOST = optional('CLIENT_HOST', 'http://localhost:3000');
 export const TRUST_PROXY = optional('TRUST_PROXY', '1');
 
+/**
+ * Pre-live / staging / QA: default longgarkan rate limit.
+ * Set RELAX_RATE_LIMITS=false hanya saat go-live production sungguhan.
+ */
+export const RELAX_RATE_LIMITS = optional('RELAX_RATE_LIMITS', 'true') === 'true';
+
 // JWT — WAJIB diset di production. Server akan crash jika tidak ada.
 export const JWT_SECRET = required('JWT_SECRET');
 export const JWT_EXPIRES_IN = optional('JWT_EXPIRES_IN', '7d');
