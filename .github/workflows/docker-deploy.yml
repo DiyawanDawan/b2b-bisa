@@ -632,6 +632,9 @@ jobs:
 
             # Run Prisma migrations
             echo "🗄️ Running Prisma migrations..."
+            # Recover P3018 if platform e-sign migration failed earlier (table was missing).
+            docker exec bisa-app npx prisma migrate resolve --rolled-back 20260718150000_partnership_platform_esign \
+              || echo "ℹ️ No failed partnership migration to roll back (ok)"
             docker exec bisa-app npx prisma migrate deploy
             echo "✅ Database migrations successfully applied!"
 
@@ -1093,6 +1096,9 @@ jobs:
 
             # Run Prisma migrations
             echo "🗄️ Running Prisma migrations..."
+            # Recover P3018 if platform e-sign migration failed earlier (table was missing).
+            docker exec bisa-app npx prisma migrate resolve --rolled-back 20260718150000_partnership_platform_esign \
+              || echo "ℹ️ No failed partnership migration to roll back (ok)"
             docker exec bisa-app npx prisma migrate deploy
             echo "✅ Database migrations successfully applied!"
 
