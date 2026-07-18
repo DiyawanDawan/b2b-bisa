@@ -1,12 +1,15 @@
 import logger from '../../src/config/logger.js';
-import { loremFlickrDbPath } from '../../src/utils/loremFlickrMedia.util.ts';
+import {
+  buildForumPostMedia,
+  hasStockPhotoApiKey,
+} from './utils/seedStockMedia.util.ts';
 
-const seedForumMedia = (keywords, lock) => [
-  {
-    url: loremFlickrDbPath(keywords, { lock }),
-    type: 'image',
-  },
-];
+/** Keyword visual per slug grup — dipakai query Pexels/Pixabay. */
+const GROUP_MEDIA_KEYWORDS = {
+  'biochar-sulawesi-hub': ['biochar', 'kiln', 'biomass'],
+  'komunitas-smart-farm-iot': ['iot', 'agriculture', 'sensor'],
+  'supply-chain-organik-indonesia': ['warehouse', 'truck', 'logistics'],
+};
 
 /**
  * Konten postingan + komentar per grup (deterministik, cocok untuk QA mobile/web).
@@ -321,6 +324,12 @@ export async function seedForumGroupPosts(prisma) {
   let postCount = 0;
   let commentCount = 0;
   let lock = 9400;
+  const stockMode = hasStockPhotoApiKey();
+  logger.info(
+    stockMode
+      ? '   ↳ Media post: Pexels/Pixabay → R2 (gambar + sebagian video)'
+      : '   ↳ PEXELS_API_KEY / PIXABAY_API_KEY kosong — fallback placeholder Picsum',
+  );
 
   for (const group of groups) {
     const seeds = GROUP_POST_SEEDS[group.slug];
@@ -353,6 +362,18 @@ export async function seedForumGroupPosts(prisma) {
       }
       const authorId = author && memberIds.includes(author.id) ? author.id : memberIds[0];
 
+      const mediaKeywords =
+        GROUP_MEDIA_KEYWORDS[group.slug] ?? ['forum', 'community', group.slug];
+      const mediaLock = lock++;
+      // Setiap post ke-3 (index 0,3,…) coba sertakan video stock jika API key ada
+      const includeVideo = stockMode && postCount % 3 === 0;
+      const mediaUrls = await buildForumPostMedia({
+        groupSlug: group.slug,
+        keywords: mediaKeywords,
+        lock: mediaLock,
+        includeVideo,
+      });
+
       const post = await prisma.forumPost.create({
         data: {
           title: seed.title,
@@ -361,7 +382,7 @@ export async function seedForumGroupPosts(prisma) {
           categoryId: forumCat?.id,
           groupId: group.id,
           userId: authorId,
-          mediaUrls: seedForumMedia(['forum', 'community', group.slug], lock++),
+          mediaUrls,
           status: 'PUBLISHED',
           upvotes: 3 + (postCount % 12),
           viewCount: 40 + postCount * 17,

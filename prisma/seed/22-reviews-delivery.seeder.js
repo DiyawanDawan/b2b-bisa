@@ -1,5 +1,11 @@
 import logger from '../../src/config/logger.js';
-import { loremFlickrDbPath } from '../../src/utils/loremFlickrMedia.util.ts';
+import {
+  buildDisputeEvidenceUrls,
+  buildPaymentProofUrl,
+  buildPodPhotoUrls,
+  buildReviewImageUrls,
+  hasStockPhotoApiKey,
+} from './utils/seedStockMedia.util.ts';
 
 const REVIEW_TEMPLATES = [
   {
@@ -34,20 +40,6 @@ const REVIEW_TEMPLATES = [
     reply: 'Terima kasih feedback-nya. Kami akan kirim update ETA harian ke depan.',
   },
 ];
-
-function reviewImages(lockBase) {
-  return JSON.stringify([
-    loremFlickrDbPath(['delivery', 'warehouse', 'cargo'], { lock: lockBase }),
-    loremFlickrDbPath(['package', 'box', 'received'], { lock: lockBase + 1 }),
-  ]);
-}
-
-function podPhotos(lockBase) {
-  return [
-    loremFlickrDbPath(['truck', 'delivery', 'proof'], { lock: lockBase }),
-    loremFlickrDbPath(['signature', 'handover', 'receipt'], { lock: lockBase + 1 }),
-  ];
-}
 
 function buildTrackingSnapshot({ awb, courier, deliveredAt, photos }) {
   return {
@@ -105,6 +97,11 @@ async function recalculateProductRatings(prisma, productIds) {
  */
 export async function seedReviewsAndDeliveryProofs(prisma) {
   logger.info('🌱 [22] Seeding reviews, shipment POD, payment proof & dispute evidence...');
+  logger.info(
+    hasStockPhotoApiKey()
+      ? '   ↳ Foto bukti: Pexels/Pixabay → R2'
+      : '   ↳ PEXELS/PIXABAY key kosong — foto fallback Picsum',
+  );
 
   const completedOrders = await prisma.order.findMany({
     where: { status: 'COMPLETED' },
@@ -150,7 +147,8 @@ export async function seedReviewsAndDeliveryProofs(prisma) {
     const deliveredAt = new Date(Date.now() - (i + 2) * 86400000);
     const awb = `BISA${String(100000 + i).slice(-6)}POD`;
     const courier = i % 2 === 0 ? 'jne' : 'sicepat';
-    const photos = podPhotos(12000 + i * 3);
+    const photos = await buildPodPhotoUrls(12000 + i * 3);
+    const reviewImageUrl = await buildReviewImageUrls(13000 + i * 2);
 
     await prisma.shipmentTracking.upsert({
       where: { orderId: order.id },
@@ -212,7 +210,7 @@ export async function seedReviewsAndDeliveryProofs(prisma) {
         rating: template.rating,
         comment: template.comment,
         supplierReply: template.reply,
-        imageUrl: reviewImages(13000 + i * 2),
+        imageUrl: reviewImageUrl,
       },
       create: {
         orderId: order.id,
@@ -221,7 +219,7 @@ export async function seedReviewsAndDeliveryProofs(prisma) {
         rating: template.rating,
         comment: template.comment,
         supplierReply: template.reply,
-        imageUrl: reviewImages(13000 + i * 2),
+        imageUrl: reviewImageUrl,
       },
     });
     reviewCount += 1;
@@ -231,9 +229,7 @@ export async function seedReviewsAndDeliveryProofs(prisma) {
       await prisma.transaction.update({
         where: { id: order.transaction.id },
         data: {
-          paymentProofUrl: loremFlickrDbPath(['receipt', 'transfer', 'bank'], {
-            lock: 14000 + i,
-          }),
+          paymentProofUrl: await buildPaymentProofUrl(14000 + i),
         },
       });
       paymentProofCount += 1;
@@ -319,11 +315,8 @@ export async function seedReviewsAndDeliveryProofs(prisma) {
   for (let i = 0; i < disputedOrders.length; i++) {
     const order = disputedOrders[i];
     if (!order.dispute) continue;
-    const buyerEvidence = [
-      loremFlickrDbPath(['damage', 'package', 'complaint'], { lock: 15000 + i * 2 }),
-      loremFlickrDbPath(['product', 'quality', 'issue'], { lock: 15001 + i * 2 }),
-    ];
-    const sellerEvidence = podPhotos(16000 + i * 2);
+    const buyerEvidence = await buildDisputeEvidenceUrls(15000 + i * 2);
+    const sellerEvidence = await buildPodPhotoUrls(16000 + i * 2);
     await prisma.orderDispute.update({
       where: { id: order.dispute.id },
       data: {

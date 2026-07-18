@@ -1,5 +1,8 @@
 import logger from '../../src/config/logger.js';
-import { loremFlickrDbPath } from '../../src/utils/loremFlickrMedia.util.ts';
+import {
+  buildForumGroupCoverMedia,
+  hasStockPhotoApiKey,
+} from './utils/seedStockMedia.util.ts';
 
 /**
  * Akun tetap dari 04-users.seeder.js — hanya lookup id, tidak buat user baru.
@@ -80,6 +83,11 @@ export async function seedForumGroups(prisma) {
   await prisma.forumGroup.deleteMany({});
 
   const groups = [];
+  logger.info(
+    hasStockPhotoApiKey()
+      ? '   ↳ Cover grup: Pexels/Pixabay → R2'
+      : '   ↳ PEXELS/PIXABAY key kosong — cover fallback Picsum',
+  );
 
   for (const seed of FORUM_GROUP_SEEDS) {
     const owner = await findUserIdByEmail(prisma, seed.ownerEmail);
@@ -90,13 +98,20 @@ export async function seedForumGroups(prisma) {
       continue;
     }
 
+    const lock = 800 + groups.length * 2;
+    const cover = await buildForumGroupCoverMedia({
+      slug: seed.slug,
+      keywords: seed.keywords,
+      lock,
+    });
+
     const created = await prisma.forumGroup.create({
       data: {
         name: seed.name,
         slug: seed.slug,
         description: seed.description,
-        avatarUrl: loremFlickrDbPath(seed.keywords, { lock: 800 + groups.length * 2 }),
-        bannerUrl: loremFlickrDbPath(seed.keywords, { lock: 801 + groups.length * 2 }),
+        avatarUrl: cover.avatarUrl,
+        bannerUrl: cover.bannerUrl,
         ownerId: owner.id,
         isPublic: true,
         memberCount: 1,
