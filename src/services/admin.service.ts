@@ -989,15 +989,12 @@ export const listDisputes = async (params: {
       }
 
       const items = order.items.map((item) => {
-        const product = item.product
-          ? attachProductMediaUrls({ ...item.product })
-          : null;
+        const product = item.product ? attachProductMediaUrls({ ...item.product }) : null;
         return {
           ...item,
           product: product
             ? {
-                id: product.id,
-                name: product.name,
+                ...product,
                 thumbnailUrl: product.thumbnailUrl ?? null,
               }
             : null,

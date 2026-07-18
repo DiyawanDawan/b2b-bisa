@@ -24,7 +24,7 @@ const emitSupportEvent = (
   pusher.trigger(supportChannel(ticketId), event, payload).catch(() => {});
 };
 
-const activeStatuses = [
+const activeStatuses: SupportTicketStatus[] = [
   SupportTicketStatus.OPEN,
   SupportTicketStatus.ASSIGNED,
   SupportTicketStatus.WAITING_USER,
