@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import * as aiController from '#controllers/ai.controller';
-import { requireAuth } from '#middlewares/authMiddleware';
+import { optionalAuth, requireAuth } from '#middlewares/authMiddleware';
 import { chatbotLimiter } from '#middlewares/rateLimiter';
 
 import validate from '#middlewares/validate';
@@ -8,20 +8,26 @@ import * as aiValidation from '#validations/ai.validation';
 
 const router = Router();
 
-// SEC-BE-007: requireAuth + per-user rate limit untuk hindari abuse Gemini API.
-router.use(requireAuth);
-
+// Asisten BISA: publik tanpa login (guest + optionalAuth jika ada token).
 router.post(
   '/chatbot',
+  optionalAuth,
   chatbotLimiter,
   validate(aiValidation.chatbotSchema, 'body'),
   aiController.chatAssistant,
 );
 
-router.post('/predict', validate(aiValidation.predictSchema, 'body'), aiController.predictQuality);
+// Endpoint AI lain tetap wajib login.
+router.post(
+  '/predict',
+  requireAuth,
+  validate(aiValidation.predictSchema, 'body'),
+  aiController.predictQuality,
+);
 
 router.get(
   '/predictions/recent',
+  requireAuth,
   validate(aiValidation.recentPredictionsQuerySchema, 'all'),
   aiController.listRecentPredictions,
 );
@@ -29,6 +35,7 @@ router.get(
 // SEC-BE-007 derivative: chatbotLimiter reused — cegah abuse Gemini Vision API per user.
 router.post(
   '/generate-product-description',
+  requireAuth,
   chatbotLimiter,
   validate(aiValidation.generateProductDescriptionSchema, 'body'),
   aiController.generateProductDescription,

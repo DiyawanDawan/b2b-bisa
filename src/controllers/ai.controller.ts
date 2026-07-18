@@ -14,11 +14,14 @@ export const predictQuality = catchAsync(async (req: AuthRequest, res: Response)
 });
 
 /**
- * AI Chatbot / Assistant for agriculture and biochar
+ * AI Chatbot / Assistant for agriculture and biochar.
+ * Publik: guest boleh chat tanpa login. Jika login + punya tiket CS aktif, AI ditahan.
  */
 export const chatAssistant = catchAsync(async (req: AuthRequest, res: Response) => {
   const { question } = req.body;
-  await supportService.assertAiAvailable(req.user!.id);
+  if (req.user?.id) {
+    await supportService.assertAiAvailable(req.user.id);
+  }
   const answer = await aiService.askAssistant(question);
   successResponse(res, { answer }, 'Jawaban asisten AI');
 });
