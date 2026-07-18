@@ -118,6 +118,7 @@ export const attachArticleMediaUrls = <T extends ArticleLike>(article: T): T => 
 
 type ReviewLike = {
   imageUrl?: string | null;
+  images?: string[] | null;
   buyer?: UserLike | null;
   product?: { thumbnailUrl?: string | null; [key: string]: unknown } | null;
   [key: string]: unknown;
@@ -127,6 +128,11 @@ export const attachReviewMediaUrls = <T extends ReviewLike>(review: T): T => {
   const next: ReviewLike = { ...review };
   if (next.imageUrl) {
     next.imageUrl = resolveMediaField(next.imageUrl) ?? next.imageUrl;
+  }
+  if (Array.isArray(next.images)) {
+    next.images = next.images
+      .map((u) => resolveMediaField(u) ?? u)
+      .filter((u): u is string => Boolean(u));
   }
   if (next.buyer) next.buyer = mapUser({ ...next.buyer });
   if (next.product) {

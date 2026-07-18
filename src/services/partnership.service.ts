@@ -139,6 +139,15 @@ const mapPartnership = (row: {
   endDate: Date;
   buyerSignedAt: Date | null;
   sellerSignedAt: Date | null;
+  platformSignedAt?: Date | null;
+  buyerSignerName?: string | null;
+  buyerSignerTitle?: string | null;
+  buyerCompanyName?: string | null;
+  sellerSignerName?: string | null;
+  sellerSignerTitle?: string | null;
+  sellerCompanyName?: string | null;
+  platformSignerName?: string | null;
+  platformSignerTitle?: string | null;
   isFullySigned: boolean;
   rejectionReason: string | null;
   terminatedAt: Date | null;
@@ -154,6 +163,12 @@ const mapPartnership = (row: {
   supplier: Parameters<typeof mapUser>[0];
 }) => {
   const meta = computeContractMeta(row);
+  const signers = {
+    buyer: Boolean(row.buyerSignedAt),
+    supplier: Boolean(row.sellerSignedAt),
+    platform: Boolean(row.platformSignedAt),
+  };
+  const signedCount = [signers.buyer, signers.supplier, signers.platform].filter(Boolean).length;
   return {
     id: row.id,
     contractNumber: row.contractNumber,
@@ -173,7 +188,46 @@ const mapPartnership = (row: {
     endDate: row.endDate,
     buyerSignedAt: row.buyerSignedAt,
     sellerSignedAt: row.sellerSignedAt,
+    platformSignedAt: row.platformSignedAt ?? null,
+    buyerSignerName: row.buyerSignerName ?? null,
+    buyerSignerTitle: row.buyerSignerTitle ?? null,
+    buyerCompanyName: row.buyerCompanyName ?? null,
+    sellerSignerName: row.sellerSignerName ?? null,
+    sellerSignerTitle: row.sellerSignerTitle ?? null,
+    sellerCompanyName: row.sellerCompanyName ?? null,
+    platformSignerName: row.platformSignerName ?? null,
+    platformSignerTitle: row.platformSignerTitle ?? null,
     isFullySigned: row.isFullySigned,
+    /** Kontrak kerjasama BISA = 3 pihak: Buyer, Supplier, Penengah (BISA). */
+    requiredSigners: 3,
+    signedCount,
+    signers,
+    signatures: [
+      {
+        party: 'BUYER',
+        label: 'Buyer',
+        signedAt: row.buyerSignedAt,
+        signerName: row.buyerSignerName ?? row.buyer.fullName,
+        signerTitle: row.buyerSignerTitle ?? null,
+        companyName: row.buyerCompanyName ?? row.buyer.profile?.companyName ?? null,
+      },
+      {
+        party: 'SUPPLIER',
+        label: 'Supplier',
+        signedAt: row.sellerSignedAt,
+        signerName: row.sellerSignerName ?? row.supplier.fullName,
+        signerTitle: row.sellerSignerTitle ?? null,
+        companyName: row.sellerCompanyName ?? row.supplier.profile?.companyName ?? null,
+      },
+      {
+        party: 'PLATFORM',
+        label: 'Penengah BISA',
+        signedAt: row.platformSignedAt ?? null,
+        signerName: row.platformSignerName ?? 'BISA Agri',
+        signerTitle: row.platformSignerTitle ?? null,
+        companyName: 'BISA Agri',
+      },
+    ],
     rejectionReason: row.rejectionReason,
     terminatedAt: row.terminatedAt,
     terminatedBy: row.terminatedBy,
@@ -193,18 +247,54 @@ const mapPartnership = (row: {
   };
 };
 
+const isTripleSigned = (parts: {
+  buyerSignedAt: Date | null | undefined;
+  sellerSignedAt: Date | null | undefined;
+  platformSignedAt: Date | null | undefined;
+}) => Boolean(parts.buyerSignedAt && parts.sellerSignedAt && parts.platformSignedAt);
+
+const resolveSignerIdentity = async (
+  userId: string,
+  overrides?: { signerName?: string; signerTitle?: string; companyName?: string },
+) => {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      fullName: true,
+      jobTitle: true,
+      role: true,
+      profile: { select: { companyName: true } },
+    },
+  });
+  const defaultPlatformTitle = 'General Manager';
+  const defaultTitle =
+    user?.role === UserRole.ADMIN
+      ? defaultPlatformTitle
+      : user?.jobTitle || (user?.role === UserRole.BUYER ? 'Procurement Manager' : 'CEO');
+
+  return {
+    signerName: overrides?.signerName?.trim() || user?.fullName || 'Penandatangan',
+    signerTitle: overrides?.signerTitle?.trim() || defaultTitle,
+    companyName:
+      overrides?.companyName?.trim() ||
+      user?.profile?.companyName ||
+      (user?.role === UserRole.ADMIN ? 'BISA Agri' : null),
+  };
+};
+
 const partnershipInclude = {
   buyer: { select: userSelect },
   supplier: { select: userSelect },
 } as const;
 
-const assertParticipant = async (partnershipId: string, userId: string) => {
+const assertParticipant = async (partnershipId: string, userId: string, allowAdmin = false) => {
   const row = await prisma.buyerSupplierPartnership.findUnique({
     where: { id: partnershipId },
     select: { id: true, buyerId: true, supplierId: true },
   });
   if (!row) throw new AppError('Kontrak kerjasama tidak ditemukan.', 404);
-  if (row.buyerId !== userId && row.supplierId !== userId) {
+  const isParty = row.buyerId === userId || row.supplierId === userId;
+  if (!isParty && !allowAdmin) {
     throw new AppError('Anda tidak berhak mengakses kontrak ini.', 403);
   }
   return row;
@@ -251,6 +341,8 @@ export const createPartnership = async (
     tier?: PartnershipTier;
     originatingNegotiationId?: string;
     originatingOrderId?: string;
+    signerName?: string;
+    signerTitle?: string;
   },
 ) => {
   if (buyerId === input.supplierId) {
@@ -281,6 +373,10 @@ export const createPartnership = async (
 
   const now = new Date();
   const buyerSignHash = createSignHash(buyerId, 'draft', now);
+  const buyerIdentity = await resolveSignerIdentity(buyerId, {
+    signerName: input.signerName,
+    signerTitle: input.signerTitle,
+  });
 
   const created = await prisma.buyerSupplierPartnership.create({
     data: {
@@ -304,6 +400,9 @@ export const createPartnership = async (
       originatingOrderId: input.originatingOrderId,
       buyerSignedAt: now,
       buyerSignHash,
+      buyerSignerName: buyerIdentity.signerName,
+      buyerSignerTitle: buyerIdentity.signerTitle,
+      buyerCompanyName: buyerIdentity.companyName,
     },
     include: partnershipInclude,
   });
@@ -336,8 +435,13 @@ export const listMyPartnerships = async (
   await expireDuePartnerships();
 
   const skip = (page - 1) * limit;
+  // Admin (penengah BISA) melihat semua kontrak — terutama yang menunggu TTD platform
   const where: Prisma.BuyerSupplierPartnershipWhereInput =
-    role === UserRole.SUPPLIER ? { supplierId: userId } : { buyerId: userId };
+    role === UserRole.ADMIN
+      ? {}
+      : role === UserRole.SUPPLIER
+        ? { supplierId: userId }
+        : { buyerId: userId };
   if (status) where.status = status;
 
   const [rows, total] = await Promise.all([
@@ -359,9 +463,14 @@ export const listMyPartnerships = async (
   };
 };
 
-export const getPartnershipById = async (partnershipId: string, userId: string) => {
+export const getPartnershipById = async (
+  partnershipId: string,
+  userId: string,
+  role?: UserRole,
+) => {
   await expireDuePartnerships();
-  await assertParticipant(partnershipId, userId);
+  const isAdmin = role === UserRole.ADMIN;
+  await assertParticipant(partnershipId, userId, isAdmin);
   const row = await prisma.buyerSupplierPartnership.findUnique({
     where: { id: partnershipId },
     include: partnershipInclude,
@@ -419,12 +528,9 @@ export const acceptPartnership = async (partnershipId: string, supplierId: strin
 
   const now = new Date();
   const sellerSignHash = createSignHash(supplierId, partnershipId, now);
-  const bothSigned = !!row.buyerSignedAt;
-  const nextStatus = bothSigned
-    ? row.endDate >= startOfToday()
-      ? PartnershipStatus.ACTIVE
-      : PartnershipStatus.EXPIRED
-    : PartnershipStatus.AWAITING_SIGNATURE;
+  const sellerIdentity = await resolveSignerIdentity(supplierId);
+  // Setelah supplier approve: masih butuh TTD BISA (penengah) → belum ACTIVE
+  const nextStatus = PartnershipStatus.AWAITING_SIGNATURE;
 
   const updated = await prisma.buyerSupplierPartnership.update({
     where: { id: partnershipId },
@@ -432,7 +538,10 @@ export const acceptPartnership = async (partnershipId: string, supplierId: strin
       status: nextStatus,
       sellerSignedAt: now,
       sellerSignHash,
-      isFullySigned: bothSigned,
+      sellerSignerName: sellerIdentity.signerName,
+      sellerSignerTitle: sellerIdentity.signerTitle,
+      sellerCompanyName: sellerIdentity.companyName,
+      isFullySigned: false,
     },
     include: partnershipInclude,
   });
@@ -440,7 +549,7 @@ export const acceptPartnership = async (partnershipId: string, supplierId: strin
   void createNotification({
     userId: row.buyerId,
     title: 'Kerjasama Diterima',
-    body: `Supplier menerima kontrak kerjasama "${row.title}".`,
+    body: `Supplier menerima kontrak kerjasama "${row.title}". Menunggu tanda tangan penengah BISA.`,
     type: NotificationType.PARTNERSHIP,
     refId: partnershipId,
   });
@@ -485,7 +594,12 @@ export const rejectPartnership = async (
   return mapPartnership(updated);
 };
 
-export const signPartnership = async (partnershipId: string, userId: string) => {
+export const signPartnership = async (
+  partnershipId: string,
+  userId: string,
+  role?: UserRole,
+  input?: { signerName?: string; signerTitle?: string },
+) => {
   const row = await prisma.buyerSupplierPartnership.findUnique({
     where: { id: partnershipId },
     select: {
@@ -497,6 +611,7 @@ export const signPartnership = async (partnershipId: string, userId: string) => 
       endDate: true,
       buyerSignedAt: true,
       sellerSignedAt: true,
+      platformSignedAt: true,
       isFullySigned: true,
     },
   });
@@ -504,7 +619,8 @@ export const signPartnership = async (partnershipId: string, userId: string) => 
 
   const isBuyer = row.buyerId === userId;
   const isSeller = row.supplierId === userId;
-  if (!isBuyer && !isSeller) {
+  const isPlatform = role === UserRole.ADMIN;
+  if (!isBuyer && !isSeller && !isPlatform) {
     throw new AppError('Anda tidak berhak menandatangani kontrak ini.', 403);
   }
 
@@ -512,28 +628,54 @@ export const signPartnership = async (partnershipId: string, userId: string) => 
     throw new AppError('Kontrak tidak dalam status penandatanganan.', 400);
   }
 
+  // Penengah BISA hanya boleh tanda tangan setelah buyer & supplier sudah TTD / accept
+  if (isPlatform && (!row.buyerSignedAt || !row.sellerSignedAt)) {
+    throw new AppError(
+      'Penengah BISA hanya dapat menandatangani setelah buyer dan supplier menandatangani.',
+      400,
+    );
+  }
+
   const now = new Date();
   const signHash = createSignHash(userId, partnershipId, now);
+  const identity = await resolveSignerIdentity(userId, {
+    signerName: input?.signerName,
+    signerTitle: input?.signerTitle,
+  });
   const data: Prisma.BuyerSupplierPartnershipUpdateInput = {};
 
   if (isBuyer && !row.buyerSignedAt) {
     data.buyerSignedAt = now;
     data.buyerSignHash = signHash;
+    data.buyerSignerName = identity.signerName;
+    data.buyerSignerTitle = identity.signerTitle;
+    data.buyerCompanyName = identity.companyName;
   } else if (isSeller && !row.sellerSignedAt) {
     data.sellerSignedAt = now;
     data.sellerSignHash = signHash;
+    data.sellerSignerName = identity.signerName;
+    data.sellerSignerTitle = identity.signerTitle;
+    data.sellerCompanyName = identity.companyName;
+  } else if (isPlatform && !row.platformSignedAt) {
+    data.platformSignedAt = now;
+    data.platformSignHash = signHash;
+    data.platformSignerId = userId;
+    data.platformSignerName = identity.signerName;
+    data.platformSignerTitle = identity.signerTitle;
   } else {
     throw new AppError('Kontrak sudah Anda tandatangani.', 400);
   }
 
   const buyerWillSign = isBuyer ? now : row.buyerSignedAt;
   const sellerWillSign = isSeller ? now : row.sellerSignedAt;
+  const platformWillSign = isPlatform ? now : row.platformSignedAt;
 
-  if (buyerWillSign && sellerWillSign) {
+  if (isTripleSigned({ buyerSignedAt: buyerWillSign, sellerSignedAt: sellerWillSign, platformSignedAt: platformWillSign })) {
     data.isFullySigned = true;
     data.status =
       row.endDate >= startOfToday() ? PartnershipStatus.ACTIVE : PartnershipStatus.EXPIRED;
-  } else if (row.status === PartnershipStatus.PENDING) {
+  } else {
+    data.isFullySigned = false;
     data.status = PartnershipStatus.AWAITING_SIGNATURE;
   }
 
@@ -543,14 +685,18 @@ export const signPartnership = async (partnershipId: string, userId: string) => 
     include: partnershipInclude,
   });
 
-  const notifyUserId = isBuyer ? row.supplierId : row.buyerId;
-  void createNotification({
-    userId: notifyUserId,
-    title: 'Kontrak Ditandatangani',
-    body: `Pihak lawan menandatangani kontrak "${row.title}".`,
-    type: NotificationType.PARTNERSHIP,
-    refId: partnershipId,
-  });
+  const notifyIds = new Set<string>([row.buyerId, row.supplierId]);
+  notifyIds.delete(userId);
+  const signerLabel = isPlatform ? 'Penengah BISA' : isBuyer ? 'Buyer' : 'Supplier';
+  for (const notifyUserId of notifyIds) {
+    void createNotification({
+      userId: notifyUserId,
+      title: 'Kontrak Ditandatangani',
+      body: `${signerLabel} menandatangani kontrak "${row.title}" (${updated.isFullySigned ? 'lengkap 3/3' : 'menunggu TTD lain'}).`,
+      type: NotificationType.PARTNERSHIP,
+      refId: partnershipId,
+    });
+  }
 
   return mapPartnership(updated);
 };
@@ -801,13 +947,51 @@ export const getPublicContractVerification = async (contractNumber: string) => {
     startDate: row.startDate,
     endDate: row.endDate,
     isFullySigned: row.isFullySigned,
+    requiredSigners: 3,
+    signedCount: [row.buyerSignedAt, row.sellerSignedAt, row.platformSignedAt].filter(Boolean)
+      .length,
     buyerSignedAt: row.buyerSignedAt,
     sellerSignedAt: row.sellerSignedAt,
-    buyer: { fullName: row.buyer.fullName, companyName: row.buyer.profile?.companyName ?? null },
-    supplier: {
-      fullName: row.supplier.fullName,
-      companyName: row.supplier.profile?.companyName ?? null,
+    platformSignedAt: row.platformSignedAt,
+    buyer: {
+      fullName: row.buyerSignerName ?? row.buyer.fullName,
+      signerTitle: row.buyerSignerTitle ?? null,
+      companyName: row.buyerCompanyName ?? row.buyer.profile?.companyName ?? null,
     },
+    supplier: {
+      fullName: row.sellerSignerName ?? row.supplier.fullName,
+      signerTitle: row.sellerSignerTitle ?? null,
+      companyName: row.sellerCompanyName ?? row.supplier.profile?.companyName ?? null,
+    },
+    platform: {
+      fullName: row.platformSignerName ?? 'BISA Agri',
+      signerTitle: row.platformSignerTitle ?? 'General Manager',
+      companyName: 'BISA Agri',
+      role: 'PENENGAH',
+    },
+    signatures: [
+      {
+        party: 'BUYER',
+        signedAt: row.buyerSignedAt,
+        signerName: row.buyerSignerName ?? row.buyer.fullName,
+        signerTitle: row.buyerSignerTitle ?? null,
+        companyName: row.buyerCompanyName ?? row.buyer.profile?.companyName ?? null,
+      },
+      {
+        party: 'SUPPLIER',
+        signedAt: row.sellerSignedAt,
+        signerName: row.sellerSignerName ?? row.supplier.fullName,
+        signerTitle: row.sellerSignerTitle ?? null,
+        companyName: row.sellerCompanyName ?? row.supplier.profile?.companyName ?? null,
+      },
+      {
+        party: 'PLATFORM',
+        signedAt: row.platformSignedAt,
+        signerName: row.platformSignerName ?? 'BISA Agri',
+        signerTitle: row.platformSignerTitle ?? 'General Manager',
+        companyName: 'BISA Agri',
+      },
+    ],
     verifiedAt: new Date(),
   };
 };

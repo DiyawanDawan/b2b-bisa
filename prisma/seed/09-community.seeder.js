@@ -1,6 +1,7 @@
 import logger from '../../src/config/logger.js';
 import { faker } from '@faker-js/faker/locale/id_ID';
 import { loremFlickrDbPath } from '../../src/utils/loremFlickrMedia.util.ts';
+import { seedForumGroupPosts } from './09-forum-group-posts.seeder.js';
 
 const seedForumMedia = (keywords, lock) => [
   {
@@ -139,65 +140,9 @@ export async function seedCommunity(prisma, users) {
     }
   }
 
-  // 12 Forum Posts in Groups
+  // Postingan + komentar per grup (template QA deterministik)
   if (hasForumGroups && groups.length > 0) {
-    for (let i = 0; i < 12; i++) {
-      const group = faker.helpers.arrayElement(groups);
-      const groupMembers = await prisma.forumGroupMember.findMany({
-        where: { groupId: group.id },
-        select: { userId: true },
-      });
-      const posterId = faker.helpers.arrayElement(groupMembers).userId;
-
-      const post = await prisma.forumPost.create({
-        data: {
-          title: faker.helpers.arrayElement([
-            'Tips optimasi suhu tungku untuk grade A',
-            'Checklist harian sebelum start produksi',
-            'Diskusi pengiriman batch mingguan',
-            'Troubleshooting sensor suhu yang tidak stabil',
-            'Skema QA untuk batch biochar ekspor',
-          ]),
-          content: faker.lorem.paragraphs(2),
-          categoryId: forumCat?.id,
-          groupId: group.id,
-          userId: posterId,
-          mediaUrls: faker.datatype.boolean(0.75)
-            ? seedForumMedia(['biochar', 'iot', 'warehouse'], 9200 + i)
-            : undefined,
-          status: 'PUBLISHED',
-          upvotes: faker.number.int({ min: 0, max: 80 }),
-          viewCount: faker.number.int({ min: 20, max: 700 }),
-        },
-      });
-
-      const commentCount = faker.number.int({ min: 2, max: 5 });
-      for (let c = 0; c < commentCount; c++) {
-        const commenterId = faker.helpers.arrayElement(groupMembers).userId;
-        const comment = await prisma.forumComment.create({
-          data: {
-            postId: post.id,
-            userId: commenterId,
-            content: faker.lorem.sentences(2),
-            mediaUrls: faker.datatype.boolean(0.4)
-              ? seedForumMedia(['group', 'forum'], 9300 + i * 10 + c)
-              : undefined,
-            upvotes: faker.number.int({ min: 0, max: 15 }),
-          },
-        });
-
-        const voterId = faker.helpers.arrayElement(groupMembers).userId;
-        await prisma.forumVote.upsert({
-          where: { userId_commentId: { userId: voterId, commentId: comment.id } },
-          update: {},
-          create: {
-            commentId: comment.id,
-            userId: voterId,
-            type: faker.helpers.arrayElement(['UP', 'DOWN']),
-          },
-        });
-      }
-    }
+    await seedForumGroupPosts(prisma);
   }
 
   logger.info(

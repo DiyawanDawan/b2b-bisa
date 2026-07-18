@@ -57,6 +57,9 @@ async function findUserIdByEmail(prisma, email) {
 
 /**
  * Seed khusus ForumGroup + ForumGroupMember saja.
+ * Postingan & komentar per grup: lihat 09-forum-group-posts.seeder.js
+ * Runner lengkap: npm run seed:forum-groups
+ *
  * @returns {Promise<Array<{ id: string, name: string, slug: string }>>}
  */
 export async function seedForumGroups(prisma) {

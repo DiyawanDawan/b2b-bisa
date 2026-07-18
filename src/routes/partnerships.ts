@@ -59,6 +59,7 @@ router.put(
 router.put(
   '/:id/sign',
   validate(v.partnershipIdParamSchema, 'params'),
+  validate(v.signPartnershipSchema),
   partnershipController.signPartnership,
 );
 

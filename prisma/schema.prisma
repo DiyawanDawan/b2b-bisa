@@ -2251,8 +2251,21 @@ model BuyerSupplierPartnership {
 
   buyerSignedAt  DateTime? @map("buyer_signed_at")
   sellerSignedAt DateTime? @map("seller_signed_at")
+  /// E-sign pihak penengah BISA (admin platform)
+  platformSignedAt  DateTime? @map("platform_signed_at")
   buyerSignHash  String?   @map("buyer_sign_hash")
   sellerSignHash String?   @map("seller_sign_hash")
+  platformSignHash String? @map("platform_sign_hash")
+  platformSignerId String? @map("platform_signer_id")
+  /// Snapshot identitas penandatangan (nama, jabatan, perusahaan)
+  buyerSignerName    String? @map("buyer_signer_name")
+  buyerSignerTitle   String? @map("buyer_signer_title")
+  buyerCompanyName   String? @map("buyer_company_name")
+  sellerSignerName   String? @map("seller_signer_name")
+  sellerSignerTitle  String? @map("seller_signer_title")
+  sellerCompanyName  String? @map("seller_company_name")
+  platformSignerName  String? @map("platform_signer_name")
+  platformSignerTitle String? @map("platform_signer_title")
   isFullySigned  Boolean   @default(false) @map("is_fully_signed")
 
   /// Perpanjangan kontrak

@@ -25,7 +25,11 @@ export const listMyPartnerships = catchAsync(async (req: AuthRequest, res: Respo
 });
 
 export const getPartnershipById = catchAsync(async (req: AuthRequest, res: Response) => {
-  const result = await partnershipService.getPartnershipById(req.params.id, req.user!.id);
+  const result = await partnershipService.getPartnershipById(
+    req.params.id,
+    req.user!.id,
+    req.user!.role as UserRole,
+  );
   successResponse(res, result, 'Detail kontrak kerjasama.');
 });
 
@@ -49,7 +53,12 @@ export const rejectPartnership = catchAsync(async (req: AuthRequest, res: Respon
 });
 
 export const signPartnership = catchAsync(async (req: AuthRequest, res: Response) => {
-  const result = await partnershipService.signPartnership(req.params.id, req.user!.id);
+  const result = await partnershipService.signPartnership(
+    req.params.id,
+    req.user!.id,
+    req.user!.role as UserRole,
+    req.body as { signerName?: string; signerTitle?: string },
+  );
   successResponse(res, result, 'Kontrak berhasil ditandatangani.');
 });
 

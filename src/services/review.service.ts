@@ -151,6 +151,22 @@ export const replyToReview = async (supplierId: string, reviewId: string, reply:
   });
 };
 
+const parseReviewImages = (imageUrl?: string | null): string[] => {
+  if (!imageUrl) return [];
+  const trimmed = imageUrl.trim();
+  if (trimmed.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed.map((u) => String(u)).filter(Boolean);
+      }
+    } catch {
+      /* single URL fallback below */
+    }
+  }
+  return [trimmed];
+};
+
 const formatReviewForApi = (review: {
   id: string;
   orderId?: string;
@@ -163,13 +179,18 @@ const formatReviewForApi = (review: {
   createdAt: Date;
   buyer?: { fullName: string; avatarUrl?: string | null } | null;
   product?: { name: string; thumbnailUrl?: string | null } | null;
-}) => ({
-  ...review,
-  userId: review.buyerId,
-  userName: review.buyer?.fullName ?? 'Pengguna',
-  userAvatar: review.buyer?.avatarUrl ?? null,
-  reply: review.supplierReply ?? null,
-});
+}) => {
+  const images = parseReviewImages(review.imageUrl);
+  return {
+    ...review,
+    userId: review.buyerId,
+    userName: review.buyer?.fullName ?? 'Pengguna',
+    userAvatar: review.buyer?.avatarUrl ?? null,
+    reply: review.supplierReply ?? null,
+    images,
+    imageUrl: images[0] ?? review.imageUrl ?? null,
+  };
+};
 
 /**
  * 2. Get Product Reviews (Public)
@@ -192,6 +213,7 @@ export const getProductReviews = async (
         rating: true,
         comment: true,
         supplierReply: true,
+        imageUrl: true,
         createdAt: true,
         buyer: { select: { fullName: true, avatarUrl: true } },
       },
@@ -224,7 +246,10 @@ export const getBuyerReviews = async (buyerId: string, limit: number = 10, page:
         buyerId: true,
         rating: true,
         comment: true,
+        supplierReply: true,
+        imageUrl: true,
         createdAt: true,
+        buyer: { select: { fullName: true, avatarUrl: true } },
         product: { select: { name: true, thumbnailUrl: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -234,7 +259,10 @@ export const getBuyerReviews = async (buyerId: string, limit: number = 10, page:
     prisma.review.count({ where: { buyerId } }),
   ]);
 
-  return { data: reviews, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+  return {
+    data: reviews.map(formatReviewForApi),
+    meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+  };
 };
 
 /**

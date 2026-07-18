@@ -15,7 +15,17 @@ export const createPartnershipSchema = z.object({
   tier: z.enum(['MAIN_PARTNER', 'PREFERRED', 'STANDARD']).optional(),
   originatingNegotiationId: z.string().uuid().optional(),
   originatingOrderId: z.string().uuid().optional(),
+  /** Jabatan di surat kontrak, mis. CEO / Procurement Manager */
+  signerName: z.string().min(2).max(120).optional(),
+  signerTitle: z.string().min(2).max(120).optional(),
 });
+
+export const signPartnershipSchema = z
+  .object({
+    signerName: z.string().min(2).max(120).optional(),
+    signerTitle: z.string().min(2).max(120).optional(),
+  })
+  .default({});
 
 export const partnershipIdParamSchema = z.object({
   id: z.string().uuid('ID partnership tidak valid.'),

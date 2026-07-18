@@ -22,6 +22,7 @@ import { seedStoreBanners } from './17-store-banners.seeder.js';
 import { seedSummary } from './18-seed-summary.seeder.js';
 import { seedPickupVehicles } from './19-pickup-vehicles.seeder.js';
 import { seedRegionalMarketSales } from './21-regional-market-sales.seeder.js';
+import { seedPartnerships } from './23-partnerships.seeder.js';
 
 async function main() {
   logger.info('🚀 Memulai proses FULL Seeding Database BISA B2B...');
@@ -54,6 +55,7 @@ async function main() {
     await seedForumGroups(prisma);
     await seedCommunity(prisma, users);
     await seedOperations(prisma, users);
+    await seedPartnerships(prisma);
     await seedMarket(prisma);
     await seedCollections(prisma);
     await seedPolicies(prisma);
