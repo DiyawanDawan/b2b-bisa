@@ -75,6 +75,7 @@
     "express": "^4.18.2",
     "express-rate-limit": "^7.1.5",
     "firebase-admin": "^13.7.0",
+    "google-auth-library": "^10.9.0",
     "helmet": "^8.1.0",
     "jest-mock-extended": "^4.0.0",
     "json2csv": "^6.0.0-alpha.2",

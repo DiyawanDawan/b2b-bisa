@@ -92,6 +92,11 @@ export const buildStorageAssetUrl = (relativePath: string): string => {
 // Platform settings
 // AI
 export const GOOGLE_GEMINI_API_KEY = optional('GOOGLE_GEMINI_API_KEY');
+/** Web OAuth client ID (client_type 3) — fallback verifikasi Google ID token. */
+export const GOOGLE_WEB_CLIENT_ID = optional(
+  'GOOGLE_WEB_CLIENT_ID',
+  '94564351976-o1k5d6sd9pna74e7angarlr8qrvln2pv.apps.googleusercontent.com',
+);
 export const DEEPSEEK_API_KEY = optional('DEEPSEEK_API_KEY') || optional('DEEPSHEEK_API_KEY');
 export const DEEPSEEK_MODEL =
   optional('DEEPSEEK_MODEL') || optional('DEEPSHEEK_MODEL') || 'deepseek-chat';

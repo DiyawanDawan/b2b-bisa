@@ -92,7 +92,7 @@ router.post(
 router.post('/resend-otp', authLimiter, validate(v.resendOtpSchema), authController.resendOTP);
 
 // ── Social Auth ─────────────────────────────────────────────────────────────
-// Google: Firebase ID token verification. Facebook: 501 (belum diimplementasikan).
+// Google: Firebase ID token (preferensi) atau Google OAuth ID token. Facebook: 501.
 router.post('/google', authLimiter, validate(v.socialLoginSchema), authController.loginWithGoogle);
 router.post(
   '/facebook',

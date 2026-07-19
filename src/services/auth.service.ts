@@ -1,11 +1,13 @@
 import bcrypt from 'bcrypt';
 import { addMinutes } from 'date-fns';
 import crypto from 'crypto';
+import { OAuth2Client } from 'google-auth-library';
 import { TokenType, UserStatus, UserRole, Prisma } from '#prisma';
 import prisma from '#config/prisma';
 import admin from '#config/firebase';
 import AppError from '#utils/appError';
 import * as tokenService from '#services/token.service';
+import { GOOGLE_WEB_CLIENT_ID } from '#utils/env.util';
 
 import * as emailService from '#services/email.service';
 import { decryptField, encryptField, isEncryptedPayload } from '#utils/encryption.util';
@@ -15,12 +17,66 @@ const BCRYPT_ROUNDS = 12;
 
 type ResendOtpType = typeof TokenType.EMAIL_VERIFICATION | typeof TokenType.RESET_PASSWORD;
 
+type SocialIdentity = {
+  email: string;
+  name?: string;
+  picture?: string;
+};
+
 const sealNpwp = (npwp: string): string => encryptField(npwp.trim());
 
 const revealNpwp = (stored?: string | null): string => {
   if (!stored) return '';
   if (isEncryptedPayload(stored)) return decryptField(stored);
   return stored;
+};
+
+/**
+ * Terima Firebase Auth ID token (preferensi) ATAU Google OAuth ID token mentah.
+ * Mobile mengirim Firebase token setelah `signInWithCredential`.
+ */
+const verifyGoogleIdentity = async (idToken: string): Promise<SocialIdentity> => {
+  if (admin.apps.length) {
+    try {
+      const decoded = await admin.auth().verifyIdToken(idToken);
+      if (decoded.email) {
+        return {
+          email: decoded.email,
+          name: typeof decoded.name === 'string' ? decoded.name : undefined,
+          picture: typeof decoded.picture === 'string' ? decoded.picture : undefined,
+        };
+      }
+    } catch {
+      // Bukan Firebase token — coba verifikasi Google OAuth di bawah.
+    }
+  }
+
+  if (!GOOGLE_WEB_CLIENT_ID) {
+    throw new AppError(
+      'Login Google belum tersedia di server. Gunakan email/password atau hubungi admin.',
+      503,
+    );
+  }
+
+  try {
+    const client = new OAuth2Client(GOOGLE_WEB_CLIENT_ID);
+    const ticket = await client.verifyIdToken({
+      idToken,
+      audience: GOOGLE_WEB_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    if (!payload?.email) {
+      throw new AppError('Google login tidak menyediakan email.', 400);
+    }
+    return {
+      email: payload.email,
+      name: payload.name,
+      picture: payload.picture,
+    };
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    throw new AppError(`Verifikasi token Google gagal: ${(error as Error).message}`, 401);
+  }
 };
 
 // ─── Register ────────────────────────────────────────────
@@ -126,7 +182,7 @@ export const loginWithSocial = async (
     throw new AppError(`Login dengan ${provider} belum diimplementasikan.`, 501);
   }
 
-  if (!admin.apps.length) {
+  if (!admin.apps.length && !GOOGLE_WEB_CLIENT_ID) {
     throw new AppError(
       'Login Google belum tersedia di server. Gunakan email/password atau hubungi admin.',
       503,
@@ -134,12 +190,7 @@ export const loginWithSocial = async (
   }
 
   try {
-    const decodedToken = await admin.auth().verifyIdToken(idToken);
-    const { email, name, picture } = decodedToken;
-
-    if (!email) {
-      throw new AppError('Google login tidak menyediakan email.', 400);
-    }
+    const { email, name, picture } = await verifyGoogleIdentity(idToken);
 
     // Find user by email
     let user = await prisma.user.findUnique({
