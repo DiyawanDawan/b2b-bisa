@@ -31,6 +31,44 @@ const revealNpwp = (stored?: string | null): string => {
   return stored;
 };
 
+const identityFromFirebaseDecoded = (decoded: {
+  email?: string;
+  name?: string;
+  picture?: string;
+}): SocialIdentity => {
+  if (!decoded.email) {
+    throw new AppError(
+      'Akun sosial tidak menyediakan email. Izinkan akses email di Facebook/Google lalu coba lagi.',
+      400,
+    );
+  }
+  return {
+    email: decoded.email,
+    name: typeof decoded.name === 'string' ? decoded.name : undefined,
+    picture: typeof decoded.picture === 'string' ? decoded.picture : undefined,
+  };
+};
+
+/**
+ * Firebase Auth ID token (Google / Facebook via `signInWithCredential` atau `signInWithProvider`).
+ * Redirect OAuth web: https://bisa-51853.firebaseapp.com/__/auth/handler
+ */
+const verifyFirebaseIdentity = async (idToken: string): Promise<SocialIdentity> => {
+  if (!admin.apps.length) {
+    throw new AppError(
+      'Login sosial belum tersedia di server (Firebase Admin). Hubungi admin.',
+      503,
+    );
+  }
+  try {
+    const decoded = await admin.auth().verifyIdToken(idToken);
+    return identityFromFirebaseDecoded(decoded);
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    throw new AppError(`Verifikasi token Firebase gagal: ${(error as Error).message}`, 401);
+  }
+};
+
 /**
  * Terima Firebase Auth ID token (preferensi) ATAU Google OAuth ID token mentah.
  * Mobile mengirim Firebase token setelah `signInWithCredential`.
@@ -40,11 +78,7 @@ const verifyGoogleIdentity = async (idToken: string): Promise<SocialIdentity> =>
     try {
       const decoded = await admin.auth().verifyIdToken(idToken);
       if (decoded.email) {
-        return {
-          email: decoded.email,
-          name: typeof decoded.name === 'string' ? decoded.name : undefined,
-          picture: typeof decoded.picture === 'string' ? decoded.picture : undefined,
-        };
+        return identityFromFirebaseDecoded(decoded);
       }
     } catch {
       // Bukan Firebase token — coba verifikasi Google OAuth di bawah.
@@ -178,11 +212,13 @@ export const loginWithSocial = async (
   idToken: string,
   role?: UserRole,
 ) => {
-  if (provider !== 'google') {
-    throw new AppError(`Login dengan ${provider} belum diimplementasikan.`, 501);
+  if (provider === 'facebook' && !admin.apps.length) {
+    throw new AppError(
+      'Login Facebook belum tersedia di server (Firebase Admin). Hubungi admin.',
+      503,
+    );
   }
-
-  if (!admin.apps.length && !GOOGLE_WEB_CLIENT_ID) {
+  if (provider === 'google' && !admin.apps.length && !GOOGLE_WEB_CLIENT_ID) {
     throw new AppError(
       'Login Google belum tersedia di server. Gunakan email/password atau hubungi admin.',
       503,
@@ -190,7 +226,10 @@ export const loginWithSocial = async (
   }
 
   try {
-    const { email, name, picture } = await verifyGoogleIdentity(idToken);
+    const { email, name, picture } =
+      provider === 'facebook'
+        ? await verifyFirebaseIdentity(idToken)
+        : await verifyGoogleIdentity(idToken);
 
     // Find user by email
     let user = await prisma.user.findUnique({
