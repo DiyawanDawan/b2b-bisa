@@ -330,7 +330,7 @@ jobs:
             sed -i 's/^RELAX_RATE_LIMITS=RELAX_RATE_LIMITS=/RELAX_RATE_LIMITS=/' .env || true
             # Prisma requires mysql:// DATABASE_URL (app can fall back to DATABASE_* parts; migrate cannot).
             echo "Ensuring DATABASE_URL for Prisma..."
-            sed 's/^            //' > /tmp/ensure_db_url.py << 'ENSUREEOF'
+            python3 << 'ENSUREEOF'
             import re, urllib.parse
             from pathlib import Path
             p = Path(".env")
@@ -367,15 +367,17 @@ jobs:
             url = re.sub(r"@(localhost|127\.0\.0\.1|::1)(?=[:/])", "@mysql", url, count=1)
             def set_key(lines, key, value):
                 out, found = [], False
+                prefix = key + '='
                 for line in lines:
-                    if line.startswith(key + "="):
-                        if not found:
-                            out.append(key + "=" + value)
-                            found = True
-                        continue
-                    out.append(line)
+                    if line.startswith(prefix) and not found:
+                        out.append(prefix + value)
+                        found = True
+                    elif line.startswith(prefix):
+                        pass
+                    else:
+                        out.append(line)
                 if not found:
-                    out.append(key + "=" + value)
+                    out.append(prefix + value)
                 return out
             lines = raw.splitlines()
             lines = set_key(lines, "DATABASE_URL", url)
@@ -390,7 +392,6 @@ jobs:
             u = urllib.parse.urlparse(url)
             print("DATABASE_URL OK scheme=%s host=%s db=%s" % (u.scheme, u.hostname, u.path.lstrip("/")))
             ENSUREEOF
-            python3 /tmp/ensure_db_url.py
             echo "✅ .env created (NODE_ENV=$(grep '^NODE_ENV=' .env | head -1))"
 
             # PHASE 2: FREE DISK + PULL LATEST IMAGE
@@ -764,7 +765,7 @@ jobs:
 
             # Prisma requires mysql:// DATABASE_URL (app can fall back to DATABASE_* parts; migrate cannot).
             echo "Ensuring DATABASE_URL for Prisma..."
-            sed 's/^            //' > /tmp/ensure_db_url.py << 'ENSUREEOF'
+            python3 << 'ENSUREEOF'
             import re, urllib.parse
             from pathlib import Path
             p = Path(".env")
@@ -801,15 +802,17 @@ jobs:
             url = re.sub(r"@(localhost|127\.0\.0\.1|::1)(?=[:/])", "@mysql", url, count=1)
             def set_key(lines, key, value):
                 out, found = [], False
+                prefix = key + '='
                 for line in lines:
-                    if line.startswith(key + "="):
-                        if not found:
-                            out.append(key + "=" + value)
-                            found = True
-                        continue
-                    out.append(line)
+                    if line.startswith(prefix) and not found:
+                        out.append(prefix + value)
+                        found = True
+                    elif line.startswith(prefix):
+                        pass
+                    else:
+                        out.append(line)
                 if not found:
-                    out.append(key + "=" + value)
+                    out.append(prefix + value)
                 return out
             lines = raw.splitlines()
             lines = set_key(lines, "DATABASE_URL", url)
@@ -824,7 +827,6 @@ jobs:
             u = urllib.parse.urlparse(url)
             print("DATABASE_URL OK scheme=%s host=%s db=%s" % (u.scheme, u.hostname, u.path.lstrip("/")))
             ENSUREEOF
-            python3 /tmp/ensure_db_url.py
 
             echo "✅ .env file automatically created from GitHub Secrets!"
 
@@ -1259,7 +1261,7 @@ jobs:
 
             # Prisma requires mysql:// DATABASE_URL (app can fall back to DATABASE_* parts; migrate cannot).
             echo "Ensuring DATABASE_URL for Prisma..."
-            sed 's/^            //' > /tmp/ensure_db_url.py << 'ENSUREEOF'
+            python3 << 'ENSUREEOF'
             import re, urllib.parse
             from pathlib import Path
             p = Path(".env")
@@ -1296,15 +1298,17 @@ jobs:
             url = re.sub(r"@(localhost|127\.0\.0\.1|::1)(?=[:/])", "@mysql", url, count=1)
             def set_key(lines, key, value):
                 out, found = [], False
+                prefix = key + '='
                 for line in lines:
-                    if line.startswith(key + "="):
-                        if not found:
-                            out.append(key + "=" + value)
-                            found = True
-                        continue
-                    out.append(line)
+                    if line.startswith(prefix) and not found:
+                        out.append(prefix + value)
+                        found = True
+                    elif line.startswith(prefix):
+                        pass
+                    else:
+                        out.append(line)
                 if not found:
-                    out.append(key + "=" + value)
+                    out.append(prefix + value)
                 return out
             lines = raw.splitlines()
             lines = set_key(lines, "DATABASE_URL", url)
@@ -1319,7 +1323,6 @@ jobs:
             u = urllib.parse.urlparse(url)
             print("DATABASE_URL OK scheme=%s host=%s db=%s" % (u.scheme, u.hostname, u.path.lstrip("/")))
             ENSUREEOF
-            python3 /tmp/ensure_db_url.py
 
             echo "✅ .env file automatically created from GitHub Secrets!"
 
