@@ -6,7 +6,9 @@ services:
     pull_policy: always
     container_name: bisa-app
     ports:
-      - '${APP_PORT:-3000}:3000'
+      - target: 3000
+        published: 3000
+        protocol: tcp
     env_file:
       - .env
     environment:
