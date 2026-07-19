@@ -141,7 +141,7 @@ jobs:
                   NODE_ENV: development
                   RELAX_RATE_LIMITS: "true"
                   DATABASE_URL: $${DATABASE_URL}
-                  PORT: $${PORT:-3000}
+                  PORT: "3000"
                   JWT_SECRET: $${JWT_SECRET}
                   JWT_EXPIRES_IN: $${JWT_EXPIRES_IN:-7d}
                   JWT_REFRESH_EXPIRES_IN: $${JWT_REFRESH_EXPIRES_IN:-30d}
@@ -549,7 +549,7 @@ jobs:
                 environment:
                   NODE_ENV: production
                   DATABASE_URL: $${DATABASE_URL}
-                  PORT: $${PORT:-3000}
+                  PORT: "3000"
                   JWT_SECRET: $${JWT_SECRET}
                   JWT_EXPIRES_IN: $${JWT_EXPIRES_IN:-7d}
                   JWT_REFRESH_EXPIRES_IN: $${JWT_REFRESH_EXPIRES_IN:-30d}
@@ -1016,7 +1016,7 @@ jobs:
                 environment:
                   NODE_ENV: production
                   DATABASE_URL: $${DATABASE_URL}
-                  PORT: $${PORT:-3000}
+                  PORT: "3000"
                   JWT_SECRET: $${JWT_SECRET}
                   JWT_EXPIRES_IN: $${JWT_EXPIRES_IN:-7d}
                   JWT_REFRESH_EXPIRES_IN: $${JWT_REFRESH_EXPIRES_IN:-30d}

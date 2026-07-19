@@ -52,9 +52,18 @@ if (!XENDIT_WEBHOOK_TOKEN && process.env.NODE_ENV === 'production') {
   );
 }
 
-// Initialize Xendit Client (may fail if key is missing/invalid)
+// Initialize Xendit Client — SDK requires keys starting with `xnd_`.
+const xenditSecretForClient =
+  XENDIT_SECRET_KEY && XENDIT_SECRET_KEY.startsWith('xnd_')
+    ? XENDIT_SECRET_KEY
+    : 'xnd_development_placeholder';
+if (XENDIT_SECRET_KEY && !XENDIT_SECRET_KEY.startsWith('xnd_')) {
+  console.warn(
+    'WARN: XENDIT_PAYMENT_SECRET_KEY / XENDIT_SECRET_KEY must start with xnd_. Payment API calls will fail until fixed.',
+  );
+}
 export const xenditClient = new Xendit({
-  secretKey: XENDIT_SECRET_KEY || 'xendit_development_only',
+  secretKey: xenditSecretForClient,
 });
 
 // SEC-BE-024: fungsi `verifyWebhookToken` lama (non-constant-time) DIHAPUS untuk
