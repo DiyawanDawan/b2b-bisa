@@ -27,3 +27,8 @@ export const respond = catchAsync(async (req: AuthRequest, res: Response) => {
   const result = await rfqService.respondToRfq(req.user!.id, req.params.id, req.body.message);
   successResponse(res, result, 'Respons RFQ berhasil — ruang chat dibuka.');
 });
+
+export const getMyRfqDetail = catchAsync(async (req: AuthRequest, res: Response) => {
+  const result = await rfqService.getBuyerRfqDetail(req.user!.id, req.params.id);
+  successResponse(res, result, 'Detail RFQ berhasil diambil.');
+});

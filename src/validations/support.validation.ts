@@ -12,7 +12,7 @@ const ticketIdParams = z.object({
 
 const transcriptMessageSchema = z.object({
   role: z.enum(['user', 'assistant']),
-  content: z.string().min(1).max(2000),
+  content: z.string().trim().min(1).max(2000),
 });
 
 export const createTicketSchema = z.object({
@@ -20,7 +20,19 @@ export const createTicketSchema = z.object({
   category: z.nativeEnum(SupportTicketCategory).optional().default(SupportTicketCategory.OTHER),
   source: z.nativeEnum(SupportTicketSource).optional().default(SupportTicketSource.HELP_CENTER),
   initialMessage: z.string().trim().min(1).max(4000).optional(),
-  aiTranscript: z.array(transcriptMessageSchema).max(30).optional(),
+  // Buang entri kosong agar handoff dari chat AI tidak gagal validasi.
+  aiTranscript: z
+    .preprocess((val) => {
+      if (!Array.isArray(val)) return val;
+      return val.filter(
+        (item) =>
+          item &&
+          typeof item === 'object' &&
+          typeof (item as { content?: unknown }).content === 'string' &&
+          String((item as { content: string }).content).trim().length > 0,
+      );
+    }, z.array(transcriptMessageSchema).max(30))
+    .optional(),
 });
 
 export const listTicketsQuerySchema = z.object({

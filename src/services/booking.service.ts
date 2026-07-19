@@ -24,6 +24,7 @@ const userSelect = {
   avatarUrl: true,
   role: true,
   profile: { select: { companyName: true } },
+  verification: { select: { isVerified: true } },
 } as const;
 
 const mapUser = (user: {
@@ -31,11 +32,13 @@ const mapUser = (user: {
   fullName: string;
   avatarUrl: string | null;
   profile?: { companyName: string | null } | null;
+  verification?: { isVerified: boolean } | null;
 }) => ({
   id: user.id,
   fullName: user.fullName,
-  avatarUrl: user.avatarUrl ? storageService.getPublicUrl(user.avatarUrl) : null,
+  avatarUrl: user.avatarUrl ? storageService.toMediaResponsePath(user.avatarUrl) : null,
   companyName: user.profile?.companyName ?? null,
+  isVerified: user.verification?.isVerified ?? false,
 });
 
 const generateBookingNumber = () => {

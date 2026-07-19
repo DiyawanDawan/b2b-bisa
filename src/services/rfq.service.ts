@@ -101,17 +101,110 @@ export const createRfq = async (
   });
 
   const supplierIds = await findMatchingSupplierIds(rfq);
-  for (const supplierId of supplierIds) {
-    void createNotification({
-      userId: supplierId,
-      title: 'RFQ baru cocok dengan katalog Anda',
-      body: rfq.title,
-      type: NotificationType.RFQ,
-      refId: rfq.id,
+  await Promise.all(
+    supplierIds.map((supplierId) =>
+      createNotification({
+        userId: supplierId,
+        title: 'RFQ baru cocok dengan katalog Anda',
+        body: rfq.title,
+        type: NotificationType.RFQ,
+        refId: rfq.id,
+      }),
+    ),
+  );
+
+  const recipients = await loadRecipientProfiles(supplierIds);
+  return {
+    ...rfq,
+    matchedSuppliers: supplierIds.length,
+    recipients,
+  };
+};
+
+const recipientUserSelect = {
+  id: true,
+  fullName: true,
+  avatarUrl: true,
+  province: true,
+  regency: true,
+  profile: { select: { companyName: true, businessType: true } },
+  verification: { select: { verificationStatus: true, isVerified: true } },
+} as const;
+
+const loadRecipientProfiles = async (supplierIds: string[]) => {
+  if (supplierIds.length === 0) return [];
+  return prisma.user.findMany({
+    where: { id: { in: supplierIds } },
+    select: recipientUserSelect,
+  });
+};
+
+const loadNotifiedRecipients = async (rfqId: string) => {
+  const notifs = await prisma.notification.findMany({
+    where: { type: NotificationType.RFQ, refId: rfqId },
+    orderBy: { createdAt: 'asc' },
+    select: {
+      userId: true,
+      isRead: true,
+      createdAt: true,
+      user: { select: recipientUserSelect },
+    },
+  });
+
+  const seen = new Set<string>();
+  const recipients: Array<{
+    id: string;
+    fullName: string;
+    avatarUrl: string | null;
+    province: string | null;
+    regency: string | null;
+    profile: { companyName: string | null; businessType: string | null } | null;
+    verification: { verificationStatus: VerificationStatus; isVerified: boolean } | null;
+    notifiedAt: Date;
+    notificationRead: boolean;
+  }> = [];
+
+  for (const n of notifs) {
+    if (seen.has(n.userId)) continue;
+    seen.add(n.userId);
+    recipients.push({
+      ...n.user,
+      notifiedAt: n.createdAt,
+      notificationRead: n.isRead,
     });
   }
+  return recipients;
+};
 
-  return { ...rfq, matchedSuppliers: supplierIds.length };
+export const getBuyerRfqDetail = async (buyerId: string, rfqId: string) => {
+  const rfq = await prisma.rfq.findFirst({
+    where: { id: rfqId, buyerId },
+    select: rfqSelect,
+  });
+  if (!rfq) throw new AppError('RFQ tidak ditemukan.', 404);
+
+  let recipients = await loadNotifiedRecipients(rfqId);
+  if (recipients.length === 0) {
+    // Fallback: hitung ulang matching (mis. notifikasi belum tercatat)
+    const ids = await findMatchingSupplierIds(rfq);
+    const profiles = await loadRecipientProfiles(ids);
+    recipients = profiles.map((u) => ({
+      ...u,
+      notifiedAt: rfq.createdAt,
+      notificationRead: false,
+    }));
+  }
+
+  const respondedIds = new Set(rfq.responses.map((r) => r.supplierId));
+  return {
+    ...rfq,
+    matchedSuppliers: recipients.length,
+    recipients: recipients.map((r) => ({
+      ...r,
+      hasResponded: respondedIds.has(r.id),
+      response: rfq.responses.find((x) => x.supplierId === r.id) ?? null,
+    })),
+  };
 };
 
 export const listBuyerRfqs = async (buyerId: string, page = 1, limit = 20) => {

@@ -21,6 +21,13 @@ router.get(
   requireRole(UserRole.SUPPLIER, UserRole.ADMIN),
   rfqController.listInbox,
 );
+router.get(
+  '/:id',
+  requireAuth,
+  requireRole(UserRole.BUYER, UserRole.ADMIN),
+  validate(v.rfqIdParamSchema, 'params'),
+  rfqController.getMyRfqDetail,
+);
 router.post(
   '/:id/respond',
   requireAuth,

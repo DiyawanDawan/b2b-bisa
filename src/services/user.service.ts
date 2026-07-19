@@ -1,7 +1,7 @@
 import prisma from '#config/prisma';
 import AppError from '#utils/appError';
 import { transformAddress } from '#utils/transformer.util';
-import { UserRole, UserStatus, ProductStatus, Prisma } from '#prisma';
+import { UserRole, UserStatus, ProductStatus, ProductMode, BiomassaType, Prisma } from '#prisma';
 import * as storeBannerService from '#services/storeBanner.service';
 import { syncCustomerAddressRajaOngkirDestination } from '#services/order-shipping.service';
 
@@ -315,28 +315,70 @@ export const updateOperatingHours = async (
 };
 
 /**
- * List verified suppliers for public directory
+ * List suppliers for public directory.
+ * Supports search, region, verified-only, and product catalog filters.
  */
 export const listSuppliers = async (
   filters: {
     province?: string;
     regency?: string;
+    search?: string;
+    verified?: boolean | string;
+    productMode?: string;
+    biomassaType?: string;
     page?: number;
     limit?: number;
   },
   isAuthorized: boolean = false,
 ) => {
-  const { province, regency, page = 1, limit = 10 } = filters;
+  const {
+    province,
+    regency,
+    search,
+    productMode,
+    biomassaType,
+    page = 1,
+    limit = 10,
+  } = filters;
   const skip = (page - 1) * limit;
+  const verifiedOnly = filters.verified === true || filters.verified === 'true';
+  const keyword = search?.trim();
 
-  const where = {
+  const productSome: Prisma.ProductWhereInput | undefined = (() => {
+    const modeOk =
+      productMode &&
+      Object.values(ProductMode).includes(productMode as ProductMode);
+    const typeOk =
+      biomassaType &&
+      Object.values(BiomassaType).includes(biomassaType as BiomassaType);
+    if (!modeOk && !typeOk) return undefined;
+    return {
+      status: ProductStatus.ACTIVE,
+      ...(modeOk ? { productMode: productMode as ProductMode } : {}),
+      ...(typeOk ? { biomassaType: biomassaType as BiomassaType } : {}),
+    };
+  })();
+
+  const where: Prisma.UserWhereInput = {
     role: UserRole.SUPPLIER,
     status: UserStatus.ACTIVE,
-    ...(province && { province }),
-    ...(regency && { regency }),
+    ...(province && { province: { contains: province, mode: 'insensitive' } }),
+    ...(regency && { regency: { contains: regency, mode: 'insensitive' } }),
+    ...(verifiedOnly && { verification: { isVerified: true } }),
+    ...(productSome && { products: { some: productSome } }),
+    ...(keyword
+      ? {
+          OR: [
+            { fullName: { contains: keyword, mode: 'insensitive' } },
+            { province: { contains: keyword, mode: 'insensitive' } },
+            { regency: { contains: keyword, mode: 'insensitive' } },
+            { profile: { companyName: { contains: keyword, mode: 'insensitive' } } },
+          ],
+        }
+      : {}),
   };
 
-  const [suppliers, total] = await Promise.all([
+  const [rows, total] = await Promise.all([
     prisma.user.findMany({
       where,
       select: {
@@ -346,17 +388,41 @@ export const listSuppliers = async (
         province: true,
         regency: true,
         tier: true,
-        ...(isAuthorized && { email: true, phone: true }), // Expose contacts if logged in
+        ...(isAuthorized && { email: true, phone: true }),
         profile: { select: { companyName: true, businessType: true } },
         verification: { select: { isVerified: true } },
         _count: { select: { products: true } },
       },
       skip,
       take: limit,
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ verification: { isVerified: 'desc' } }, { createdAt: 'desc' }],
     }),
     prisma.user.count({ where }),
   ]);
+
+  // Flatten to mobile-friendly contract (name/avatar/isVerified/totalProducts).
+  const suppliers = rows.map((s) => {
+    const companyName = s.profile?.companyName?.trim();
+    const displayName =
+      companyName && companyName.length > 0 ? companyName : s.fullName;
+    return {
+      id: s.id,
+      name: displayName,
+      fullName: s.fullName,
+      avatar: s.avatarUrl,
+      avatarUrl: s.avatarUrl,
+      phone: isAuthorized ? (s as { phone?: string | null }).phone ?? null : null,
+      province: s.province,
+      regency: s.regency,
+      tier: s.tier,
+      businessType: s.profile?.businessType ?? null,
+      isVerified: s.verification?.isVerified ?? false,
+      rating: 0,
+      totalProducts: s._count.products,
+      profile: s.profile,
+      verification: s.verification,
+    };
+  });
 
   return { suppliers, total };
 };

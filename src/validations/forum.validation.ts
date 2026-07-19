@@ -93,20 +93,42 @@ export const listGroupsSchema = z.object({
   mine: mineQuery,
 });
 
+/** Kosong/null dari client → undefined agar optional URL tidak gagal min(1). */
+const optionalMediaUrl = z.preprocess(
+  (v) => (v === '' || v === null ? undefined : v),
+  z.string().min(1, 'URL media tidak valid').optional(),
+);
+
+const optionalNullableMediaUrl = z.preprocess(
+  (v) => (v === '' ? null : v),
+  z.string().min(1, 'URL media tidak valid').nullable().optional(),
+);
+
+const optionalDescription = z.preprocess(
+  (v) => (v === '' || v === null ? undefined : v),
+  z.string().max(500, 'Deskripsi terlalu panjang').optional(),
+);
+
+const coerceBoolean = z.preprocess((v) => {
+  if (v === 'true' || v === true) return true;
+  if (v === 'false' || v === false) return false;
+  return v;
+}, z.boolean());
+
 export const createGroupSchema = z.object({
   name: z.string().min(3, 'Nama grup minimal 3 karakter').max(80, 'Nama grup maksimal 80 karakter'),
-  description: z.string().max(500, 'Deskripsi terlalu panjang').optional(),
-  avatarUrl: z.string().min(1).optional(),
-  bannerUrl: z.string().min(1).optional(),
-  isPublic: z.boolean().optional().default(true),
+  description: optionalDescription,
+  avatarUrl: optionalMediaUrl,
+  bannerUrl: optionalMediaUrl,
+  isPublic: coerceBoolean.optional().default(true),
 });
 
 export const updateGroupSchema = z.object({
   name: z.string().min(3).max(80).optional(),
   description: z.string().max(500).nullable().optional(),
-  avatarUrl: z.string().min(1).nullable().optional(),
-  bannerUrl: z.string().min(1).nullable().optional(),
-  isPublic: z.boolean().optional(),
+  avatarUrl: optionalNullableMediaUrl,
+  bannerUrl: optionalNullableMediaUrl,
+  isPublic: coerceBoolean.optional(),
 });
 
 /**
