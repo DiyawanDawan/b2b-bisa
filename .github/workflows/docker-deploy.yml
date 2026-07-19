@@ -330,72 +330,67 @@ jobs:
             sed -i 's/^RELAX_RATE_LIMITS=RELAX_RATE_LIMITS=/RELAX_RATE_LIMITS=/' .env || true
             # Prisma requires mysql:// DATABASE_URL (app can fall back to DATABASE_* parts; migrate cannot).
             echo "Ensuring DATABASE_URL for Prisma..."
-            python3 << 'PY'
-import re, urllib.parse
-from pathlib import Path
-p = Path(".env")
-raw = p.read_text(encoding="utf-8", errors="replace")
-vals = {}
-for line in raw.splitlines():
-    s = line.strip()
-    if not s or s.startswith("#") or "=" not in line:
-        continue
-    k, v = line.split("=", 1)
-    vals[k.strip()] = v.strip().strip('"').strip("'")
-
-url = vals.get("DATABASE_URL", "")
-if not url.startswith("mysql://"):
-    user = vals.get("DATABASE_USER") or "root"
-    password = vals.get("DATABASE_PASSWORD") or ""
-    host = vals.get("DATABASE_HOST") or "mysql"
-    port = vals.get("DATABASE_PORT") or "3306"
-    name = vals.get("DATABASE_NAME") or "bisa_db"
-    if host in ("localhost", "127.0.0.1", "::1"):
-        host = "mysql"
-    url = (
-        "mysql://"
-        + urllib.parse.quote(user, safe="")
-        + ":"
-        + urllib.parse.quote(password, safe="")
-        + f"@{host}:{port}/{name}"
-    )
-    print("Built DATABASE_URL from DATABASE_* components")
-
-if not url.startswith("mysql://"):
-    raise SystemExit(
-        "ERROR: DATABASE_URL must start with mysql:// — set secret DATABASE_URL "
-        "or DATABASE_USER/PASSWORD/HOST/NAME"
-    )
-
-# Inside compose network, localhost is the app container — use service DNS.
-url = re.sub(r"@(localhost|127\.0\.0\.1|::1)(?=[:/])", "@mysql", url, count=1)
-
-def set_key(lines, key, value):
-    out, found = [], False
-    for line in lines:
-        if line.startswith(key + "="):
-            if not found:
-                out.append(f"{key}={value}")
-                found = True
-            continue
-        out.append(line)
-    if not found:
-        out.append(f"{key}={value}")
-    return out
-
-lines = raw.splitlines()
-lines = set_key(lines, "DATABASE_URL", url)
-pw = vals.get("DATABASE_PASSWORD") or ""
-db = vals.get("DATABASE_NAME") or "bisa_db"
-user = vals.get("DATABASE_USER") or "bisa"
-lines = set_key(lines, "MYSQL_ROOT_PASSWORD", pw)
-lines = set_key(lines, "MYSQL_DATABASE", db)
-lines = set_key(lines, "MYSQL_USER", user)
-lines = set_key(lines, "MYSQL_PASSWORD", pw)
-p.write_text("\n".join(lines) + "\n", encoding="utf-8")
-u = urllib.parse.urlparse(url)
-print(f"DATABASE_URL OK scheme={u.scheme} host={u.hostname} db={u.path.lstrip('/')}")
-PY
+            sed 's/^            //' > /tmp/ensure_db_url.py << 'ENSUREEOF'
+            import re, urllib.parse
+            from pathlib import Path
+            p = Path(".env")
+            raw = p.read_text(encoding="utf-8", errors="replace")
+            vals = {}
+            for line in raw.splitlines():
+                s = line.strip()
+                if not s or s.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                vals[k.strip()] = v.strip().strip('"').strip("'")
+            url = vals.get("DATABASE_URL", "")
+            if not url.startswith("mysql://"):
+                user = vals.get("DATABASE_USER") or "root"
+                password = vals.get("DATABASE_PASSWORD") or ""
+                host = vals.get("DATABASE_HOST") or "mysql"
+                port = vals.get("DATABASE_PORT") or "3306"
+                name = vals.get("DATABASE_NAME") or "bisa_db"
+                if host in ("localhost", "127.0.0.1", "::1"):
+                    host = "mysql"
+                url = (
+                    "mysql://"
+                    + urllib.parse.quote(user, safe="")
+                    + ":"
+                    + urllib.parse.quote(password, safe="")
+                    + "@" + host + ":" + port + "/" + name
+                )
+                print("Built DATABASE_URL from DATABASE_* components")
+            if not url.startswith("mysql://"):
+                raise SystemExit(
+                    "ERROR: DATABASE_URL must start with mysql:// - set secret DATABASE_URL "
+                    "or DATABASE_USER/PASSWORD/HOST/NAME"
+                )
+            url = re.sub(r"@(localhost|127\.0\.0\.1|::1)(?=[:/])", "@mysql", url, count=1)
+            def set_key(lines, key, value):
+                out, found = [], False
+                for line in lines:
+                    if line.startswith(key + "="):
+                        if not found:
+                            out.append(key + "=" + value)
+                            found = True
+                        continue
+                    out.append(line)
+                if not found:
+                    out.append(key + "=" + value)
+                return out
+            lines = raw.splitlines()
+            lines = set_key(lines, "DATABASE_URL", url)
+            pw = vals.get("DATABASE_PASSWORD") or ""
+            db = vals.get("DATABASE_NAME") or "bisa_db"
+            user = vals.get("DATABASE_USER") or "bisa"
+            lines = set_key(lines, "MYSQL_ROOT_PASSWORD", pw)
+            lines = set_key(lines, "MYSQL_DATABASE", db)
+            lines = set_key(lines, "MYSQL_USER", user)
+            lines = set_key(lines, "MYSQL_PASSWORD", pw)
+            p.write_text(chr(10).join(lines) + chr(10), encoding="utf-8")
+            u = urllib.parse.urlparse(url)
+            print("DATABASE_URL OK scheme=%s host=%s db=%s" % (u.scheme, u.hostname, u.path.lstrip("/")))
+            ENSUREEOF
+            python3 /tmp/ensure_db_url.py
             echo "✅ .env created (NODE_ENV=$(grep '^NODE_ENV=' .env | head -1))"
 
             # PHASE 2: FREE DISK + PULL LATEST IMAGE
@@ -769,72 +764,67 @@ PY
 
             # Prisma requires mysql:// DATABASE_URL (app can fall back to DATABASE_* parts; migrate cannot).
             echo "Ensuring DATABASE_URL for Prisma..."
-            python3 << 'PY'
-import re, urllib.parse
-from pathlib import Path
-p = Path(".env")
-raw = p.read_text(encoding="utf-8", errors="replace")
-vals = {}
-for line in raw.splitlines():
-    s = line.strip()
-    if not s or s.startswith("#") or "=" not in line:
-        continue
-    k, v = line.split("=", 1)
-    vals[k.strip()] = v.strip().strip('"').strip("'")
-
-url = vals.get("DATABASE_URL", "")
-if not url.startswith("mysql://"):
-    user = vals.get("DATABASE_USER") or "root"
-    password = vals.get("DATABASE_PASSWORD") or ""
-    host = vals.get("DATABASE_HOST") or "mysql"
-    port = vals.get("DATABASE_PORT") or "3306"
-    name = vals.get("DATABASE_NAME") or "bisa_db"
-    if host in ("localhost", "127.0.0.1", "::1"):
-        host = "mysql"
-    url = (
-        "mysql://"
-        + urllib.parse.quote(user, safe="")
-        + ":"
-        + urllib.parse.quote(password, safe="")
-        + f"@{host}:{port}/{name}"
-    )
-    print("Built DATABASE_URL from DATABASE_* components")
-
-if not url.startswith("mysql://"):
-    raise SystemExit(
-        "ERROR: DATABASE_URL must start with mysql:// — set secret DATABASE_URL "
-        "or DATABASE_USER/PASSWORD/HOST/NAME"
-    )
-
-# Inside compose network, localhost is the app container — use service DNS.
-url = re.sub(r"@(localhost|127\.0\.0\.1|::1)(?=[:/])", "@mysql", url, count=1)
-
-def set_key(lines, key, value):
-    out, found = [], False
-    for line in lines:
-        if line.startswith(key + "="):
-            if not found:
-                out.append(f"{key}={value}")
-                found = True
-            continue
-        out.append(line)
-    if not found:
-        out.append(f"{key}={value}")
-    return out
-
-lines = raw.splitlines()
-lines = set_key(lines, "DATABASE_URL", url)
-pw = vals.get("DATABASE_PASSWORD") or ""
-db = vals.get("DATABASE_NAME") or "bisa_db"
-user = vals.get("DATABASE_USER") or "bisa"
-lines = set_key(lines, "MYSQL_ROOT_PASSWORD", pw)
-lines = set_key(lines, "MYSQL_DATABASE", db)
-lines = set_key(lines, "MYSQL_USER", user)
-lines = set_key(lines, "MYSQL_PASSWORD", pw)
-p.write_text("\n".join(lines) + "\n", encoding="utf-8")
-u = urllib.parse.urlparse(url)
-print(f"DATABASE_URL OK scheme={u.scheme} host={u.hostname} db={u.path.lstrip('/')}")
-PY
+            sed 's/^            //' > /tmp/ensure_db_url.py << 'ENSUREEOF'
+            import re, urllib.parse
+            from pathlib import Path
+            p = Path(".env")
+            raw = p.read_text(encoding="utf-8", errors="replace")
+            vals = {}
+            for line in raw.splitlines():
+                s = line.strip()
+                if not s or s.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                vals[k.strip()] = v.strip().strip('"').strip("'")
+            url = vals.get("DATABASE_URL", "")
+            if not url.startswith("mysql://"):
+                user = vals.get("DATABASE_USER") or "root"
+                password = vals.get("DATABASE_PASSWORD") or ""
+                host = vals.get("DATABASE_HOST") or "mysql"
+                port = vals.get("DATABASE_PORT") or "3306"
+                name = vals.get("DATABASE_NAME") or "bisa_db"
+                if host in ("localhost", "127.0.0.1", "::1"):
+                    host = "mysql"
+                url = (
+                    "mysql://"
+                    + urllib.parse.quote(user, safe="")
+                    + ":"
+                    + urllib.parse.quote(password, safe="")
+                    + "@" + host + ":" + port + "/" + name
+                )
+                print("Built DATABASE_URL from DATABASE_* components")
+            if not url.startswith("mysql://"):
+                raise SystemExit(
+                    "ERROR: DATABASE_URL must start with mysql:// - set secret DATABASE_URL "
+                    "or DATABASE_USER/PASSWORD/HOST/NAME"
+                )
+            url = re.sub(r"@(localhost|127\.0\.0\.1|::1)(?=[:/])", "@mysql", url, count=1)
+            def set_key(lines, key, value):
+                out, found = [], False
+                for line in lines:
+                    if line.startswith(key + "="):
+                        if not found:
+                            out.append(key + "=" + value)
+                            found = True
+                        continue
+                    out.append(line)
+                if not found:
+                    out.append(key + "=" + value)
+                return out
+            lines = raw.splitlines()
+            lines = set_key(lines, "DATABASE_URL", url)
+            pw = vals.get("DATABASE_PASSWORD") or ""
+            db = vals.get("DATABASE_NAME") or "bisa_db"
+            user = vals.get("DATABASE_USER") or "bisa"
+            lines = set_key(lines, "MYSQL_ROOT_PASSWORD", pw)
+            lines = set_key(lines, "MYSQL_DATABASE", db)
+            lines = set_key(lines, "MYSQL_USER", user)
+            lines = set_key(lines, "MYSQL_PASSWORD", pw)
+            p.write_text(chr(10).join(lines) + chr(10), encoding="utf-8")
+            u = urllib.parse.urlparse(url)
+            print("DATABASE_URL OK scheme=%s host=%s db=%s" % (u.scheme, u.hostname, u.path.lstrip("/")))
+            ENSUREEOF
+            python3 /tmp/ensure_db_url.py
 
             echo "✅ .env file automatically created from GitHub Secrets!"
 
@@ -1269,72 +1259,67 @@ PY
 
             # Prisma requires mysql:// DATABASE_URL (app can fall back to DATABASE_* parts; migrate cannot).
             echo "Ensuring DATABASE_URL for Prisma..."
-            python3 << 'PY'
-import re, urllib.parse
-from pathlib import Path
-p = Path(".env")
-raw = p.read_text(encoding="utf-8", errors="replace")
-vals = {}
-for line in raw.splitlines():
-    s = line.strip()
-    if not s or s.startswith("#") or "=" not in line:
-        continue
-    k, v = line.split("=", 1)
-    vals[k.strip()] = v.strip().strip('"').strip("'")
-
-url = vals.get("DATABASE_URL", "")
-if not url.startswith("mysql://"):
-    user = vals.get("DATABASE_USER") or "root"
-    password = vals.get("DATABASE_PASSWORD") or ""
-    host = vals.get("DATABASE_HOST") or "mysql"
-    port = vals.get("DATABASE_PORT") or "3306"
-    name = vals.get("DATABASE_NAME") or "bisa_db"
-    if host in ("localhost", "127.0.0.1", "::1"):
-        host = "mysql"
-    url = (
-        "mysql://"
-        + urllib.parse.quote(user, safe="")
-        + ":"
-        + urllib.parse.quote(password, safe="")
-        + f"@{host}:{port}/{name}"
-    )
-    print("Built DATABASE_URL from DATABASE_* components")
-
-if not url.startswith("mysql://"):
-    raise SystemExit(
-        "ERROR: DATABASE_URL must start with mysql:// — set secret DATABASE_URL "
-        "or DATABASE_USER/PASSWORD/HOST/NAME"
-    )
-
-# Inside compose network, localhost is the app container — use service DNS.
-url = re.sub(r"@(localhost|127\.0\.0\.1|::1)(?=[:/])", "@mysql", url, count=1)
-
-def set_key(lines, key, value):
-    out, found = [], False
-    for line in lines:
-        if line.startswith(key + "="):
-            if not found:
-                out.append(f"{key}={value}")
-                found = True
-            continue
-        out.append(line)
-    if not found:
-        out.append(f"{key}={value}")
-    return out
-
-lines = raw.splitlines()
-lines = set_key(lines, "DATABASE_URL", url)
-pw = vals.get("DATABASE_PASSWORD") or ""
-db = vals.get("DATABASE_NAME") or "bisa_db"
-user = vals.get("DATABASE_USER") or "bisa"
-lines = set_key(lines, "MYSQL_ROOT_PASSWORD", pw)
-lines = set_key(lines, "MYSQL_DATABASE", db)
-lines = set_key(lines, "MYSQL_USER", user)
-lines = set_key(lines, "MYSQL_PASSWORD", pw)
-p.write_text("\n".join(lines) + "\n", encoding="utf-8")
-u = urllib.parse.urlparse(url)
-print(f"DATABASE_URL OK scheme={u.scheme} host={u.hostname} db={u.path.lstrip('/')}")
-PY
+            sed 's/^            //' > /tmp/ensure_db_url.py << 'ENSUREEOF'
+            import re, urllib.parse
+            from pathlib import Path
+            p = Path(".env")
+            raw = p.read_text(encoding="utf-8", errors="replace")
+            vals = {}
+            for line in raw.splitlines():
+                s = line.strip()
+                if not s or s.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                vals[k.strip()] = v.strip().strip('"').strip("'")
+            url = vals.get("DATABASE_URL", "")
+            if not url.startswith("mysql://"):
+                user = vals.get("DATABASE_USER") or "root"
+                password = vals.get("DATABASE_PASSWORD") or ""
+                host = vals.get("DATABASE_HOST") or "mysql"
+                port = vals.get("DATABASE_PORT") or "3306"
+                name = vals.get("DATABASE_NAME") or "bisa_db"
+                if host in ("localhost", "127.0.0.1", "::1"):
+                    host = "mysql"
+                url = (
+                    "mysql://"
+                    + urllib.parse.quote(user, safe="")
+                    + ":"
+                    + urllib.parse.quote(password, safe="")
+                    + "@" + host + ":" + port + "/" + name
+                )
+                print("Built DATABASE_URL from DATABASE_* components")
+            if not url.startswith("mysql://"):
+                raise SystemExit(
+                    "ERROR: DATABASE_URL must start with mysql:// - set secret DATABASE_URL "
+                    "or DATABASE_USER/PASSWORD/HOST/NAME"
+                )
+            url = re.sub(r"@(localhost|127\.0\.0\.1|::1)(?=[:/])", "@mysql", url, count=1)
+            def set_key(lines, key, value):
+                out, found = [], False
+                for line in lines:
+                    if line.startswith(key + "="):
+                        if not found:
+                            out.append(key + "=" + value)
+                            found = True
+                        continue
+                    out.append(line)
+                if not found:
+                    out.append(key + "=" + value)
+                return out
+            lines = raw.splitlines()
+            lines = set_key(lines, "DATABASE_URL", url)
+            pw = vals.get("DATABASE_PASSWORD") or ""
+            db = vals.get("DATABASE_NAME") or "bisa_db"
+            user = vals.get("DATABASE_USER") or "bisa"
+            lines = set_key(lines, "MYSQL_ROOT_PASSWORD", pw)
+            lines = set_key(lines, "MYSQL_DATABASE", db)
+            lines = set_key(lines, "MYSQL_USER", user)
+            lines = set_key(lines, "MYSQL_PASSWORD", pw)
+            p.write_text(chr(10).join(lines) + chr(10), encoding="utf-8")
+            u = urllib.parse.urlparse(url)
+            print("DATABASE_URL OK scheme=%s host=%s db=%s" % (u.scheme, u.hostname, u.path.lstrip("/")))
+            ENSUREEOF
+            python3 /tmp/ensure_db_url.py
 
             echo "✅ .env file automatically created from GitHub Secrets!"
 
