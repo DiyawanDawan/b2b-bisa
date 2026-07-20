@@ -9,13 +9,15 @@ export const searchDestinationSchema = z.object({
 export const calculateDomesticCostSchema = z.object({
   originId: z.coerce.number().int().positive('ID asal wajib'),
   destinationId: z.coerce.number().int().positive('ID tujuan wajib'),
-  weightGrams: z.coerce
-    .number()
-    .int()
-    .min(1, 'Berat minimal 1 gram')
-    .max(500_000, 'Berat maksimal 500 kg'),
+  weight: z.coerce.number().positive('Berat wajib'),
+  weightUnit: z.enum(['KG', 'TON']).default('KG'),
   courier: z.string().min(2).optional(),
   price: z.enum(['lowest', 'highest']).optional(),
+  originLabel: z.string().max(500).optional(),
+  destinationLabel: z.string().max(500).optional(),
+  /** Untuk merge BISA Express: jarak dari Alamat Profil */
+  sellerId: z.string().uuid().optional(),
+  buyerId: z.string().uuid().optional(),
 });
 
 export const trackWaybillSchema = z.object({
@@ -71,7 +73,8 @@ export const shippingSelectionSchema = z.object({
   originId: z.coerce.number().int().positive(),
   destinationId: z.coerce.number().int().positive(),
   destinationLabel: z.string().optional(),
-  weightGrams: z.coerce.number().int().min(1).max(500_000),
+  weight: z.coerce.number().positive(),
+  weightUnit: z.enum(['KG', 'TON']).default('KG'),
   courierCode: z.string().min(2),
   serviceCode: z.string().optional(),
   serviceName: z.string().optional(),

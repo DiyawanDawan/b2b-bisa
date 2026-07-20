@@ -30,8 +30,7 @@ dotenv.config();
 
 // Prefer XENDIT_PAYMENT_SECRET_KEY (CI/CD + docker-compose.prod),
 // fallback ke XENDIT_SECRET_KEY (legacy / single-key setup).
-const XENDIT_SECRET_KEY =
-  process.env.XENDIT_PAYMENT_SECRET_KEY || process.env.XENDIT_SECRET_KEY;
+const XENDIT_SECRET_KEY = process.env.XENDIT_PAYMENT_SECRET_KEY || process.env.XENDIT_SECRET_KEY;
 const XENDIT_WEBHOOK_TOKEN = process.env.XENDIT_WEBHOOK_TOKEN;
 
 // Fail fast in production if credentials are missing

@@ -153,7 +153,11 @@ export const resolveDisputeSchema = z.object({
   note: z.string().min(5, 'Catatan resolusi wajib diisi minimal 5 karakter'),
 });
 
-export const disputeChatQuerySchema = paginationQuerySchema.extend({});
+export const disputeChatQuerySchema = z.object({
+  page: z.preprocess((val) => Number(val), z.number().int().min(1).default(1)),
+  // Thread mediasi butuh history penuh; admin UI request limit=200.
+  limit: z.preprocess((val) => Number(val), z.number().int().min(1).max(500).default(100)),
+});
 
 /**
  * Phase 5 Extension Schemas
@@ -236,6 +240,27 @@ export const updatePolicySchema = z.object({
   content: z.string().min(10).optional(),
   version: z.string().optional(),
   isActive: z.boolean().optional(),
+});
+
+export const listAdminPartnershipsSchema = z.object({
+  page: z.preprocess((val) => Number(val), z.number().int().min(1).default(1)),
+  limit: z.preprocess((val) => Number(val), z.number().int().min(1).max(50).default(20)),
+  search: z.string().optional(),
+  status: z
+    .enum([
+      'PENDING',
+      'AWAITING_SIGNATURE',
+      'ACTIVE',
+      'REJECTED',
+      'TERMINATED',
+      'EXPIRED',
+      'RENEWAL_PENDING',
+    ])
+    .optional(),
+  filter: z
+    .enum(['all', 'needs_action', 'needs_platform_sign', 'draft_pending'])
+    .optional()
+    .default('needs_action'),
 });
 
 export const listChatInboxSchema = paginationQuerySchema.extend({

@@ -16,6 +16,7 @@
     "seed:forum-group-posts": "tsx prisma/seed/run-forum-group-posts.js",
     "seed:reviews": "tsx prisma/seed/run-reviews-delivery.js",
     "seed:partnerships": "tsx prisma/seed/run-partnerships.js",
+    "seed:bisa-express": "tsx scripts/seed-bisa-express.ts",
     "build": "tsc -p tsconfig.build.json && node scripts/compile-prisma-client.mjs && node scripts/fix-dist-esm-imports.mjs && node scripts/copy-ejs-templates.mjs && node scripts/copy-data-assets.mjs",
     "build:docker": "npm run build && node scripts/prepare-prod-package.mjs",
     "start:prod": "dotenv -e .env.production -- node dist/src/index.js",

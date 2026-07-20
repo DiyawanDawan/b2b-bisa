@@ -11,10 +11,7 @@ let _messaging: Messaging | null = null;
 /** Strip outer quotes and unescape common .env escaping. */
 function stripEnvQuotes(value: string): string {
   let v = value.trim();
-  if (
-    (v.startsWith('"') && v.endsWith('"')) ||
-    (v.startsWith("'") && v.endsWith("'"))
-  ) {
+  if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
     v = v.slice(1, -1);
   }
   if (v.includes('\\"')) {

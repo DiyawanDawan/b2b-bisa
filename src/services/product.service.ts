@@ -369,7 +369,7 @@ export const createProduct = async (
       pricePerUnit: true,
       originalPrice: true,
       stock: true,
-        reservedStock: true,
+      reservedStock: true,
       minOrder: true,
       unit: true,
       status: true,
@@ -539,18 +539,12 @@ export const listProducts = async (filters: {
   const bookingAndFilters: any[] = [];
   if (availableNow) {
     bookingAndFilters.push({
-      OR: [
-        { availabilityType: 'READY' },
-        { availabilityType: 'MIXED' },
-      ],
+      OR: [{ availabilityType: 'READY' }, { availabilityType: 'MIXED' }],
     });
   }
   if (preHarvestBookable) {
     bookingAndFilters.push({
-      OR: [
-        { availabilityType: 'PRE_HARVEST' },
-        { availabilityType: 'MIXED' },
-      ],
+      OR: [{ availabilityType: 'PRE_HARVEST' }, { availabilityType: 'MIXED' }],
     });
   }
   if (canBook) {

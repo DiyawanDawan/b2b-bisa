@@ -243,8 +243,8 @@ export const getDisputeChatThread = async (
       select: {
         id: true,
         status: true,
-        buyer: { select: { id: true, fullName: true, email: true } },
-        seller: { select: { id: true, fullName: true, email: true } },
+        buyer: { select: { id: true, fullName: true, email: true, avatarUrl: true } },
+        seller: { select: { id: true, fullName: true, email: true, avatarUrl: true } },
         product: { select: { id: true, name: true } },
       },
     }),

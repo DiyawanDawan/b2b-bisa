@@ -18,7 +18,8 @@ export const persistOrderShipping = async (
       destinationDestinationId: meta.destinationId,
       originLabel: null,
       destinationLabel: meta.destinationLabel ?? null,
-      weightGrams: meta.weightGrams,
+      weight: meta.weight,
+      weightUnit: meta.weightUnit ?? 'KG',
       courierCode: meta.courierCode.toLowerCase(),
       courierName: meta.courierName ?? meta.courierCode,
       serviceCode: meta.serviceCode ?? meta.verifiedService ?? null,
@@ -125,6 +126,105 @@ export const getSupplierShippingOrigin = async (userId: string) => {
     originId: profile?.rajaongkirOriginId ?? null,
     originLabel: profile?.rajaongkirOriginLabel ?? null,
   };
+};
+
+/**
+ * Isi rajaongkirOriginId otomatis dari alamat toko / Alamat Pengiriman utama
+ * bila belum diatur manual di menu Asal Pengiriman.
+ */
+export const ensureSupplierShippingOriginFromAddresses = async (userId: string) => {
+  const stored = await getSupplierShippingOrigin(userId);
+  if (stored.originId != null && stored.originId > 0) {
+    return stored;
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      role: true,
+      province: true,
+      regency: true,
+      profile: {
+        select: {
+          address: {
+            select: {
+              fullAddress: true,
+              province: { select: { name: true } },
+              regency: { select: { name: true } },
+            },
+          },
+        },
+      },
+      verification: {
+        select: { businessAddress: true },
+      },
+      customerAddresses: {
+        orderBy: [{ isPrimary: 'desc' }, { id: 'asc' }],
+        take: 1,
+        select: {
+          address: {
+            select: {
+              fullAddress: true,
+              province: { select: { name: true } },
+              regency: { select: { name: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!user || (user.role !== 'SUPPLIER' && user.role !== 'ADMIN')) {
+    return stored;
+  }
+
+  const profileAddr = user.profile?.address;
+  const primaryAddr = user.customerAddresses[0]?.address;
+  const queries = [
+    profileAddr?.regency?.name?.trim() && profileAddr?.province?.name?.trim()
+      ? `${profileAddr.regency.name.trim()}, ${profileAddr.province.name.trim()}`
+      : null,
+    primaryAddr?.regency?.name?.trim() && primaryAddr?.province?.name?.trim()
+      ? `${primaryAddr.regency.name.trim()}, ${primaryAddr.province.name.trim()}`
+      : null,
+    profileAddr?.regency?.name?.trim(),
+    primaryAddr?.regency?.name?.trim(),
+    user.regency?.trim() && user.province?.trim()
+      ? `${user.regency.trim()}, ${user.province.trim()}`
+      : null,
+    user.regency?.trim(),
+    profileAddr?.fullAddress?.trim()?.slice(0, 80),
+    primaryAddr?.fullAddress?.trim()?.slice(0, 80),
+    user.verification?.businessAddress?.trim()?.slice(0, 80),
+  ].filter((q): q is string => !!q && q.length >= 3);
+
+  for (const search of queries) {
+    try {
+      const results = await rajaOngkirService.searchDomesticDestinations({
+        search,
+        limit: 8,
+      });
+      if (!results.length) continue;
+
+      const first = results[0];
+      const originId = Number(first.id);
+      if (Number.isNaN(originId) || originId <= 0) continue;
+
+      await updateSupplierShippingOrigin(userId, {
+        originId,
+        originLabel: first.label ?? search,
+      });
+
+      return {
+        originId,
+        originLabel: first.label ?? search,
+      };
+    } catch {
+      // Coba query berikutnya jika API gagal / kuota.
+    }
+  }
+
+  return stored;
 };
 
 export const saveCustomerAddressDestination = async (

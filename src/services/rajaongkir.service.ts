@@ -19,6 +19,8 @@ import type {
 import AppError from '#utils/appError';
 import fetch from 'node-fetch';
 import prisma from '#config/prisma';
+import { UnitStatus } from '#prisma';
+import { toGrams } from '#utils/unit.util';
 import { CACHE_TTL } from '#constants/cache.constants';
 import { cacheAside, cacheKeys, invalidateShippingConfig } from '#utils/cache.util';
 
@@ -251,12 +253,15 @@ export const searchDomesticDestinations = async (params: {
 export const calculateDomesticCost = async (params: {
   originId: number;
   destinationId: number;
-  weightGrams: number;
+  weight: number;
+  weightUnit: UnitStatus;
   courier?: string;
   price?: 'lowest' | 'highest';
 }): Promise<RajaOngkirShippingOption[]> => {
-  if (params.weightGrams < 1) {
-    throw new AppError('Berat paket minimal 1 gram.', 400);
+  // RajaOngkir API only accepts grams — convert at boundary only
+  const weightGrams = toGrams(params.weight, params.weightUnit);
+  if (weightGrams < 1) {
+    throw new AppError('Berat paket tidak valid.', 400);
   }
   const activeCouriers = await loadActiveCouriersFromDb();
   if (!activeCouriers.length) {
@@ -269,7 +274,7 @@ export const calculateDomesticCost = async (params: {
   const body = new URLSearchParams();
   body.set('origin', String(params.originId));
   body.set('destination', String(params.destinationId));
-  body.set('weight', String(Math.round(params.weightGrams)));
+  body.set('weight', String(weightGrams));
   body.set('courier', params.courier?.trim() || activeCouriers.join(':'));
   if (params.price) {
     body.set('price', params.price);
@@ -290,7 +295,8 @@ export const calculateDomesticCost = async (params: {
 export const verifyShippingSelection = async (params: {
   originId: number;
   destinationId: number;
-  weightGrams: number;
+  weight: number;
+  weightUnit: UnitStatus;
   courierCode: string;
   serviceCode?: string;
   serviceName?: string;
@@ -299,7 +305,8 @@ export const verifyShippingSelection = async (params: {
   const options = await calculateDomesticCost({
     originId: params.originId,
     destinationId: params.destinationId,
-    weightGrams: params.weightGrams,
+    weight: params.weight,
+    weightUnit: params.weightUnit,
     courier: params.courierCode,
   });
 

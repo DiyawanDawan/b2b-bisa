@@ -1,12 +1,14 @@
 import prisma from '#config/prisma';
 import AppError from '#utils/appError';
 import { optional } from '#utils/env.util';
+import { ensureSupplierShippingOriginFromAddresses } from '#services/order-shipping.service';
 
 export type StoreReadinessKey =
   | 'companyName'
   | 'phone'
   | 'storeLocation'
   | 'businessAddress'
+  | 'profileAddress'
   | 'rajaongkirOriginId'
   | 'kycVerified';
 
@@ -20,9 +22,12 @@ export type ReadinessResult<T extends string> = {
 export const READINESS_MESSAGES: Record<StoreReadinessKey | BuyerReadinessKey, string> = {
   companyName: 'Nama toko / perusahaan belum diisi',
   phone: 'Nomor telepon belum diisi atau tidak valid',
-  storeLocation: 'Provinsi dan kabupaten/kota toko belum lengkap',
-  businessAddress: 'Alamat bisnis belum diisi (min. 10 karakter)',
-  rajaongkirOriginId: 'Lokasi asal pengiriman RajaOngkir belum diatur',
+  storeLocation: 'Provinsi dan kabupaten/kota pada Alamat Profil belum lengkap',
+  businessAddress: 'Alamat bisnis pada Profil belum diisi (min. 10 karakter)',
+  profileAddress:
+    'Alamat Profil wajib (UserProfile → Address) lengkap dengan lat/lng — sumber tunggal jarak BISA Express',
+  rajaongkirOriginId:
+    'Lokasi asal pengiriman RajaOngkir belum terdeteksi dari Alamat Profil. Lengkapi Alamat di Profil.',
   kycVerified: 'Verifikasi KYC belum disetujui — lengkapi di menu Verifikasi',
   shippingAddress: 'Alamat pengiriman belum diisi (min. 10 karakter)',
   recipientPhone: 'Nomor telepon penerima belum diisi (min. 8 digit)',
@@ -32,6 +37,8 @@ export const READINESS_MESSAGES: Record<StoreReadinessKey | BuyerReadinessKey, s
 const addressSelect = {
   fullAddress: true,
   phoneNumber: true,
+  latitude: true,
+  longitude: true,
   province: { select: { name: true } },
   regency: { select: { name: true } },
 } as const;
@@ -83,10 +90,19 @@ const resolveCompanyName = (user: NonNullable<Awaited<ReturnType<typeof loadRead
   user.profile?.companyName?.trim() || user.verification?.businessName?.trim() || '';
 
 const resolveBusinessAddress = (user: NonNullable<Awaited<ReturnType<typeof loadReadinessUser>>>) =>
-  user.profile?.address?.fullAddress?.trim() ||
-  user.verification?.businessAddress?.trim() ||
-  user.address?.fullAddress?.trim() ||
-  '';
+  user.profile?.address?.fullAddress?.trim() || '';
+
+const hasProfileAddressComplete = (
+  user: NonNullable<Awaited<ReturnType<typeof loadReadinessUser>>>,
+) => {
+  const addr = user.profile?.address;
+  if (!addr) return false;
+  if (!textMin(addr.fullAddress, 10)) return false;
+  const lat = addr.latitude != null ? Number(addr.latitude) : NaN;
+  const lng = addr.longitude != null ? Number(addr.longitude) : NaN;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  return !!(addr.province?.name?.trim() || addr.regency?.name?.trim());
+};
 
 const hasStoreLocation = (user: NonNullable<Awaited<ReturnType<typeof loadReadinessUser>>>) => {
   const profileAddr = user.profile?.address;
@@ -96,7 +112,7 @@ const hasStoreLocation = (user: NonNullable<Awaited<ReturnType<typeof loadReadin
   if (profileAddr?.regency?.name?.trim() || profileAddr?.province?.name?.trim()) {
     return true;
   }
-  return textMin(user.province, 2) && textMin(user.regency, 2);
+  return false;
 };
 
 const resolveBuyerLinkedAddress = (
@@ -106,11 +122,25 @@ const resolveBuyerLinkedAddress = (
 export const evaluateSupplierStoreReadiness = async (
   userId: string,
 ): Promise<ReadinessResult<StoreReadinessKey>> => {
+  // Ambil origin ongkir dari alamat toko / Alamat Pengiriman utama bila belum diisi.
+  try {
+    await ensureSupplierShippingOriginFromAddresses(userId);
+  } catch {
+    // Best-effort: tetap evaluasi readiness meski lookup RajaOngkir gagal.
+  }
+
   const user = await loadReadinessUser(userId);
   if (!user) {
     return {
       ready: false,
-      missing: ['companyName', 'phone', 'storeLocation', 'businessAddress', 'rajaongkirOriginId'],
+      missing: [
+        'companyName',
+        'phone',
+        'storeLocation',
+        'businessAddress',
+        'profileAddress',
+        'rajaongkirOriginId',
+      ],
     };
   }
 
@@ -127,6 +157,9 @@ export const evaluateSupplierStoreReadiness = async (
   }
   if (!textMin(resolveBusinessAddress(user), 10)) {
     missing.push('businessAddress');
+  }
+  if (!hasProfileAddressComplete(user)) {
+    missing.push('profileAddress');
   }
   if (user.profile?.rajaongkirOriginId == null || user.profile.rajaongkirOriginId <= 0) {
     missing.push('rajaongkirOriginId');

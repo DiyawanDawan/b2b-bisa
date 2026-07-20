@@ -1,8 +1,5 @@
 import logger from '../../src/config/logger.js';
-import {
-  buildForumGroupCoverMedia,
-  hasStockPhotoApiKey,
-} from './utils/seedStockMedia.util.ts';
+import { buildForumGroupCoverMedia, hasStockPhotoApiKey } from './utils/seedStockMedia.util.ts';
 
 /**
  * Akun tetap dari 04-users.seeder.js — hanya lookup id, tidak buat user baru.

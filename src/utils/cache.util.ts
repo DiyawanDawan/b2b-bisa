@@ -125,7 +125,10 @@ export const cacheAside = async <T>(
 
 export const invalidateByPrefix = async (relativePrefix: string): Promise<number> => {
   for (const key of [...memoryStore.keys()]) {
-    if (key.includes(`:${relativePrefix}`) || key.endsWith(`:${relativePrefix.replace(/:$/, '')}`)) {
+    if (
+      key.includes(`:${relativePrefix}`) ||
+      key.endsWith(`:${relativePrefix.replace(/:$/, '')}`)
+    ) {
       memoryStore.delete(key);
     }
   }

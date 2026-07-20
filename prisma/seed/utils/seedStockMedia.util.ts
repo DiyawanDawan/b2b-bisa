@@ -24,7 +24,11 @@ const slugify = (value: string) =>
  */
 export const keywordsToStockQuery = (keywords: string | string[]) => {
   const parts = (Array.isArray(keywords) ? keywords : [keywords])
-    .map((k) => String(k || '').replace(/-/g, ' ').trim())
+    .map((k) =>
+      String(k || '')
+        .replace(/-/g, ' ')
+        .trim(),
+    )
     .filter(Boolean);
   if (parts.length === 0) return 'agriculture indonesia';
   return parts.slice(0, 3).join(' ');

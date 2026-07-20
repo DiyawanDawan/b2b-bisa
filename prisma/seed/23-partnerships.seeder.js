@@ -2,7 +2,10 @@ import crypto from 'crypto';
 import logger from '../../src/config/logger.js';
 
 const createSignHash = (userId, partnershipId, at) =>
-  crypto.createHash('sha256').update(`${userId}:${partnershipId}:${at.toISOString()}`).digest('hex');
+  crypto
+    .createHash('sha256')
+    .update(`${userId}:${partnershipId}:${at.toISOString()}`)
+    .digest('hex');
 
 const daysFromNow = (days) => {
   const d = new Date();
@@ -380,8 +383,7 @@ export async function seedPartnerships(prisma) {
     const sellerSignAt = seed.sellerSignedAt || null;
     const platformSignAt = seed.platformSignedAt || null;
     const draftId = seed.contractNumber;
-    const platformSignerId =
-      platformSignAt && admin ? admin.id : null;
+    const platformSignerId = platformSignAt && admin ? admin.id : null;
 
     const buyerSigner = buyerSignAt ? await resolveBuyerSigner(seed.buyerId) : null;
     const sellerSigner = sellerSignAt ? await resolveSellerSigner(seed.supplierId) : null;
@@ -441,9 +443,7 @@ export async function seedPartnerships(prisma) {
       where: { id: row.id },
       data: {
         buyerSignHash: buyerSignAt ? createSignHash(seed.buyerId, row.id, buyerSignAt) : null,
-        sellerSignHash: sellerSignAt
-          ? createSignHash(seed.supplierId, row.id, sellerSignAt)
-          : null,
+        sellerSignHash: sellerSignAt ? createSignHash(seed.supplierId, row.id, sellerSignAt) : null,
         platformSignHash:
           platformSignAt && platformSignerId
             ? createSignHash(platformSignerId, row.id, platformSignAt)

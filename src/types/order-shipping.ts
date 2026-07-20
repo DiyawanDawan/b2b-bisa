@@ -1,9 +1,12 @@
-/** Input dari client saat checkout — diverifikasi ke RajaOngkir */
+import { UnitStatus } from '#prisma';
+
+/** Input dari client saat checkout — berat dalam UnitStatus produk */
 export type ShippingSelectionInput = {
   originId: number;
   destinationId: number;
   destinationLabel?: string;
-  weightGrams: number;
+  weight: number;
+  weightUnit: UnitStatus;
   courierCode: string;
   serviceCode?: string;
   serviceName?: string;

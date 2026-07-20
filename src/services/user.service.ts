@@ -3,7 +3,10 @@ import AppError from '#utils/appError';
 import { transformAddress } from '#utils/transformer.util';
 import { UserRole, UserStatus, ProductStatus, ProductMode, BiomassaType, Prisma } from '#prisma';
 import * as storeBannerService from '#services/storeBanner.service';
-import { syncCustomerAddressRajaOngkirDestination } from '#services/order-shipping.service';
+import {
+  ensureSupplierShippingOriginFromAddresses,
+  syncCustomerAddressRajaOngkirDestination,
+} from '#services/order-shipping.service';
 
 const addressSelect: Prisma.AddressSelect = {
   fullAddress: true,
@@ -44,6 +47,20 @@ const syncAddressDestinationBestEffort = async (id: string, userId: string) => {
     await syncCustomerAddressRajaOngkirDestination(id, userId);
   } catch {
     // RajaOngkir lookup is best-effort; address CRUD must still succeed.
+  }
+};
+
+/** Supplier: isi asal ongkir toko dari Alamat Pengiriman bila belum ada. */
+const syncSupplierOriginBestEffort = async (userId: string) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
+    });
+    if (user?.role !== UserRole.SUPPLIER && user?.role !== UserRole.ADMIN) return;
+    await ensureSupplierShippingOriginFromAddresses(userId);
+  } catch {
+    // Best-effort.
   }
 };
 
@@ -160,6 +177,7 @@ export const createAddress = async (
   });
 
   await syncAddressDestinationBestEffort(created.id, userId);
+  await syncSupplierOriginBestEffort(userId);
   const refreshed = await reloadCustomerAddress(created.id, userId);
 
   return transformAddress(refreshed ?? created);
@@ -221,6 +239,7 @@ export const updateAddress = async (
   });
 
   await syncAddressDestinationBestEffort(updated.id, userId);
+  await syncSupplierOriginBestEffort(userId);
   const refreshed = await reloadCustomerAddress(updated.id, userId);
 
   return transformAddress(refreshed ?? updated);
@@ -253,7 +272,7 @@ export const deleteAddress = async (id: string, userId: string) => {
 };
 
 export const setDefaultAddress = async (id: string, userId: string) => {
-  return prisma.$transaction(async (tx) => {
+  const updated = await prisma.$transaction(async (tx) => {
     // 1. Reset all addresses for this user to NOT primary
     await tx.customerAddress.updateMany({
       where: { userId },
@@ -261,7 +280,7 @@ export const setDefaultAddress = async (id: string, userId: string) => {
     });
 
     // 2. Set the target address as primary
-    const updated = await tx.customerAddress.update({
+    return tx.customerAddress.update({
       where: { id },
       data: { isPrimary: true },
       select: {
@@ -272,9 +291,10 @@ export const setDefaultAddress = async (id: string, userId: string) => {
         address: { select: addressSelect },
       },
     });
-
-    return transformAddress(updated);
   });
+
+  await syncSupplierOriginBestEffort(userId);
+  return transformAddress(updated);
 };
 
 // ─── Operating Hours Logic ───────────────────────────
@@ -331,26 +351,15 @@ export const listSuppliers = async (
   },
   isAuthorized: boolean = false,
 ) => {
-  const {
-    province,
-    regency,
-    search,
-    productMode,
-    biomassaType,
-    page = 1,
-    limit = 10,
-  } = filters;
+  const { province, regency, search, productMode, biomassaType, page = 1, limit = 10 } = filters;
   const skip = (page - 1) * limit;
   const verifiedOnly = filters.verified === true || filters.verified === 'true';
   const keyword = search?.trim();
 
   const productSome: Prisma.ProductWhereInput | undefined = (() => {
-    const modeOk =
-      productMode &&
-      Object.values(ProductMode).includes(productMode as ProductMode);
+    const modeOk = productMode && Object.values(ProductMode).includes(productMode as ProductMode);
     const typeOk =
-      biomassaType &&
-      Object.values(BiomassaType).includes(biomassaType as BiomassaType);
+      biomassaType && Object.values(BiomassaType).includes(biomassaType as BiomassaType);
     if (!modeOk && !typeOk) return undefined;
     return {
       status: ProductStatus.ACTIVE,
@@ -403,15 +412,14 @@ export const listSuppliers = async (
   // Flatten to mobile-friendly contract (name/avatar/isVerified/totalProducts).
   const suppliers = rows.map((s) => {
     const companyName = s.profile?.companyName?.trim();
-    const displayName =
-      companyName && companyName.length > 0 ? companyName : s.fullName;
+    const displayName = companyName && companyName.length > 0 ? companyName : s.fullName;
     return {
       id: s.id,
       name: displayName,
       fullName: s.fullName,
       avatar: s.avatarUrl,
       avatarUrl: s.avatarUrl,
-      phone: isAuthorized ? (s as { phone?: string | null }).phone ?? null : null,
+      phone: isAuthorized ? ((s as { phone?: string | null }).phone ?? null) : null,
       province: s.province,
       regency: s.regency,
       tier: s.tier,

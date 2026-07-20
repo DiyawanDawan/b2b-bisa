@@ -3,11 +3,13 @@ import { AuthRequest } from '#types/index';
 import catchAsync from '#utils/catchAsync';
 import { successResponse } from '#utils/response.util';
 import * as rajaOngkirService from '#services/rajaongkir.service';
+import * as bisaExpressService from '#services/bisa-express.service';
 import {
   getSupplierShippingOrigin,
   syncTrackingToOrder,
   updateSupplierShippingOrigin,
 } from '#services/order-shipping.service';
+import { UnitStatus } from '#prisma';
 
 /** GET /api/v1/shipping/destinations */
 export const searchDestinations = catchAsync(async (req: AuthRequest, res: Response) => {
@@ -26,19 +28,41 @@ export const searchDestinations = catchAsync(async (req: AuthRequest, res: Respo
   return successResponse(res, data, 'Daftar tujuan pengiriman berhasil diambil');
 });
 
-/** POST /api/v1/shipping/calculate-domestic */
+/** POST /api/v1/shipping/calculate-domestic — merge opsi RajaOngkir + BISA Express */
 export const calculateDomestic = catchAsync(async (req: AuthRequest, res: Response) => {
-  const { originId, destinationId, weightGrams, courier, price } = req.body;
+  const { originId, destinationId, weight, weightUnit, courier, price, sellerId, buyerId } =
+    req.body;
+
+  const unit: UnitStatus =
+    String(weightUnit || 'KG').toUpperCase() === 'TON' ? UnitStatus.TON : UnitStatus.KG;
+  const qty = Number(weight);
 
   const options = await rajaOngkirService.calculateDomesticCost({
     originId,
     destinationId,
-    weightGrams,
+    weight: qty,
+    weightUnit: unit,
     courier,
     price,
   });
 
-  return successResponse(res, options, 'Perkiraan ongkir berhasil dihitung');
+  try {
+    const resolvedBuyerId = (buyerId as string | undefined) ?? req.user?.id;
+    if (sellerId && resolvedBuyerId) {
+      const bisaOptions = await bisaExpressService.calculateRates({
+        weight: qty,
+        weightUnit: unit,
+        sellerId: sellerId as string,
+        buyerId: resolvedBuyerId,
+      });
+      const merged = [...bisaOptions, ...options].sort((a, b) => a.cost - b.cost);
+      return successResponse(res, merged, 'Perkiraan ongkir berhasil dihitung');
+    }
+    // Tanpa sellerId+buyerId: jangan tampilkan BISA Express (wajib Alamat Profil)
+    return successResponse(res, options, 'Perkiraan ongkir berhasil dihitung');
+  } catch {
+    return successResponse(res, options, 'Perkiraan ongkir berhasil dihitung');
+  }
 });
 
 /** POST /api/v1/shipping/track — opsional simpan ke order */

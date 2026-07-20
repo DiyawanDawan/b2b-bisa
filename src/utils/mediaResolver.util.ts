@@ -182,14 +182,33 @@ type ChatMessageLike = {
 
 type AdminChatThreadLike = {
   messages?: ChatMessageLike[] | null;
+  negotiation?: {
+    buyer?: UserLike | null;
+    seller?: UserLike | null;
+    [key: string]: unknown;
+  } | null;
   [key: string]: unknown;
 };
 
-/** Admin / supplier chat thread messages. */
+/** Admin / supplier chat thread messages + party avatars. */
 export const attachAdminChatThreadMedia = <T extends AdminChatThreadLike>(data: T): T => {
-  if (!Array.isArray(data.messages)) return data;
+  const negotiation = data.negotiation
+    ? {
+        ...data.negotiation,
+        buyer: data.negotiation.buyer
+          ? attachUserMediaUrls({ ...data.negotiation.buyer })
+          : data.negotiation.buyer,
+        seller: data.negotiation.seller
+          ? attachUserMediaUrls({ ...data.negotiation.seller })
+          : data.negotiation.seller,
+      }
+    : data.negotiation;
+
   return {
     ...data,
-    messages: data.messages.map((m) => attachNegotiationMessageMedia({ ...m })),
+    negotiation,
+    messages: Array.isArray(data.messages)
+      ? data.messages.map((m) => attachNegotiationMessageMedia({ ...m }))
+      : data.messages,
   } as T;
 };

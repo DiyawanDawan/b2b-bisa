@@ -1,13 +1,36 @@
 import { z } from 'zod';
 import { ProductMode } from '#prisma';
 
+/** URL absolut atau path storage R2 (mis. negotiations/userId/file.pdf). */
+const attachmentUrlSchema = z
+  .string()
+  .min(1)
+  .refine(
+    (value) => {
+      const trimmed = value.trim();
+      if (/^https?:\/\//i.test(trimmed)) {
+        try {
+          // eslint-disable-next-line no-new
+          new URL(trimmed);
+          return true;
+        } catch {
+          return false;
+        }
+      }
+      // Path relatif hasil upload media (bukan URL penuh).
+      return /^[a-z0-9][a-z0-9/_ .-]*\.[a-z0-9]+$/i.test(trimmed);
+    },
+    { message: 'Format URL/path lampiran tidak valid' },
+  )
+  .optional();
+
 export const createNegotiationSchema = z.object({
   productId: z.string().uuid('Product ID harus berupa UUID yang valid'),
   quantity: z.coerce.number().positive('Kuantitas harus lebih dari 0'),
   pricePerUnit: z.coerce.number().positive('Harga unit penawaran harus valid'),
   purpose: z.enum(['inquiry', 'negotiation']).optional(),
   message: z.string().max(1000).optional(),
-  attachmentUrl: z.string().url('Format URL lampiran tidak valid').optional(),
+  attachmentUrl: attachmentUrlSchema,
 });
 
 export const updateNegotiationStatusSchema = z
@@ -48,7 +71,7 @@ export const chatMessageSchema = z.object({
     .string()
     .min(1, 'Pesan tidak boleh kosong')
     .max(1000, 'Pesan terlalu panjang (maks 1000 karakter)'),
-  attachmentUrl: z.string().url('Format URL lampiran tidak valid').optional(),
+  attachmentUrl: attachmentUrlSchema,
 });
 
 export const editChatMessageSchema = z.object({

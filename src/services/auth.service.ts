@@ -69,6 +69,63 @@ const verifyFirebaseIdentity = async (idToken: string): Promise<SocialIdentity> 
   }
 };
 
+const looksLikeJwt = (token: string) => token.split('.').length === 3;
+
+/**
+ * Facebook access token (SDK) → Graph API /me.
+ * Dipakai bila mobile mengirim access token mentah (bukan Firebase ID token).
+ */
+const verifyFacebookGraphIdentity = async (accessToken: string): Promise<SocialIdentity> => {
+  try {
+    const url = new URL('https://graph.facebook.com/v21.0/me');
+    url.searchParams.set('fields', 'id,name,email,picture.type(large)');
+    url.searchParams.set('access_token', accessToken);
+
+    const res = await fetch(url);
+    const body = (await res.json()) as {
+      id?: string;
+      name?: string;
+      email?: string;
+      picture?: { data?: { url?: string } };
+      error?: { message?: string };
+    };
+
+    if (!res.ok || body.error) {
+      throw new AppError(
+        `Verifikasi Facebook gagal: ${body.error?.message ?? res.statusText}`,
+        401,
+      );
+    }
+
+    if (!body.email) {
+      throw new AppError(
+        'Akun Facebook tidak menyediakan email. Izinkan akses email lalu coba lagi.',
+        400,
+      );
+    }
+
+    return {
+      email: body.email,
+      name: body.name,
+      picture: body.picture?.data?.url,
+    };
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    throw new AppError(`Verifikasi token Facebook gagal: ${(error as Error).message}`, 401);
+  }
+};
+
+const verifyFacebookIdentity = async (token: string): Promise<SocialIdentity> => {
+  if (looksLikeJwt(token) && admin.apps.length) {
+    try {
+      return await verifyFirebaseIdentity(token);
+    } catch {
+      // Bukan Firebase token valid — coba Graph API di bawah.
+    }
+  }
+  return verifyFacebookGraphIdentity(token);
+};
+
 /**
  * Terima Firebase Auth ID token (preferensi) ATAU Google OAuth ID token mentah.
  * Mobile mengirim Firebase token setelah `signInWithCredential`.
@@ -213,10 +270,7 @@ export const loginWithSocial = async (
   role?: UserRole,
 ) => {
   if (provider === 'facebook' && !admin.apps.length) {
-    throw new AppError(
-      'Login Facebook belum tersedia di server (Firebase Admin). Hubungi admin.',
-      503,
-    );
+    // Graph API fallback masih bisa jalan tanpa Firebase Admin.
   }
   if (provider === 'google' && !admin.apps.length && !GOOGLE_WEB_CLIENT_ID) {
     throw new AppError(
@@ -228,7 +282,7 @@ export const loginWithSocial = async (
   try {
     const { email, name, picture } =
       provider === 'facebook'
-        ? await verifyFirebaseIdentity(idToken)
+        ? await verifyFacebookIdentity(idToken)
         : await verifyGoogleIdentity(idToken);
 
     // Find user by email
@@ -279,7 +333,10 @@ export const loginWithSocial = async (
     };
   } catch (error) {
     if (error instanceof AppError) throw error;
-    throw new AppError(`Verifikasi token Google gagal: ${(error as Error).message}`, 401);
+    throw new AppError(
+      `Verifikasi token ${provider === 'facebook' ? 'Facebook' : 'Google'} gagal: ${(error as Error).message}`,
+      401,
+    );
   }
 };
 

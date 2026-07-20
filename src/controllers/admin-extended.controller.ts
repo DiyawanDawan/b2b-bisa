@@ -19,10 +19,8 @@ export const getOrderAnalytics = catchAsync(async (_req: AuthRequest, res: Respo
 });
 
 export const getIntegrationHealth = catchAsync(async (_req: AuthRequest, res: Response) => {
-  const data = await cacheAside(
-    cacheKeys.adminIntegrationHealth(),
-    CACHE_TTL.ADMIN_ANALYTICS,
-    () => extended.getIntegrationHealth(),
+  const data = await cacheAside(cacheKeys.adminIntegrationHealth(), CACHE_TTL.ADMIN_ANALYTICS, () =>
+    extended.getIntegrationHealth(),
   );
   return successResponse(res, data, 'Ringkasan health integrasi berhasil diambil');
 });
@@ -135,6 +133,22 @@ export const moderateForumPost = catchAsync(async (req: AuthRequest, res: Respon
 export const listForumCategories = catchAsync(async (_req: AuthRequest, res: Response) => {
   const categories = await extended.listForumCategoriesAdmin();
   return successResponse(res, categories, 'Kategori forum berhasil diambil');
+});
+
+export const listForumGroups = catchAsync(async (req: AuthRequest, res: Response) => {
+  const { page, limit, search } = req.query as {
+    page?: string;
+    limit?: string;
+    search?: string;
+  };
+  const pageNum = Number(page) || 1;
+  const limitNum = Number(limit) || 20;
+  const result = await extended.listForumGroupsAdmin({
+    page: pageNum,
+    limit: limitNum,
+    search,
+  });
+  return paginatedResponse(res, result.groups, result.pagination.total, pageNum, limitNum);
 });
 
 export const getForumPost = catchAsync(async (req: AuthRequest, res: Response) => {

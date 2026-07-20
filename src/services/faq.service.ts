@@ -15,13 +15,21 @@ const faqSelect = {
 } satisfies Prisma.FaqSelect;
 
 export const listFaqs = async (
-  params: { page: number; limit: number; includeInactive?: boolean },
+  params: { page: number; limit: number; includeInactive?: boolean; search?: string },
   isAdmin = false,
 ) => {
-  const { page, limit, includeInactive = false } = params;
+  const { page, limit, includeInactive = false, search } = params;
   const skip = (page - 1) * limit;
+  const q = search?.trim();
 
-  const where: Prisma.FaqWhereInput = isAdmin && includeInactive ? {} : { isActive: true };
+  const where: Prisma.FaqWhereInput = {
+    ...(isAdmin && includeInactive ? {} : { isActive: true }),
+    ...(q
+      ? {
+          OR: [{ question: { contains: q } }, { answer: { contains: q } }],
+        }
+      : {}),
+  };
 
   const load = async () => {
     const [faqs, total] = await prisma.$transaction([
@@ -37,7 +45,7 @@ export const listFaqs = async (
     return { faqs, total, totalPages: Math.ceil(total / limit) };
   };
 
-  if (isAdmin) {
+  if (isAdmin || q) {
     return load();
   }
 

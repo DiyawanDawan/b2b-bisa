@@ -23,9 +23,12 @@ import {
   UserRole,
   NotificationType,
   NotificationPriority,
+  UnitStatus,
 } from '#prisma';
 import { createNotification } from '#services/notification.service';
 import * as rajaOngkirService from '#services/rajaongkir.service';
+import * as bisaExpressService from '#services/bisa-express.service';
+import { BISA_EXPRESS_COURIER_CODE } from '#constants/bisa-express.constants';
 import { getSupplierShippingOrigin, persistOrderShipping } from '#services/order-shipping.service';
 import type { LogisticsSnapshotMeta, ShippingSelectionInput } from '#types/order-shipping';
 import { notifyOrderStatusChange } from '#services/orderNotification.service';
@@ -69,7 +72,6 @@ import {
   BATCH_PAYMENT_EXTERNAL_PREFIX,
   BISA_MULTI_CHECKOUT_ORDER_PREFIX,
   isMultiCheckoutPaymentExternalId,
-  parseCheckoutBatchIdFromExternalId,
 } from '#constants/order.constants';
 
 export {
@@ -108,9 +110,27 @@ type ShippingAddressSnapshot = {
   regency?: string | null;
   latitude?: number | null;
   longitude?: number | null;
-  /** Sumber data: profil pembeli, alamat tersimpan, atau kustom supplier. */
-  source?: 'buyer_profile' | 'buyer_saved_address' | 'custom';
+  /** Sumber data alamat: buyer, seller, atau kustom. */
+  source?:
+    | 'buyer_profile'
+    | 'buyer_saved_address'
+    | 'custom'
+    | 'seller_profile'
+    | 'seller_business'
+    | 'seller_product_location';
   customerAddressId?: string | null;
+};
+
+type DirectCheckoutPreviewOrder = {
+  sellerId: string;
+  totalQuantity: Prisma.Decimal;
+  subtotal: Prisma.Decimal;
+  voucherDiscount: Prisma.Decimal;
+  platformFee: Prisma.Decimal;
+  vatAmount: Prisma.Decimal;
+  logisticsFee: Prisma.Decimal;
+  totalAmount: Prisma.Decimal;
+  shippingAddressSnapshot: ShippingAddressSnapshot & { logistics?: LogisticsSnapshotMeta };
 };
 
 const mergeShippingSnapshot = (
@@ -583,29 +603,62 @@ export const buildDealEconomics = async (params: {
 
 const resolveLogisticsForCheckout = async (
   selection: ShippingSelectionInput | undefined,
+  parties?: { sellerId: string; buyerId: string },
 ): Promise<{ logisticsFee: Prisma.Decimal; logisticsMeta?: LogisticsSnapshotMeta }> => {
   if (!selection) {
     return { logisticsFee: new Prisma.Decimal(0) };
   }
 
-  const verified = await rajaOngkirService.verifyShippingSelection({
-    originId: selection.originId,
-    destinationId: selection.destinationId,
-    weightGrams: selection.weightGrams,
-    courierCode: selection.courierCode,
-    serviceCode: selection.serviceCode,
-    serviceName: selection.serviceName,
-    expectedCost: selection.cost,
-  });
+  const isBisaExpress = selection.courierCode.toLowerCase() === BISA_EXPRESS_COURIER_CODE;
+
+  if (isBisaExpress) {
+    if (!parties?.sellerId || !parties?.buyerId) {
+      throw new AppError(
+        'Checkout BISA Express wajib seller & buyer memiliki Alamat Profil (Address).',
+        400,
+      );
+    }
+  }
+
+  const weightUnit = selection.weightUnit ?? UnitStatus.KG;
+  const weight = Number(selection.weight);
+
+  const verified = isBisaExpress
+    ? await bisaExpressService.verifyBisaExpressSelection({
+        originId: selection.originId,
+        destinationId: selection.destinationId,
+        weight,
+        weightUnit,
+        courierCode: selection.courierCode,
+        serviceCode: selection.serviceCode,
+        serviceName: selection.serviceName,
+        expectedCost: selection.cost,
+        destinationLabel: selection.destinationLabel,
+        sellerId: parties!.sellerId,
+        buyerId: parties!.buyerId,
+      })
+    : await rajaOngkirService.verifyShippingSelection({
+        originId: selection.originId,
+        destinationId: selection.destinationId,
+        weight,
+        weightUnit,
+        courierCode: selection.courierCode,
+        serviceCode: selection.serviceCode,
+        serviceName: selection.serviceName,
+        expectedCost: selection.cost,
+      });
 
   return {
     logisticsFee: new Prisma.Decimal(verified.cost),
     logisticsMeta: {
       ...selection,
+      weight,
+      weightUnit,
       verifiedService: verified.service,
       verifiedDescription: verified.description,
       courierName: verified.name,
       serviceName: selection.serviceName ?? verified.service,
+      etd: selection.etd ?? verified.etd,
     },
   };
 };
@@ -672,8 +725,11 @@ const assertContractIssueReady = (
   if (!Number.isFinite(cost) || cost <= 0) {
     throw new AppError('Biaya ongkir belum valid. Hitung ulang ongkir.', 400);
   }
-  if (!shippingSelection.weightGrams || shippingSelection.weightGrams < 1) {
+  if (!shippingSelection.weight || shippingSelection.weight <= 0) {
     throw new AppError('Berat pengiriman tidak valid. Sesuaikan jumlah barang.', 400);
+  }
+  if (!shippingSelection.weightUnit) {
+    throw new AppError('Unit berat pengiriman (KG/TON) wajib diisi.', 400);
   }
 
   if (sellerOrigin.originId == null) {
@@ -795,6 +851,7 @@ export const previewInvoiceFromNegotiation = async (
 
   const { logisticsFee, logisticsMeta } = await resolveLogisticsForCheckout(
     options?.shippingSelection,
+    { sellerId: negotiation.sellerId, buyerId: negotiation.buyerId },
   );
   const financials = await calculateContractFinancials(previewSubtotal, logisticsFee);
   const buyerShippingSnapshot = logisticsMeta
@@ -921,7 +978,13 @@ export const createContract = async (
   );
   assertContractIssueReady(mergedSnapshot, data.shippingSelection, sellerOrigin);
 
-  const { logisticsFee, logisticsMeta } = await resolveLogisticsForCheckout(data.shippingSelection);
+  const { logisticsFee, logisticsMeta } = await resolveLogisticsForCheckout(
+    data.shippingSelection,
+    {
+      sellerId,
+      buyerId: negotiation.buyerId,
+    },
+  );
   const financials = await calculateContractFinancials(contractSubtotal, logisticsFee);
   const {
     subtotal,
@@ -1158,7 +1221,10 @@ export const createDirectOrderFromCart = async (
   >();
   if (data.shippingSelections?.length) {
     for (const sel of data.shippingSelections) {
-      const resolved = await resolveLogisticsForCheckout(sel);
+      const resolved = await resolveLogisticsForCheckout(sel, {
+        sellerId: sel.sellerId,
+        buyerId,
+      });
       logisticsBySeller.set(sel.sellerId, resolved);
     }
   }
@@ -1457,7 +1523,10 @@ export const previewDirectOrderFromCart = async (
   >();
   if (data.shippingSelections?.length) {
     for (const sel of data.shippingSelections) {
-      const resolved = await resolveLogisticsForCheckout(sel);
+      const resolved = await resolveLogisticsForCheckout(sel, {
+        sellerId: sel.sellerId,
+        buyerId,
+      });
       logisticsBySeller.set(sel.sellerId, resolved);
     }
   }
@@ -1476,16 +1545,7 @@ export const previewDirectOrderFromCart = async (
     data.shippingSelections,
   );
 
-  const orders: Array<{
-    sellerId: string;
-    totalQuantity: Prisma.Decimal;
-    subtotal: Prisma.Decimal;
-    platformFee: Prisma.Decimal;
-    vatAmount: Prisma.Decimal;
-    logisticsFee: Prisma.Decimal;
-    totalAmount: Prisma.Decimal;
-    shippingAddressSnapshot: ShippingAddressSnapshot;
-  }> = [];
+  const orders: DirectCheckoutPreviewOrder[] = [];
   let subtotal = new Prisma.Decimal(0);
   let platformFee = new Prisma.Decimal(0);
   let vatAmount = new Prisma.Decimal(0);
@@ -1604,7 +1664,7 @@ export const previewDirectOrderFromCurrentCart = async (
 };
 
 /**
- * Supplier may revise shipping address & notes on a pending invoice (typo / correction).
+ * Supplier may revise shipping, notes, qty, and unit price on a pending invoice.
  */
 export const updatePendingInvoice = async (
   sellerId: string,
@@ -1612,6 +1672,8 @@ export const updatePendingInvoice = async (
   data: {
     shippingSnapshot?: Partial<ShippingAddressSnapshot>;
     specifications?: string;
+    quantity?: number;
+    pricePerUnit?: number;
   },
 ) => {
   const order = await prisma.order.findUnique({
@@ -1622,8 +1684,19 @@ export const updatePendingInvoice = async (
       status: true,
       shippingAddressSnapshot: true,
       specifications: true,
-      negotiation: { select: { id: true } },
+      logisticsFee: true,
+      totalQuantity: true,
+      negotiation: { select: { id: true, productId: true } },
       transaction: { select: { paymentStatus: true, status: true } },
+      items: {
+        select: {
+          id: true,
+          productId: true,
+          quantity: true,
+          pricePerUnit: true,
+        },
+        take: 1,
+      },
     },
   });
 
@@ -1636,6 +1709,9 @@ export const updatePendingInvoice = async (
     throw new AppError('Tagihan tidak bisa diedit karena pembayaran sudah diproses.', 400);
   }
 
+  const line = order.items[0];
+  if (!line) throw new AppError('Item tagihan tidak ditemukan.', 400);
+
   const currentSnapshot = (order.shippingAddressSnapshot ?? {}) as ShippingAddressSnapshot;
   const shippingSnapshot = data.shippingSnapshot
     ? mergeShippingSnapshot(currentSnapshot, data.shippingSnapshot)
@@ -1646,12 +1722,69 @@ export const updatePendingInvoice = async (
   const specifications =
     data.specifications !== undefined ? data.specifications.trim() || null : order.specifications;
 
+  const nextQty = data.quantity != null ? new Prisma.Decimal(data.quantity) : line.quantity;
+  const nextPrice =
+    data.pricePerUnit != null ? new Prisma.Decimal(data.pricePerUnit) : line.pricePerUnit;
+  const pricingChanged = data.quantity != null || data.pricePerUnit != null;
+  const qtyDelta = nextQty.sub(line.quantity);
+
+  if (pricingChanged) {
+    await assertQuantityMeetsMinOrder(line.productId, Number(nextQty));
+  }
+
+  const logisticsFee = order.logisticsFee ?? new Prisma.Decimal(0);
+  const contractSubtotal = nextQty.mul(nextPrice);
+  const financials = pricingChanged
+    ? await calculateContractFinancials(contractSubtotal, logisticsFee)
+    : null;
+
   const updatedOrder = await prisma.$transaction(async (tx) => {
+    if (pricingChanged && !qtyDelta.equals(0)) {
+      if (qtyDelta.gt(0)) {
+        const product = await tx.product.findUnique({
+          where: { id: line.productId },
+          select: { stock: true },
+        });
+        if (!product || product.stock.lt(qtyDelta)) {
+          throw new AppError('Stok produk tidak mencukupi untuk kuantitas baru.', 400);
+        }
+        await tx.product.update({
+          where: { id: line.productId },
+          data: { stock: { decrement: qtyDelta } },
+        });
+      } else {
+        await tx.product.update({
+          where: { id: line.productId },
+          data: { stock: { increment: qtyDelta.abs() } },
+        });
+      }
+    }
+
+    if (pricingChanged && financials) {
+      await tx.orderItem.update({
+        where: { id: line.id },
+        data: {
+          quantity: nextQty,
+          pricePerUnit: nextPrice,
+          subtotal: financials.subtotal,
+        },
+      });
+    }
+
     const updated = await tx.order.update({
       where: { id: orderId },
       data: {
         shippingAddressSnapshot: shippingSnapshot,
         specifications,
+        ...(financials
+          ? {
+              subtotal: financials.subtotal,
+              platformFee: financials.platformFee,
+              vatAmount: financials.vatAmount,
+              totalAmount: financials.totalAmount,
+              totalQuantity: nextQty,
+            }
+          : {}),
       },
     });
 
@@ -1659,13 +1792,24 @@ export const updatePendingInvoice = async (
     if (negotiationId) {
       await tx.negotiation.update({
         where: { id: negotiationId },
-        data: { specifications },
+        data: {
+          specifications,
+          ...(pricingChanged
+            ? {
+                quantity: nextQty,
+                pricePerUnit: nextPrice,
+                totalEstimate: contractSubtotal,
+              }
+            : {}),
+        },
       });
       await tx.chatMessage.create({
         data: {
           negotiationId,
           senderId: sellerId,
-          content: 'Detail tagihan diperbarui (alamat/catatan).',
+          content: pricingChanged
+            ? 'Detail tagihan diperbarui (harga/jumlah/alamat/catatan).'
+            : 'Detail tagihan diperbarui (alamat/catatan).',
           isSystemMessage: true,
         },
       });
@@ -3848,7 +3992,9 @@ export const getPublicContractVerification = async (orderNumber: string) => {
       ? {
           ...item.product,
           thumbnailUrl:
-            storageService.getPublicUrl(item.product.thumbnailUrl ?? null) ?? item.product.thumbnailUrl ?? null,
+            storageService.getPublicUrl(item.product.thumbnailUrl ?? null) ??
+            item.product.thumbnailUrl ??
+            null,
         }
       : item.product;
 

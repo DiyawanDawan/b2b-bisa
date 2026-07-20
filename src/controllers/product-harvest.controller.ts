@@ -30,7 +30,10 @@ export const stockIn = catchAsync(async (req: AuthRequest, res: Response) => {
 });
 
 export const cancel = catchAsync(async (req: AuthRequest, res: Response) => {
-  const data = await harvestService.cancelHarvestLot(req.params.lotId, req.user!.id, req.body?.notes);
+  const data = await harvestService.cancelHarvestLot(
+    req.params.lotId,
+    req.user!.id,
+    req.body?.notes,
+  );
   successResponse(res, data, 'Batch panen dibatalkan.');
 });
-

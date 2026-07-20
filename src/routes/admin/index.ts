@@ -21,6 +21,8 @@ import iotRoutes from '#routes/admin/iot.routes';
 import vouchersRoutes from '#routes/admin/vouchers.routes';
 import knowledgeRoutes from '#routes/admin/knowledge.routes';
 import supportRoutes from '#routes/admin/support.routes';
+import partnershipsRoutes from '#routes/admin/partnerships.routes';
+import bisaExpressRoutes from '#routes/admin/bisa-express.routes';
 
 const router = Router();
 
@@ -49,5 +51,7 @@ router.use('/iot', iotRoutes);
 router.use('/vouchers', vouchersRoutes);
 router.use('/knowledge', knowledgeRoutes);
 router.use('/support', supportRoutes);
+router.use('/partnerships', partnershipsRoutes);
+router.use('/bisa-express', bisaExpressRoutes);
 
 export default router;

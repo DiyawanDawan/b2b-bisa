@@ -30,4 +30,3 @@ export const confirmHarvestLotSchema = z.object({
 export const cancelHarvestLotSchema = z.object({
   notes: z.string().max(1000).optional(),
 });
-

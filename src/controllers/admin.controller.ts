@@ -87,10 +87,8 @@ export const getTopSuppliers = catchAsync(async (req: AuthRequest, res: Response
  * GET /api/v1/admin/dashboard/analytics/platform
  */
 export const getDashboardPlatformAnalytics = catchAsync(async (req: AuthRequest, res: Response) => {
-  const data = await cacheAside(
-    cacheKeys.adminPlatformAnalytics(),
-    CACHE_TTL.ADMIN_ANALYTICS,
-    () => adminService.getDashboardPlatformAnalytics(),
+  const data = await cacheAside(cacheKeys.adminPlatformAnalytics(), CACHE_TTL.ADMIN_ANALYTICS, () =>
+    adminService.getDashboardPlatformAnalytics(),
   );
   successResponse(res, data, 'Analitik platform berhasil diambil');
 });

@@ -17,6 +17,8 @@ import { invalidatePolicies } from '#utils/cache.util';
 import { POLICY_KEYS } from '#services/policy.service';
 import { CATEGORY_TYPE } from '#prisma';
 import { attachOrderMediaUrls } from '#utils/orderMedia.util';
+import { attachUserMediaUrls } from '#utils/userMedia.util';
+import { attachForumMediaUrls, resolveMediaField } from '#utils/mediaResolver.util';
 
 export const listOrders = async (params: {
   page: number;
@@ -61,11 +63,23 @@ export const listOrders = async (params: {
         totalQuantity: true,
         createdAt: true,
         updatedAt: true,
-        buyer: { select: { id: true, fullName: true, email: true } },
-        seller: { select: { id: true, fullName: true, email: true } },
+        buyer: { select: { id: true, fullName: true, email: true, avatarUrl: true } },
+        seller: { select: { id: true, fullName: true, email: true, avatarUrl: true } },
         dispute: { select: { id: true, status: true } },
         orderShipping: { select: { courierCode: true } },
         shipment: { select: { courierCode: true, deliveryStatus: true } },
+        transaction: {
+          select: {
+            id: true,
+            paymentMethod: true,
+            paymentStatus: true,
+            status: true,
+            paidAt: true,
+            paymentChannel: {
+              select: { id: true, code: true, name: true, group: true, logoUrl: true },
+            },
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
       skip,
@@ -76,6 +90,8 @@ export const listOrders = async (params: {
 
   const mapped = orders.map((o) => ({
     ...o,
+    buyer: attachUserMediaUrls({ ...o.buyer }),
+    seller: attachUserMediaUrls({ ...o.seller }),
     courierCode: o.orderShipping?.courierCode ?? o.shipment?.courierCode ?? null,
     deliveryStatus: o.shipment?.deliveryStatus ?? null,
     orderShipping: undefined,
@@ -272,10 +288,23 @@ export const getOrderDetail = async (orderId: string) => {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
     include: {
-      buyer: { select: { id: true, fullName: true, email: true, phone: true } },
-      seller: { select: { id: true, fullName: true, email: true, phone: true } },
+      buyer: { select: { id: true, fullName: true, email: true, phone: true, avatarUrl: true } },
+      seller: { select: { id: true, fullName: true, email: true, phone: true, avatarUrl: true } },
       dispute: true,
-      transaction: { select: { id: true, status: true, amount: true } },
+      transaction: {
+        select: {
+          id: true,
+          status: true,
+          amount: true,
+          paymentMethod: true,
+          paymentStatus: true,
+          paidAt: true,
+          externalId: true,
+          paymentChannel: {
+            select: { id: true, code: true, name: true, group: true, logoUrl: true },
+          },
+        },
+      },
       items: {
         select: {
           id: true,
@@ -406,11 +435,36 @@ export const listForumPostsAdmin = async (params: {
         title: true,
         content: true,
         status: true,
+        mediaUrls: true,
+        tags: true,
+        productMentions: true,
+        categoryId: true,
+        groupId: true,
         upvotes: true,
         downvotes: true,
         viewCount: true,
         createdAt: true,
-        user: { select: { id: true, fullName: true, email: true, role: true } },
+        updatedAt: true,
+        user: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            role: true,
+            avatarUrl: true,
+          },
+        },
+        category: { select: { id: true, name: true } },
+        group: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            avatarUrl: true,
+            bannerUrl: true,
+            memberCount: true,
+          },
+        },
         _count: { select: { comments: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -421,9 +475,34 @@ export const listForumPostsAdmin = async (params: {
   ]);
 
   return {
-    posts,
+    posts: posts.map(mapAdminForumPost),
     pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
   };
+};
+
+const mapAdminForumPost = <
+  T extends {
+    user?: { avatarUrl?: string | null; [key: string]: unknown } | null;
+    group?: {
+      avatarUrl?: string | null;
+      bannerUrl?: string | null;
+      [key: string]: unknown;
+    } | null;
+    mediaUrls?: unknown;
+    [key: string]: unknown;
+  },
+>(
+  post: T,
+) => {
+  const withMedia = attachForumMediaUrls({ ...post });
+  if (withMedia.group) {
+    withMedia.group = {
+      ...withMedia.group,
+      avatarUrl: resolveMediaField(withMedia.group.avatarUrl as string | null),
+      bannerUrl: resolveMediaField(withMedia.group.bannerUrl as string | null),
+    };
+  }
+  return withMedia;
 };
 
 export const moderateForumPost = async (postId: string, status: PostStatus) => {
@@ -443,6 +522,60 @@ export const listForumCategoriesAdmin = async () => {
   });
 };
 
+export const listForumGroupsAdmin = async (params: {
+  page: number;
+  limit: number;
+  search?: string;
+}) => {
+  const { page, limit, search } = params;
+  const skip = (page - 1) * limit;
+  const where: Prisma.ForumGroupWhereInput = search
+    ? {
+        OR: [
+          { name: { contains: search } },
+          { slug: { contains: search } },
+          { description: { contains: search } },
+        ],
+      }
+    : {};
+
+  const [groups, total] = await Promise.all([
+    prisma.forumGroup.findMany({
+      where,
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        description: true,
+        avatarUrl: true,
+        bannerUrl: true,
+        isPublic: true,
+        memberCount: true,
+        createdAt: true,
+        owner: {
+          select: { id: true, fullName: true, email: true, avatarUrl: true },
+        },
+        _count: { select: { posts: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: limit,
+    }),
+    prisma.forumGroup.count({ where }),
+  ]);
+
+  return {
+    groups: groups.map((g) => ({
+      ...g,
+      avatarUrl: resolveMediaField(g.avatarUrl),
+      bannerUrl: resolveMediaField(g.bannerUrl),
+      owner: attachUserMediaUrls({ ...g.owner }),
+      postCount: g._count.posts,
+    })),
+    pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+  };
+};
+
 export const getForumPostAdmin = async (postId: string) => {
   const post = await prisma.forumPost.findUnique({
     where: { id: postId },
@@ -451,20 +584,42 @@ export const getForumPostAdmin = async (postId: string) => {
       title: true,
       content: true,
       status: true,
-      categoryId: true,
+      mediaUrls: true,
       tags: true,
+      productMentions: true,
+      categoryId: true,
+      groupId: true,
       upvotes: true,
       downvotes: true,
       viewCount: true,
       createdAt: true,
       updatedAt: true,
-      user: { select: { id: true, fullName: true, email: true, role: true } },
+      user: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          role: true,
+          avatarUrl: true,
+        },
+      },
       category: { select: { id: true, name: true } },
+      group: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          description: true,
+          avatarUrl: true,
+          bannerUrl: true,
+          memberCount: true,
+        },
+      },
       _count: { select: { comments: true } },
     },
   });
   if (!post) throw new AppError('Posting forum tidak ditemukan', 404);
-  return post;
+  return mapAdminForumPost(post);
 };
 
 export const createForumPostAdmin = async (
@@ -964,8 +1119,8 @@ export const listChatInbox = async (params: {
         updatedAt: true,
         createdAt: true,
         totalEstimate: true,
-        buyer: { select: { id: true, fullName: true, email: true } },
-        seller: { select: { id: true, fullName: true, email: true } },
+        buyer: { select: { id: true, fullName: true, email: true, avatarUrl: true } },
+        seller: { select: { id: true, fullName: true, email: true, avatarUrl: true } },
         product: { select: { id: true, name: true } },
         order: { select: { id: true, orderNumber: true, status: true } },
         _count: { select: { messages: true } },
@@ -989,6 +1144,8 @@ export const listChatInbox = async (params: {
   return {
     items: items.map(({ messages, ...rest }) => ({
       ...rest,
+      buyer: attachUserMediaUrls({ ...rest.buyer }),
+      seller: attachUserMediaUrls({ ...rest.seller }),
       lastMessage: messages[0] ?? null,
     })),
     pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
@@ -1039,8 +1196,8 @@ export const getChatThread = async (
       totalEstimate: true,
       createdAt: true,
       updatedAt: true,
-      buyer: { select: { id: true, fullName: true, email: true, phone: true } },
-      seller: { select: { id: true, fullName: true, email: true, phone: true } },
+      buyer: { select: { id: true, fullName: true, email: true, phone: true, avatarUrl: true } },
+      seller: { select: { id: true, fullName: true, email: true, phone: true, avatarUrl: true } },
       product: { select: { id: true, name: true, unit: true } },
       order: { select: { id: true, orderNumber: true, status: true } },
       _count: { select: { messages: true } },
@@ -1062,7 +1219,11 @@ export const getChatThread = async (
   ]);
 
   return {
-    negotiation,
+    negotiation: {
+      ...negotiation,
+      buyer: attachUserMediaUrls({ ...negotiation.buyer }),
+      seller: attachUserMediaUrls({ ...negotiation.seller }),
+    },
     messages,
     pagination: {
       total,

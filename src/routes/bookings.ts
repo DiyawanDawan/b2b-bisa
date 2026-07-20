@@ -16,11 +16,7 @@ router.post(
   bookingController.createBooking,
 );
 
-router.get(
-  '/my',
-  validate(v.listBookingsQuerySchema, 'query'),
-  bookingController.listMyBookings,
-);
+router.get('/my', validate(v.listBookingsQuerySchema, 'query'), bookingController.listMyBookings);
 
 router.get(
   '/incoming',
@@ -29,11 +25,7 @@ router.get(
   bookingController.listIncomingBookings,
 );
 
-router.get(
-  '/:id',
-  validate(v.bookingIdParamSchema, 'params'),
-  bookingController.getBookingById,
-);
+router.get('/:id', validate(v.bookingIdParamSchema, 'params'), bookingController.getBookingById);
 
 router.put(
   '/:id/cancel',

@@ -3,13 +3,7 @@ import prisma from '#config/prisma';
 import AppError from '#utils/appError';
 import * as storageService from '#services/storage.service';
 import { createNotification } from '#services/notification.service';
-import {
-  NotificationType,
-  PartnershipStatus,
-  PartnershipTier,
-  Prisma,
-  UserRole,
-} from '#prisma';
+import { NotificationType, PartnershipStatus, PartnershipTier, Prisma, UserRole } from '#prisma';
 
 const userSelect = {
   id: true,
@@ -50,7 +44,10 @@ const generateContractNumber = () => {
 };
 
 const createSignHash = (userId: string, partnershipId: string, at: Date) =>
-  crypto.createHash('sha256').update(`${userId}:${partnershipId}:${at.toISOString()}`).digest('hex');
+  crypto
+    .createHash('sha256')
+    .update(`${userId}:${partnershipId}:${at.toISOString()}`)
+    .digest('hex');
 
 const startOfToday = () => {
   const d = new Date();
@@ -431,6 +428,7 @@ export const listMyPartnerships = async (
   page = 1,
   limit = 20,
   status?: PartnershipStatus,
+  search?: string,
 ) => {
   await expireDuePartnerships();
 
@@ -443,6 +441,18 @@ export const listMyPartnerships = async (
         ? { supplierId: userId }
         : { buyerId: userId };
   if (status) where.status = status;
+
+  const keyword = search?.trim();
+  if (keyword && role === UserRole.ADMIN) {
+    where.OR = [
+      { contractNumber: { contains: keyword, mode: 'insensitive' } },
+      { title: { contains: keyword, mode: 'insensitive' } },
+      { buyer: { fullName: { contains: keyword, mode: 'insensitive' } } },
+      { supplier: { fullName: { contains: keyword, mode: 'insensitive' } } },
+      { buyer: { profile: { companyName: { contains: keyword, mode: 'insensitive' } } } },
+      { supplier: { profile: { companyName: { contains: keyword, mode: 'insensitive' } } } },
+    ];
+  }
 
   const [rows, total] = await Promise.all([
     prisma.buyerSupplierPartnership.findMany({
@@ -461,6 +471,78 @@ export const listMyPartnerships = async (
     page,
     limit,
   };
+};
+
+/** Daftar kontrak untuk admin panel (filter aksi / TTD). */
+export const listAdminPartnerships = async (params: {
+  page?: number;
+  limit?: number;
+  status?: PartnershipStatus;
+  search?: string;
+  filter?: 'all' | 'needs_action' | 'needs_platform_sign' | 'draft_pending';
+}) => {
+  await expireDuePartnerships();
+
+  const page = Math.max(1, params.page ?? 1);
+  const limit = Math.min(50, Math.max(1, params.limit ?? 20));
+  const skip = (page - 1) * limit;
+  const filter = params.filter ?? 'needs_action';
+
+  const where: Prisma.BuyerSupplierPartnershipWhereInput = {};
+
+  if (params.status) {
+    where.status = params.status;
+  } else if (filter === 'needs_action') {
+    where.status = {
+      in: [
+        PartnershipStatus.PENDING,
+        PartnershipStatus.AWAITING_SIGNATURE,
+        PartnershipStatus.RENEWAL_PENDING,
+      ],
+    };
+  } else if (filter === 'draft_pending') {
+    where.status = PartnershipStatus.PENDING;
+  } else if (filter === 'needs_platform_sign') {
+    where.status = {
+      in: [PartnershipStatus.PENDING, PartnershipStatus.AWAITING_SIGNATURE],
+    };
+    where.buyerSignedAt = { not: null };
+    where.sellerSignedAt = { not: null };
+    where.platformSignedAt = null;
+  }
+
+  const keyword = params.search?.trim();
+  if (keyword) {
+    where.OR = [
+      { contractNumber: { contains: keyword, mode: 'insensitive' } },
+      { title: { contains: keyword, mode: 'insensitive' } },
+      { buyer: { fullName: { contains: keyword, mode: 'insensitive' } } },
+      { supplier: { fullName: { contains: keyword, mode: 'insensitive' } } },
+      { buyer: { profile: { companyName: { contains: keyword, mode: 'insensitive' } } } },
+      { supplier: { profile: { companyName: { contains: keyword, mode: 'insensitive' } } } },
+    ];
+  }
+
+  const [rows, total] = await Promise.all([
+    prisma.buyerSupplierPartnership.findMany({
+      where,
+      skip,
+      take: limit,
+      orderBy: { updatedAt: 'desc' },
+      include: partnershipInclude,
+    }),
+    prisma.buyerSupplierPartnership.count({ where }),
+  ]);
+
+  const partnerships = rows.map(mapPartnership).map((p) => ({
+    ...p,
+    needsPlatformSign: Boolean(
+      p.buyerSignedAt && p.sellerSignedAt && !p.platformSignedAt && !p.isFullySigned,
+    ),
+    signatureLabel: `${p.signedCount}/${p.requiredSigners} TTD`,
+  }));
+
+  return { partnerships, total, page, limit };
 };
 
 export const getPartnershipById = async (
@@ -670,7 +752,13 @@ export const signPartnership = async (
   const sellerWillSign = isSeller ? now : row.sellerSignedAt;
   const platformWillSign = isPlatform ? now : row.platformSignedAt;
 
-  if (isTripleSigned({ buyerSignedAt: buyerWillSign, sellerSignedAt: sellerWillSign, platformSignedAt: platformWillSign })) {
+  if (
+    isTripleSigned({
+      buyerSignedAt: buyerWillSign,
+      sellerSignedAt: sellerWillSign,
+      platformSignedAt: platformWillSign,
+    })
+  ) {
     data.isFullySigned = true;
     data.status =
       row.endDate >= startOfToday() ? PartnershipStatus.ACTIVE : PartnershipStatus.EXPIRED;
@@ -790,7 +878,10 @@ export const requestRenewal = async (
   }
 
   if (input.newEndDate <= row.endDate) {
-    throw new AppError('Tanggal perpanjangan harus setelah tanggal berakhir kontrak saat ini.', 400);
+    throw new AppError(
+      'Tanggal perpanjangan harus setelah tanggal berakhir kontrak saat ini.',
+      400,
+    );
   }
 
   const durationMs = input.newEndDate.getTime() - row.endDate.getTime();
@@ -878,11 +969,7 @@ export const acceptRenewal = async (partnershipId: string, userId: string) => {
 };
 
 /** Tolak pengajuan perpanjangan. */
-export const rejectRenewal = async (
-  partnershipId: string,
-  userId: string,
-  reason?: string,
-) => {
+export const rejectRenewal = async (partnershipId: string, userId: string, reason?: string) => {
   const row = await prisma.buyerSupplierPartnership.findUnique({
     where: { id: partnershipId },
     select: {

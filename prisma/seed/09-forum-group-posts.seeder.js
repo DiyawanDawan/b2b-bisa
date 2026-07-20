@@ -1,8 +1,5 @@
 import logger from '../../src/config/logger.js';
-import {
-  buildForumPostMedia,
-  hasStockPhotoApiKey,
-} from './utils/seedStockMedia.util.ts';
+import { buildForumPostMedia, hasStockPhotoApiKey } from './utils/seedStockMedia.util.ts';
 
 /** Keyword visual per slug grup — dipakai query Pexels/Pixabay. */
 const GROUP_MEDIA_KEYWORDS = {
@@ -54,7 +51,8 @@ const GROUP_POST_SEEDS = {
       comments: [
         {
           authorEmail: 'siti.aminah@agritech.com',
-          content: 'Tambah residual oil & heavy metal screening kalau target food-grade soil amendment.',
+          content:
+            'Tambah residual oil & heavy metal screening kalau target food-grade soil amendment.',
         },
         {
           authorEmail: 'h.wijaya@surabayaindustrial.com',
@@ -149,7 +147,8 @@ const GROUP_POST_SEEDS = {
       comments: [
         {
           authorEmail: 'hello@greenearth.co',
-          content: 'Untuk produksi stabil, 30–60 detik sudah cukup. Naik ke 10 detik saat ramp-up saja.',
+          content:
+            'Untuk produksi stabil, 30–60 detik sudah cukup. Naik ke 10 detik saat ramp-up saja.',
         },
         {
           authorEmail: 'siti.aminah@agritech.com',
@@ -362,8 +361,7 @@ export async function seedForumGroupPosts(prisma) {
       }
       const authorId = author && memberIds.includes(author.id) ? author.id : memberIds[0];
 
-      const mediaKeywords =
-        GROUP_MEDIA_KEYWORDS[group.slug] ?? ['forum', 'community', group.slug];
+      const mediaKeywords = GROUP_MEDIA_KEYWORDS[group.slug] ?? ['forum', 'community', group.slug];
       const mediaLock = lock++;
       // Setiap post ke-3 (index 0,3,…) coba sertakan video stock jika API key ada
       const includeVideo = stockMode && postCount % 3 === 0;
@@ -400,12 +398,11 @@ export async function seedForumGroupPosts(prisma) {
       }
 
       for (const commentSeed of seed.comments ?? []) {
-        const commenter =
-          (await findUserIdByEmail(prisma, commentSeed.authorEmail)) ?? null;
+        const commenter = (await findUserIdByEmail(prisma, commentSeed.authorEmail)) ?? null;
         const commenterId =
           commenter && memberIds.includes(commenter.id)
             ? commenter.id
-            : memberIds.find((id) => id !== authorId) ?? memberIds[0];
+            : (memberIds.find((id) => id !== authorId) ?? memberIds[0]);
 
         const comment = await prisma.forumComment.create({
           data: {
@@ -426,9 +423,7 @@ export async function seedForumGroupPosts(prisma) {
         for (const replySeed of commentSeed.replies ?? []) {
           const replyUser = await findUserIdByEmail(prisma, replySeed.authorEmail);
           const replyUserId =
-            replyUser && memberIds.includes(replyUser.id)
-              ? replyUser.id
-              : memberIds[0];
+            replyUser && memberIds.includes(replyUser.id) ? replyUser.id : memberIds[0];
           await prisma.forumComment.create({
             data: {
               postId: post.id,

@@ -23,6 +23,7 @@ import { seedSummary } from './18-seed-summary.seeder.js';
 import { seedPickupVehicles } from './19-pickup-vehicles.seeder.js';
 import { seedRegionalMarketSales } from './21-regional-market-sales.seeder.js';
 import { seedPartnerships } from './23-partnerships.seeder.js';
+import { seedBisaExpress } from './24-bisa-express.seeder.js';
 
 async function main() {
   logger.info('🚀 Memulai proses FULL Seeding Database BISA B2B...');
@@ -61,6 +62,7 @@ async function main() {
     await seedPolicies(prisma);
     await seedFaqs(prisma);
     await seedPickupVehicles(prisma);
+    await seedBisaExpress(prisma);
     await seedSummary(prisma);
 
     logger.info('SELURUH MODUL SEEDER BERHASIL DIJALANKAN (100% COMPLETE) 🎉');

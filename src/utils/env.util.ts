@@ -33,9 +33,7 @@ export const NODE_ENV = optional('NODE_ENV', 'development');
 /** Guard NaN — mis. PORT literal `${PORT:-3000}` dari compose escaping. */
 const parsedPort = parseInt(optional('PORT', '3000'), 10);
 export const PORT =
-  Number.isFinite(parsedPort) && parsedPort >= 0 && parsedPort < 65536
-    ? parsedPort
-    : 3000;
+  Number.isFinite(parsedPort) && parsedPort >= 0 && parsedPort < 65536 ? parsedPort : 3000;
 export const CORS_ORIGINS = optional('CORS_ORIGINS', 'http://localhost:3000');
 export const CLIENT_HOST = optional('CLIENT_HOST', 'http://localhost:3000');
 export const TRUST_PROXY = optional('TRUST_PROXY', '1');

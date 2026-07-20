@@ -102,7 +102,10 @@ export const loremFlickrDbPathToUrl = (dbPath: string): string => {
     random = segments[i + 1];
   }
 
-  const kw = keywordParts.join('-').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24);
+  const kw = keywordParts
+    .join('-')
+    .replace(/[^a-zA-Z0-9_-]/g, '')
+    .slice(0, 24);
   const seed = `bisa-lf-${lock}${random ? `-r${random}` : ''}${kw ? `-${kw}` : ''}`;
   return picsumUrl(width, height, seed);
 };

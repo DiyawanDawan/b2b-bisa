@@ -5,10 +5,11 @@ import { successResponse, createdResponse, paginatedResponse } from '#utils/resp
 import * as faqService from '#services/faq.service';
 
 export const listFaqs = catchAsync(async (req: AuthRequest, res: Response) => {
-  const { page, limit, includeInactive } = req.query as {
+  const { page, limit, includeInactive, search } = req.query as {
     page?: string;
     limit?: string;
     includeInactive?: 'true' | 'false';
+    search?: string;
   };
 
   const pageNum = Number(page) || 1;
@@ -20,6 +21,7 @@ export const listFaqs = catchAsync(async (req: AuthRequest, res: Response) => {
       page: pageNum,
       limit: limitNum,
       includeInactive: includeInactive === 'true',
+      search,
     },
     isAdmin,
   );

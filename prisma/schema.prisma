@@ -148,6 +148,54 @@ enum SupportTicketSource {
   HELP_CENTER
 }
 
+enum BisaExpressStatus {
+  AWAITING_PICKUP
+  PICKUP_ASSIGNED
+  PICKED_UP
+  IN_TRANSIT_TO_HUB
+  AT_ORIGIN_HUB
+  IN_TRANSIT
+  AT_DESTINATION_HUB
+  OUT_FOR_DELIVERY
+  DELIVERED
+  FAILED_DELIVERY
+  RETURNED
+  CANCELLED
+}
+
+enum DriverStatus {
+  AVAILABLE
+  ON_PICKUP
+  ON_DELIVERY
+  RETURNING
+  OFF_DUTY
+  SUSPENDED
+}
+
+enum DriverVehicleType {
+  MOTORCYCLE
+  VAN
+  PICKUP_TRUCK
+  TRUCK_CDD
+  TRUCK_FUSO
+  TRUCK_TRONTON
+}
+
+enum HubType {
+  MAIN_HUB
+  SUB_HUB
+  DROP_POINT
+}
+
+enum DeliveryAttemptResult {
+  SUCCESS
+  NOBODY_HOME
+  WRONG_ADDRESS
+  REFUSED
+  DAMAGED
+  OTHER
+}
+
 enum SupportMessageSenderType {
   USER
   ADMIN
@@ -459,6 +507,7 @@ model User {
   supportTickets    SupportTicket[] @relation("SupportTicketOwner")
   assignedSupportTickets SupportTicket[] @relation("SupportTicketAssignee")
   supportMessages   SupportMessage[] @relation("SupportMessageSender")
+  bisaExpressDriver BisaExpressDriver?
 
   @@index([role])
   @@index([referralCode])
@@ -900,6 +949,7 @@ model Order {
   voucherRedemption VoucherRedemption?
   referralReward    ReferralReward?
   booking           Booking?
+  bisaExpressShipment BisaExpressShipment?
 
   @@index([buyerId])
   @@index([sellerId])
@@ -1174,25 +1224,27 @@ model ShipmentTracking {
   @@map("shipment_tracking")
 }
 
-/// Ongkir RajaOngkir yang dipakai saat checkout (1:1 dengan Order)
+/// Snapshot ongkir saat checkout (1:1 dengan Order)
 model OrderShipping {
-  id                       String   @id @default(uuid())
-  orderId                  String   @unique @map("order_id")
-  originDestinationId      Int      @map("origin_destination_id")
-  destinationDestinationId Int      @map("destination_destination_id")
-  originLabel              String?  @db.Text @map("origin_label")
-  destinationLabel         String?  @db.Text @map("destination_label")
-  weightGrams              Int      @map("weight_grams")
-  courierCode              String   @map("courier_code")
-  courierName              String?  @map("courier_name")
-  serviceCode              String?  @map("service_code")
-  serviceName              String   @map("service_name")
-  serviceDescription       String?  @db.Text @map("service_description")
-  shippingCost             Decimal  @db.Decimal(15, 2) @map("shipping_cost")
-  etd                      String?  @map("etd")
-  verifiedAt               DateTime @default(now()) @map("verified_at")
-  createdAt                DateTime @default(now()) @map("created_at")
-  updatedAt                DateTime @updatedAt @map("updated_at")
+  id                       String     @id @default(uuid())
+  orderId                  String     @unique @map("order_id")
+  originDestinationId      Int        @map("origin_destination_id")
+  destinationDestinationId Int        @map("destination_destination_id")
+  originLabel              String?    @db.Text @map("origin_label")
+  destinationLabel         String?    @db.Text @map("destination_label")
+  /// Berat dalam UnitStatus produk (KG / TON) — bukan gram
+  weight                   Decimal    @db.Decimal(15, 3) @map("weight")
+  weightUnit               UnitStatus @default(KG) @map("weight_unit")
+  courierCode              String     @map("courier_code")
+  courierName              String?    @map("courier_name")
+  serviceCode              String?    @map("service_code")
+  serviceName              String     @map("service_name")
+  serviceDescription       String?    @db.Text @map("service_description")
+  shippingCost             Decimal    @db.Decimal(15, 2) @map("shipping_cost")
+  etd                      String?    @map("etd")
+  verifiedAt               DateTime   @default(now()) @map("verified_at")
+  createdAt                DateTime   @default(now()) @map("created_at")
+  updatedAt                DateTime   @updatedAt @map("updated_at")
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
@@ -1309,7 +1361,7 @@ model SupportMessage {
   id            String                   @id @default(uuid())
   ticketId      String                   @map("ticket_id")
   senderId      String?                  @map("sender_id")
-  senderType    SupportMessageSenderType
+  senderType    SupportMessageSenderType @map("sender_type")
   content       String                   @db.Text
   attachmentUrl String?                  @db.Text @map("attachment_url")
   createdAt     DateTime                 @default(now()) @map("created_at")
@@ -1987,6 +2039,7 @@ model Address {
   companyProfile    CompanyProfile?
   shippingCenter    ShippingCenter?
   customerAddresses CustomerAddress[]
+  bisaExpressHubs   BisaExpressHub[]
 
   @@index([sequenceId])
   @@index([createdAt])
@@ -2320,4 +2373,256 @@ model MediaUploadSession {
   @@index([status])
   @@index([expiresAt])
   @@map("media_upload_sessions")
+}
+
+// =========================================================
+// BISA Express — internal courier
+// =========================================================
+
+model BisaExpressDriver {
+  id             String            @id @default(uuid())
+  userId         String            @unique @map("user_id")
+  employeeCode   String            @unique @map("employee_code")
+  status         DriverStatus      @default(AVAILABLE)
+  vehicleType    DriverVehicleType @default(PICKUP_TRUCK)
+  vehiclePlate   String?           @map("vehicle_plate")
+  maxCapacityKg  Decimal           @db.Decimal(10, 2) @default(1000) @map("max_capacity_kg")
+  homeHubId      String?           @map("home_hub_id")
+  currentLat     Decimal?          @db.Decimal(10, 8) @map("current_lat")
+  currentLng     Decimal?          @db.Decimal(11, 8) @map("current_lng")
+  lastLocationAt DateTime?         @map("last_location_at")
+  totalDeliveries Int              @default(0) @map("total_deliveries")
+  totalPickups   Int               @default(0) @map("total_pickups")
+  avgRating      Decimal           @db.Decimal(3, 2) @default(0) @map("avg_rating")
+  isActive       Boolean           @default(true) @map("is_active")
+  joinedAt       DateTime          @default(now()) @map("joined_at")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+
+  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  homeHub      BisaExpressHub?      @relation(fields: [homeHubId], references: [id], onDelete: SetNull)
+  shipments    BisaExpressShipment[] @relation("PickupDriver")
+  deliveries   BisaExpressShipment[] @relation("DeliveryDriver")
+  locationLogs DriverLocationLog[]
+  attempts     DeliveryAttempt[]
+
+  @@index([status])
+  @@index([homeHubId])
+  @@index([isActive, status])
+  @@map("bisa_express_drivers")
+}
+
+model DriverLocationLog {
+  id         String   @id @default(uuid())
+  driverId   String   @map("driver_id")
+  latitude   Decimal  @db.Decimal(10, 8)
+  longitude  Decimal  @db.Decimal(11, 8)
+  speed      Decimal? @db.Decimal(6, 2)
+  heading    Decimal? @db.Decimal(5, 2)
+  accuracy   Decimal? @db.Decimal(8, 2)
+  capturedAt DateTime @default(now()) @map("captured_at")
+
+  driver BisaExpressDriver @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@index([driverId, capturedAt])
+  @@map("driver_location_logs")
+}
+
+model BisaExpressHub {
+  id                 String   @id @default(uuid())
+  code               String   @unique
+  name               String
+  type               HubType  @default(MAIN_HUB)
+  addressId          String   @map("address_id")
+  coverageProvinces  Json?    @map("coverage_provinces")
+  coverageRegencies  Json?    @map("coverage_regencies")
+  contactPhone       String?  @map("contact_phone")
+  contactName        String?  @map("contact_name")
+  operatingHours     String?  @map("operating_hours")
+  maxDailyCapacity   Int?     @map("max_daily_capacity")
+  isActive           Boolean  @default(true) @map("is_active")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  address              Address               @relation(fields: [addressId], references: [id])
+  drivers              BisaExpressDriver[]
+  originShipments      BisaExpressShipment[] @relation("OriginHub")
+  destinationShipments BisaExpressShipment[] @relation("DestinationHub")
+  hubLogs              ShipmentHubLog[]
+
+  @@index([type, isActive])
+  @@map("bisa_express_hubs")
+}
+
+model BisaExpressShipment {
+  id                String            @id @default(uuid())
+  orderId           String            @unique @map("order_id")
+  awbNumber         String            @unique @map("awb_number")
+  status            BisaExpressStatus @default(AWAITING_PICKUP)
+  originHubId       String?           @map("origin_hub_id")
+  destinationHubId  String?           @map("destination_hub_id")
+  pickupAddress     String            @db.Text @map("pickup_address")
+  pickupContact     String            @map("pickup_contact")
+  pickupPhone       String            @map("pickup_phone")
+  pickupLat         Decimal?          @db.Decimal(10, 8) @map("pickup_lat")
+  pickupLng         Decimal?          @db.Decimal(11, 8) @map("pickup_lng")
+  pickupDriverId    String?           @map("pickup_driver_id")
+  pickupScheduledAt DateTime?         @map("pickup_scheduled_at")
+  pickedUpAt        DateTime?         @map("picked_up_at")
+  deliveryAddress   String            @db.Text @map("delivery_address")
+  deliveryContact   String            @map("delivery_contact")
+  deliveryPhone     String            @map("delivery_phone")
+  deliveryLat       Decimal?          @db.Decimal(10, 8) @map("delivery_lat")
+  deliveryLng       Decimal?          @db.Decimal(11, 8) @map("delivery_lng")
+  deliveryDriverId  String?           @map("delivery_driver_id")
+  deliveredAt       DateTime?         @map("delivered_at")
+  /// Berat dalam UnitStatus produk (KG/TON) — bukan gram
+  weight            Decimal           @db.Decimal(15, 3) @map("weight")
+  weightUnit        UnitStatus        @default(KG) @map("weight_unit")
+  lengthCm          Int?              @map("length_cm")
+  widthCm           Int?              @map("width_cm")
+  heightCm          Int?              @map("height_cm")
+  itemDescription   String?           @db.Text @map("item_description")
+  packageCount      Int               @default(1) @map("package_count")
+  shippingCost      Decimal           @db.Decimal(15, 2) @map("shipping_cost")
+  insuranceCost     Decimal           @db.Decimal(15, 2) @default(0) @map("insurance_cost")
+  codAmount         Decimal           @db.Decimal(15, 2) @default(0) @map("cod_amount")
+  serviceType       String            @map("service_type")
+  etdDays           Int?              @map("etd_days")
+  podPhotoUrl       String?           @db.Text @map("pod_photo_url")
+  podSignatureUrl   String?           @db.Text @map("pod_signature_url")
+  podReceivedBy     String?           @map("pod_received_by")
+  podNote           String?           @db.Text @map("pod_note")
+  sellerNote        String?           @db.Text @map("seller_note")
+  driverNote        String?           @db.Text @map("driver_note")
+  failReason        String?           @db.Text @map("fail_reason")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+
+  order          Order                 @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  originHub      BisaExpressHub?       @relation("OriginHub", fields: [originHubId], references: [id])
+  destinationHub BisaExpressHub?       @relation("DestinationHub", fields: [destinationHubId], references: [id])
+  pickupDriver   BisaExpressDriver?    @relation("PickupDriver", fields: [pickupDriverId], references: [id])
+  deliveryDriver BisaExpressDriver?    @relation("DeliveryDriver", fields: [deliveryDriverId], references: [id])
+  statusLogs     ShipmentStatusLog[]
+  hubLogs        ShipmentHubLog[]
+  attempts       DeliveryAttempt[]
+
+  @@index([status])
+  @@index([awbNumber])
+  @@index([pickupDriverId])
+  @@index([deliveryDriverId])
+  @@index([createdAt])
+  @@map("bisa_express_shipments")
+}
+
+model ShipmentStatusLog {
+  id          String            @id @default(uuid())
+  shipmentId  String            @map("shipment_id")
+  status      BisaExpressStatus
+  description String            @db.Text
+  latitude    Decimal?          @db.Decimal(10, 8)
+  longitude   Decimal?          @db.Decimal(11, 8)
+  location    String?
+  actorId     String?           @map("actor_id")
+  actorType   String?           @map("actor_type")
+  photoUrl    String?           @db.Text @map("photo_url")
+  createdAt   DateTime          @default(now()) @map("created_at")
+
+  shipment BisaExpressShipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  @@index([shipmentId, createdAt])
+  @@map("shipment_status_logs")
+}
+
+model ShipmentHubLog {
+  id        String   @id @default(uuid())
+  shipmentId String  @map("shipment_id")
+  hubId     String   @map("hub_id")
+  action    String
+  note      String?  @db.Text
+  scannedBy String?  @map("scanned_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  shipment BisaExpressShipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  hub      BisaExpressHub      @relation(fields: [hubId], references: [id])
+
+  @@index([shipmentId])
+  @@index([hubId, createdAt])
+  @@map("shipment_hub_logs")
+}
+
+model DeliveryAttempt {
+  id            String                @id @default(uuid())
+  shipmentId    String                @map("shipment_id")
+  driverId      String                @map("driver_id")
+  attemptNumber Int                   @map("attempt_number")
+  result        DeliveryAttemptResult
+  note          String?               @db.Text
+  photoUrl      String?               @db.Text @map("photo_url")
+  latitude      Decimal?              @db.Decimal(10, 8)
+  longitude     Decimal?              @db.Decimal(11, 8)
+  attemptedAt   DateTime              @default(now()) @map("attempted_at")
+
+  shipment BisaExpressShipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  driver   BisaExpressDriver   @relation(fields: [driverId], references: [id])
+
+  @@index([shipmentId])
+  @@map("delivery_attempts")
+}
+
+model BisaExpressRate {
+  id              String     @id @default(uuid())
+  originZone      String     @map("origin_zone")
+  destinationZone String     @map("destination_zone")
+  serviceType     String     @map("service_type")
+  /// Batas berat dalam weightUnit (UnitStatus KG/TON)
+  minWeight       Decimal    @default(0) @db.Decimal(15, 3) @map("min_weight")
+  maxWeight       Decimal    @default(999999999) @db.Decimal(15, 3) @map("max_weight")
+  baseCost        Decimal    @db.Decimal(15, 2) @map("base_cost")
+  /// Biaya per satuan — satuan = weightUnit (selaras UnitStatus produk)
+  perUnitCost     Decimal    @db.Decimal(15, 2) @map("per_unit_cost")
+  weightUnit      UnitStatus @default(KG) @map("weight_unit")
+  etdDays         Int        @map("etd_days")
+  isActive        Boolean    @default(true) @map("is_active")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  @@unique([originZone, destinationZone, serviceType, minWeight, weightUnit], map: "bisa_express_rates_zone_svc_min_u_key")
+  @@index([originZone, destinationZone], map: "bisa_express_rates_origin_destination_idx")
+  @@map("bisa_express_rates")
+}
+
+model BisaExpressCoverage {
+  id         String  @id @default(uuid())
+  provinceId String  @map("province_id")
+  regencyId  String? @map("regency_id")
+  zone       String
+  isPickup   Boolean @default(true) @map("is_pickup")
+  isDelivery Boolean @default(true) @map("is_delivery")
+  isActive   Boolean @default(true) @map("is_active")
+
+  @@unique([provinceId, regencyId])
+  @@index([zone])
+  @@map("bisa_express_coverage")
+}
+
+/// Aturan layanan vs berat — dikelola admin (bukan hardcode di constants).
+model BisaExpressServiceRule {
+  id              String     @id @default(uuid())
+  serviceType     String     @unique @map("service_type")
+  label           String?
+  minWeight       Decimal    @default(0) @db.Decimal(15, 3) @map("min_weight")
+  maxWeight       Decimal    @default(999999999) @db.Decimal(15, 3) @map("max_weight")
+  weightUnit      UnitStatus @default(KG) @map("weight_unit")
+  /// true = selalu boleh dipilih (mis. VIP), meski di luar band berat normal
+  alwaysAvailable Boolean    @default(false) @map("always_available")
+  isActive        Boolean    @default(true) @map("is_active")
+  sortOrder       Int        @default(0) @map("sort_order")
+  note            String?    @db.Text
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  @@index([isActive, sortOrder])
+  @@map("bisa_express_service_rules")
 }

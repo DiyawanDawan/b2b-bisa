@@ -15,6 +15,7 @@ import {
 import { SUBSCRIPTION_DURATION_DAYS } from '#utils/env.util';
 import { sealProviderActions } from '#utils/encryption.util';
 import { notifyOrderProcessingById } from '#services/orderNotification.service';
+import { createShipmentFromPaidOrder } from '#services/bisa-express.service';
 import {
   XenditInvoiceStatus,
   XenditPayoutStatus,
@@ -23,6 +24,14 @@ import {
   normalizeXenditWebhookPayload,
 } from '#constants/xendit.constants';
 import { parseCheckoutBatchIdFromExternalId } from '#constants/order.constants';
+
+const tryCreateBisaExpressShipments = (orderIds: string[]) => {
+  for (const orderId of orderIds) {
+    void createShipmentFromPaidOrder(orderId).catch((err) => {
+      console.error(`[BISA Express] Gagal create shipment untuk order ${orderId}`, err);
+    });
+  }
+};
 
 const applyBatchSiblingOrdersOnSuccess = async (
   tx: Prisma.TransactionClient,
@@ -314,6 +323,7 @@ export const handleXenditWebhook = async (
 
   if (notifyProcessingOrderId) {
     void notifyOrderProcessingById(notifyProcessingOrderId);
+    tryCreateBisaExpressShipments([notifyProcessingOrderId]);
   }
 
   return result;
@@ -571,6 +581,7 @@ export const handleXenditPaymentRequestWebhook = async (
 
   if (notifyProcessingOrderId) {
     void notifyOrderProcessingById(notifyProcessingOrderId);
+    tryCreateBisaExpressShipments([notifyProcessingOrderId]);
     const paidOrder = await prisma.transaction.findFirst({
       where: { orderId: notifyProcessingOrderId, paymentStatus: PaymentStatus.SUCCESS },
       select: { userId: true, orderId: true },
@@ -584,6 +595,9 @@ export const handleXenditPaymentRequestWebhook = async (
   }
   for (const batchOrderId of notifyBatchOrderIds) {
     void notifyOrderProcessingById(batchOrderId);
+  }
+  if (notifyBatchOrderIds.length > 0) {
+    tryCreateBisaExpressShipments(notifyBatchOrderIds);
   }
 
   return v3Result;

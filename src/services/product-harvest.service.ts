@@ -13,9 +13,9 @@ const lotSelect = {
   productId: true,
   seasonLabel: true,
   expectedHarvestDate: true,
-          expectedQuantityTon: true,
-          reservedQuantityTon: true,
-          actualHarvestDate: true,
+  expectedQuantityTon: true,
+  reservedQuantityTon: true,
+  actualHarvestDate: true,
   actualQuantityTon: true,
   status: true,
   notes: true,
@@ -43,11 +43,18 @@ const ensureOrganicProductOwner = async (productId: string, userId: string) => {
   return product;
 };
 
-const refreshProductAvailability = async (productId: string, tx: Prisma.TransactionClient = prisma) => {
+const refreshProductAvailability = async (
+  productId: string,
+  tx: Prisma.TransactionClient = prisma,
+) => {
   const [product, nextLot] = await Promise.all([
     tx.product.findUnique({ where: { id: productId }, select: { stock: true } }),
     tx.productHarvestLot.findFirst({
-      where: { productId, status: HarvestLotStatus.SCHEDULED, expectedHarvestDate: { gte: startOfToday() } },
+      where: {
+        productId,
+        status: HarvestLotStatus.SCHEDULED,
+        expectedHarvestDate: { gte: startOfToday() },
+      },
       orderBy: { expectedHarvestDate: 'asc' },
       select: { expectedHarvestDate: true, expectedQuantityTon: true },
     }),
@@ -78,7 +85,12 @@ const refreshProductAvailability = async (productId: string, tx: Prisma.Transact
 export const createHarvestLot = async (
   productId: string,
   userId: string,
-  data: { seasonLabel?: string; expectedHarvestDate: Date; expectedQuantityTon: number; notes?: string },
+  data: {
+    seasonLabel?: string;
+    expectedHarvestDate: Date;
+    expectedQuantityTon: number;
+    notes?: string;
+  },
 ) => {
   await ensureOrganicProductOwner(productId, userId);
   if (data.expectedHarvestDate < startOfToday()) {
@@ -113,15 +125,26 @@ export const listHarvestLotsByProduct = async (productId: string) =>
 export const updateHarvestLot = async (
   lotId: string,
   userId: string,
-  data: { seasonLabel?: string; expectedHarvestDate?: Date; expectedQuantityTon?: number; notes?: string },
+  data: {
+    seasonLabel?: string;
+    expectedHarvestDate?: Date;
+    expectedQuantityTon?: number;
+    notes?: string;
+  },
 ) => {
   const lot = await prisma.productHarvestLot.findUnique({
     where: { id: lotId },
-    select: { id: true, productId: true, status: true, product: { select: { userId: true, productMode: true } } },
+    select: {
+      id: true,
+      productId: true,
+      status: true,
+      product: { select: { userId: true, productMode: true } },
+    },
   });
   if (!lot) throw new AppError('Batch panen tidak ditemukan.', 404);
   if (lot.product.userId !== userId) throw new AppError('Anda tidak memiliki akses.', 403);
-  if (lot.product.productMode !== ProductMode.ORGANIC_PRODUCE) throw new AppError('Mode produk tidak valid.', 400);
+  if (lot.product.productMode !== ProductMode.ORGANIC_PRODUCE)
+    throw new AppError('Mode produk tidak valid.', 400);
   if (lot.status !== HarvestLotStatus.SCHEDULED) {
     throw new AppError('Batch hanya bisa diedit saat status SCHEDULED.', 400);
   }
@@ -131,7 +154,9 @@ export const updateHarvestLot = async (
       where: { id: lotId },
       data: {
         ...(data.seasonLabel !== undefined ? { seasonLabel: data.seasonLabel } : {}),
-        ...(data.expectedHarvestDate !== undefined ? { expectedHarvestDate: data.expectedHarvestDate } : {}),
+        ...(data.expectedHarvestDate !== undefined
+          ? { expectedHarvestDate: data.expectedHarvestDate }
+          : {}),
         ...(data.expectedQuantityTon !== undefined
           ? { expectedQuantityTon: new Prisma.Decimal(data.expectedQuantityTon) }
           : {}),
@@ -186,7 +211,8 @@ export const stockInHarvestLot = async (lotId: string, userId: string) => {
   });
   if (!lot) throw new AppError('Batch panen tidak ditemukan.', 404);
   if (lot.product.userId !== userId) throw new AppError('Anda tidak memiliki akses.', 403);
-  if (lot.status !== HarvestLotStatus.HARVESTED) throw new AppError('Batch belum dikonfirmasi panen.', 400);
+  if (lot.status !== HarvestLotStatus.HARVESTED)
+    throw new AppError('Batch belum dikonfirmasi panen.', 400);
   if (!lot.actualQuantityTon || Number(lot.actualQuantityTon) <= 0) {
     throw new AppError('Jumlah panen aktual belum valid.', 400);
   }
@@ -231,4 +257,3 @@ export const cancelHarvestLot = async (lotId: string, userId: string, notes?: st
   });
   return updated;
 };
-

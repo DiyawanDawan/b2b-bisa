@@ -39,6 +39,8 @@ export const createContractSchema = z.object({
 export const updatePendingInvoiceSchema = z.object({
   shippingSnapshot: shippingSnapshotSchema.optional(),
   specifications: z.string().max(2000, 'Catatan/spesifikasi terlalu panjang').optional(),
+  quantity: z.coerce.number().positive('Kuantitas harus lebih dari 0').optional(),
+  pricePerUnit: z.coerce.number().positive('Harga per unit harus lebih dari 0').optional(),
 });
 
 export const createDirectOrderSchema = z.object({

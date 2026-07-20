@@ -134,10 +134,7 @@ const mapBooking = (row: {
 }) => {
   const availableStock = computeAvailableStock(row.product.stock, row.product.reservedStock);
   const availableLotTon = row.harvestLot
-    ? computeAvailableLotTon(
-        row.harvestLot.expectedQuantityTon,
-        row.harvestLot.reservedQuantityTon,
-      )
+    ? computeAvailableLotTon(row.harvestLot.expectedQuantityTon, row.harvestLot.reservedQuantityTon)
     : null;
 
   return {
@@ -160,8 +157,7 @@ const mapBooking = (row: {
     confirmedAt: row.confirmedAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
-    isExpired:
-      row.status === BookingStatus.PENDING_PAYMENT && row.expiresAt.getTime() < Date.now(),
+    isExpired: row.status === BookingStatus.PENDING_PAYMENT && row.expiresAt.getTime() < Date.now(),
     buyer: mapUser(row.buyer),
     supplier: mapUser(row.supplier),
     product: {
@@ -309,10 +305,7 @@ export const createBooking = async (
     throw new AppError(`Produk ${product.name} tidak aktif.`, 400);
   }
   if (data.quantity < Number(product.minOrder)) {
-    throw new AppError(
-      `Minimal booking ${product.minOrder.toString()} ${product.unit}.`,
-      400,
-    );
+    throw new AppError(`Minimal booking ${product.minOrder.toString()} ${product.unit}.`, 400);
   }
 
   const qty = new Prisma.Decimal(data.quantity);
@@ -331,7 +324,11 @@ export const createBooking = async (
           where: { id: data.harvestLotId, productId: product.id },
         });
         if (!lot) throw new AppError('Lot panen tidak ditemukan.', 404);
-        if (![HarvestLotStatus.SCHEDULED, HarvestLotStatus.HARVESTING].includes(lot.status as HarvestLotStatus)) {
+        if (
+          ![HarvestLotStatus.SCHEDULED, HarvestLotStatus.HARVESTING].includes(
+            lot.status as HarvestLotStatus,
+          )
+        ) {
           throw new AppError('Lot panen tidak bisa dibooking pada status ini.', 400);
         }
 
@@ -479,11 +476,7 @@ export const getBookingById = async (id: string, userId: string) => {
   return mapBooking(row);
 };
 
-export const cancelBooking = async (
-  id: string,
-  userId: string,
-  reason?: string,
-) => {
+export const cancelBooking = async (id: string, userId: string, reason?: string) => {
   const row = await prisma.booking.findUnique({ where: { id } });
   if (!row) throw new AppError('Booking tidak ditemukan.', 404);
 
@@ -602,11 +595,7 @@ export const checkoutBooking = async (
     }
   }
 
-  const checkoutNotes = [
-    data.notes?.trim(),
-    row.notes?.trim(),
-    `Dari booking ${row.bookingNumber}`,
-  ]
+  const checkoutNotes = [data.notes?.trim(), row.notes?.trim(), `Dari booking ${row.bookingNumber}`]
     .filter(Boolean)
     .join(' · ');
 

@@ -87,6 +87,7 @@ import referralsRoutes from '#routes/referrals';
 import integrationsRoutes from '#routes/integrations';
 import liveSessionsRoutes from '#routes/live-sessions';
 import supportRoutes from '#routes/support';
+import bisaExpressRoutes from '#routes/bisa-express';
 
 const app = express();
 const IGNORED_404_PATHS = new Set([
@@ -231,6 +232,7 @@ app.use('/api/v1/storage', publicApiLimiter, storageRoutes);
 // SEC-MOB-004: Pusher private channel auth endpoint untuk mobile.
 app.use('/api/v1/pusher', pusherRoutes);
 app.use('/api/v1/shipping', publicApiLimiter, shippingRoutes);
+app.use('/api/v1/bisa-express', publicApiLimiter, bisaExpressRoutes);
 app.use('/api/v1/rfqs', rfqsRoutes);
 app.use('/api/v1/commerce', commerceRoutes);
 app.use('/api/v1/referrals', referralsRoutes);
