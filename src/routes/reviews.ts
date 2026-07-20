@@ -2,6 +2,7 @@ import { Router } from 'express';
 import * as reviewController from '#controllers/review.controller';
 import validate from '#middlewares/validate';
 import { requireAuth, requireRole } from '#middlewares/authMiddleware';
+import { UserRole } from '#prisma';
 import * as v from '#validations/review.validation';
 
 const router = Router();
