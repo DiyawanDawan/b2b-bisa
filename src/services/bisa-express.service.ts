@@ -19,6 +19,7 @@ import {
   OrderStatus,
   Prisma,
   UnitStatus,
+  UserRole,
 } from '#prisma';
 import { convertUnit, formatQty, isWithinWeightBand } from '#utils/unit.util';
 
@@ -34,13 +35,17 @@ export type ProfileShippingAddress = {
   longitude: number;
   provinceId: string;
   regencyId: string | null;
+  districtId: string | null;
   provinceName: string | null;
   regencyName: string | null;
+  districtName: string | null;
   /** Kode BPS provinsi (mis. 33) */
   provinceCode: string | null;
   /** Kode BPS kab/kota (mis. 3374) */
   regencyCode: string | null;
-  /** Kode wilayah untuk AWB: regency → province */
+  /** Kode BPS kecamatan (mis. 337401) */
+  districtCode: string | null;
+  /** Segmen AWB: district → regency → province */
   wilayahCode: string;
   zoneLabel: string;
 };
@@ -119,8 +124,10 @@ export const requireProfileAddress = async (
               longitude: true,
               provinceId: true,
               regencyId: true,
+              districtId: true,
               province: { select: { id: true, name: true, code: true } },
               regency: { select: { id: true, name: true, code: true } },
+              district: { select: { id: true, name: true, code: true } },
             },
           },
         },
@@ -138,10 +145,13 @@ export const requireProfileAddress = async (
   const fullAddress = addr?.fullAddress?.trim() ?? '';
   const provinceId = addr?.provinceId ?? addr?.province?.id ?? null;
   const regencyId = addr?.regencyId ?? addr?.regency?.id ?? null;
+  const districtId = addr?.districtId ?? addr?.district?.id ?? null;
   const provinceName = addr?.province?.name?.trim() || null;
   const regencyName = addr?.regency?.name?.trim() || null;
+  const districtName = addr?.district?.name?.trim() || null;
   const provinceCode = addr?.province?.code?.trim() || null;
   const regencyCode = addr?.regency?.code?.trim() || null;
+  const districtCode = addr?.district?.code?.trim() || null;
 
   if (!user.profile?.addressId || !addr || fullAddress.length < 10 || lat == null || lng == null) {
     const roleMsg =
@@ -158,15 +168,15 @@ export const requireProfileAddress = async (
     );
   }
 
-  if (!provinceCode && !regencyCode) {
+  if (!provinceCode && !regencyCode && !districtCode) {
     throw new AppError(
-      `${who === 'seller' ? 'Seller' : 'Buyer'}: data GIS wilayah belum punya kode wilayah (province/regency.code).`,
+      `${who === 'seller' ? 'Seller' : 'Buyer'}: data GIS wilayah belum punya kode wilayah (province/regency/district.code).`,
       400,
     );
   }
 
-  const wilayahCode = resolveAwbWilayahCode({ regencyCode, provinceCode });
-  const zoneLabel = [regencyName, provinceName].filter(Boolean).join(', ');
+  const wilayahCode = resolveAwbWilayahCode({ districtCode, regencyCode, provinceCode });
+  const zoneLabel = [districtName, regencyName, provinceName].filter(Boolean).join(', ');
 
   return {
     userId: user.id,
@@ -177,10 +187,13 @@ export const requireProfileAddress = async (
     longitude: lng,
     provinceId,
     regencyId,
+    districtId,
     provinceName,
     regencyName,
+    districtName,
     provinceCode,
     regencyCode,
+    districtCode,
     wilayahCode,
     zoneLabel,
   };
@@ -708,8 +721,16 @@ export const createShipmentFromPaidOrder = async (orderId: string) => {
   ]);
 
   const awbNumber = await generateBisaExpressAwb({
-    originWilayahCode: sellerAddr.wilayahCode,
-    destinationWilayahCode: buyerAddr.wilayahCode,
+    origin: {
+      districtCode: sellerAddr.districtCode,
+      regencyCode: sellerAddr.regencyCode,
+      provinceCode: sellerAddr.provinceCode,
+    },
+    destination: {
+      districtCode: buyerAddr.districtCode,
+      regencyCode: buyerAddr.regencyCode,
+      provinceCode: buyerAddr.provinceCode,
+    },
   });
   const serviceType = (
     order.orderShipping.serviceCode ||
@@ -1325,7 +1346,7 @@ export const getDriverStats = async (userId: string) => {
 export const adminListDrivers = () =>
   prisma.bisaExpressDriver.findMany({
     include: {
-      user: { select: { id: true, fullName: true, email: true, phone: true } },
+      user: { select: { id: true, fullName: true, email: true, phone: true, role: true } },
       homeHub: { select: { id: true, code: true, name: true } },
     },
     orderBy: { createdAt: 'desc' },
@@ -1339,15 +1360,37 @@ export const adminCreateDriver = async (data: {
   maxCapacityKg?: number;
   homeHubId?: string;
 }) => {
-  return prisma.bisaExpressDriver.create({
-    data: {
-      userId: data.userId,
-      employeeCode: data.employeeCode,
-      vehicleType: data.vehicleType ?? DriverVehicleType.PICKUP_TRUCK,
-      vehiclePlate: data.vehiclePlate,
-      maxCapacityKg: data.maxCapacityKg ?? 1000,
-      homeHubId: data.homeHubId,
-    },
+  return prisma.$transaction(async (tx) => {
+    const user = await tx.user.findUnique({
+      where: { id: data.userId },
+      select: { id: true, role: true },
+    });
+    if (!user) throw new AppError('User tidak ditemukan', 404);
+
+    const driver = await tx.bisaExpressDriver.create({
+      data: {
+        userId: data.userId,
+        employeeCode: data.employeeCode,
+        vehicleType: data.vehicleType ?? DriverVehicleType.PICKUP_TRUCK,
+        vehiclePlate: data.vehiclePlate,
+        maxCapacityKg: data.maxCapacityKg ?? 1000,
+        homeHubId: data.homeHubId,
+      },
+      include: {
+        user: { select: { id: true, fullName: true, email: true, phone: true, role: true } },
+        homeHub: { select: { id: true, code: true, name: true } },
+      },
+    });
+
+    // Role COURIER = label admin + fondasi akses ke depan (belum ada app kurir).
+    if (user.role !== UserRole.ADMIN && user.role !== UserRole.COURIER) {
+      await tx.user.update({
+        where: { id: data.userId },
+        data: { role: UserRole.COURIER },
+      });
+    }
+
+    return driver;
   });
 };
 

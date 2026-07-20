@@ -17,6 +17,8 @@ enum UserRole {
   SUPPLIER
   BUYER
   ADMIN
+  /// Kurir BISA Express — display/akses fondasi; app kurir belum ada.
+  COURIER
 }
 
 enum VerificationStatus {

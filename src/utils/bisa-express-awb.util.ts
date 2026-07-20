@@ -2,7 +2,7 @@ import prisma from '#config/prisma';
 
 /**
  * Normalisasi kode wilayah BPS (province/regency/district).
- * Contoh: "33.74" → "3374", "3374" → "3374"
+ * Contoh: "33.74" → "3374", "337401" → "337401"
  */
 export const normalizeWilayahCode = (code: string | null | undefined): string | null => {
   if (!code) return null;
@@ -14,32 +14,43 @@ export const normalizeWilayahCode = (code: string | null | undefined): string | 
 };
 
 /**
- * Kode wilayah untuk AWB: prioritas kab/kota, fallback provinsi.
+ * Segmen AWB per sisi: kecamatan → kab/kota → provinsi → 0000.
+ * Kode kecamatan BPS sudah mencakup hierarki kab (mis. 337401 = Semarang Tengah).
  */
 export const resolveAwbWilayahCode = (params: {
+  districtCode?: string | null;
   regencyCode?: string | null;
   provinceCode?: string | null;
 }): string => {
   return (
-    normalizeWilayahCode(params.regencyCode) || normalizeWilayahCode(params.provinceCode) || '0000'
+    normalizeWilayahCode(params.districtCode) ||
+    normalizeWilayahCode(params.regencyCode) ||
+    normalizeWilayahCode(params.provinceCode) ||
+    '0000'
   );
 };
 
+export type AwbWilayahInput = {
+  districtCode?: string | null;
+  regencyCode?: string | null;
+  provinceCode?: string | null;
+};
+
 /**
- * Format: BEX-{ORIGIN}-{DEST}-{YYMMDD}-{SEQ4}
+ * Format: BEX-{KEC_ASAL}-{KEC_TUJUAN}-{YYMMDD}-{SEQ4}
  *
- * ORIGIN/DEST = kode wilayah BPS dari Alamat Profil
- * (regency.code, fallback province.code)
+ * Segmen asal/tujuan = kode BPS kecamatan (prioritas), fallback kab → prov → 0000.
  *
- * Contoh: BEX-3374-3171-260720-0001
- * Sequence reset harian per pasangan origin-dest.
+ * Contoh: BEX-337401-317401-260720-0001
+ * Fallback kab: BEX-3374-3174-260720-0001
+ * Sequence reset harian per pasangan asal–tujuan.
  */
 export const generateBisaExpressAwb = async (params: {
-  originWilayahCode: string;
-  destinationWilayahCode: string;
+  origin: AwbWilayahInput;
+  destination: AwbWilayahInput;
 }): Promise<string> => {
-  const origin = resolveAwbWilayahCode({ provinceCode: params.originWilayahCode });
-  const dest = resolveAwbWilayahCode({ provinceCode: params.destinationWilayahCode });
+  const origin = resolveAwbWilayahCode(params.origin);
+  const dest = resolveAwbWilayahCode(params.destination);
 
   const now = new Date();
   const yy = String(now.getFullYear()).slice(-2);

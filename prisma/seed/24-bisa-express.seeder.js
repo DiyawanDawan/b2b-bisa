@@ -1,4 +1,5 @@
 import logger from '../../src/config/logger.js';
+import { seedBisaExpressDemoData } from './24b-bisa-express-demo.seeder.js';
 
 /** Zone code dari nama GIS province (bukan keyword hardcode). */
 const zoneFromProvinceName = (name) =>
@@ -299,10 +300,10 @@ export async function seedBisaExpress(prisma) {
   });
 
   if (country) {
-    // Hub pakai provinsi GIS pertama yang ada (atau Jawa Timur bila ada)
+    // Hub legacy — demo lengkap ada di seedBisaExpressDemoData
     const hubProvince =
+      provinces.find((p) => p.name === 'Jawa Tengah') ||
       provinces.find((p) => p.name === 'Jawa Timur') ||
-      provinces.find((p) => p.name === 'Bali') ||
       provinces[0];
 
     let hubAddress = await prisma.address.findFirst({
@@ -348,8 +349,10 @@ export async function seedBisaExpress(prisma) {
       },
     });
   } else {
-    logger.warn('[24] Country Indonesia tidak ditemukan — hub dilewati.');
+    logger.warn('[24] Country Indonesia tidak ditemukan — hub legacy dilewati.');
   }
 
-  logger.info('✅ [24] BISA Express seeded (coverage dari GIS).');
+  await seedBisaExpressDemoData(prisma);
+
+  logger.info('✅ [24] BISA Express seeded (coverage dari GIS + demo hub/kurir).');
 }

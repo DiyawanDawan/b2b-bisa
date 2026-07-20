@@ -3,7 +3,10 @@ import { UserRole, TokenType } from '#prisma';
 
 const registerableRoleSchema = z
   .nativeEnum(UserRole)
-  .refine((role) => role !== UserRole.ADMIN, 'Role admin tidak valid untuk endpoint ini');
+  .refine(
+    (role) => role !== UserRole.ADMIN && role !== UserRole.COURIER,
+    'Role tidak valid untuk endpoint registrasi publik',
+  );
 
 const otpTokenTypeSchema = z.union([
   z.literal(TokenType.EMAIL_VERIFICATION),
