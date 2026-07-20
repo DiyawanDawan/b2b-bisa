@@ -3,7 +3,6 @@ import * as reviewController from '#controllers/review.controller';
 import validate from '#middlewares/validate';
 import { requireAuth, requireRole } from '#middlewares/authMiddleware';
 import * as v from '#validations/review.validation';
-import { UserRole } from '#prisma';
 
 const router = Router();
 
@@ -18,7 +17,11 @@ router.get(
 );
 
 // = [PUBLIC] GET PRODUCT REVIEWS =
-router.get('/products/:productId', reviewController.getReviewsByProduct);
+router.get(
+  '/products/:productId',
+  validate(v.getProductReviewsQuerySchema, 'query'),
+  reviewController.getReviewsByProduct,
+);
 
 // = [PUBLIC] GET PRODUCT REVIEW SUMMARY (Rating Badge) =
 router.get('/products/:productId/summary', reviewController.getReviewSummary);

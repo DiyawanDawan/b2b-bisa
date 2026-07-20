@@ -7,12 +7,14 @@ import {
   PostStatus,
   Prisma,
   TransactionStatus,
+  UserRole,
   VillageType,
   TrendCategory,
 } from '#prisma';
 import * as marketService from '#services/market.service';
 import * as forumService from '#services/forum.service';
 import * as negotiationService from '#services/negotiation.service';
+import { sendDisputeMediationMessage } from '#services/dispute-mediation.service';
 import { invalidatePolicies } from '#utils/cache.util';
 import { POLICY_KEYS } from '#services/policy.service';
 import { CATEGORY_TYPE } from '#prisma';
@@ -1080,31 +1082,126 @@ const assertNegotiationParticipant = (
   }
 };
 
+const disputeMediationNegotiationWhere = (): Prisma.NegotiationWhereInput => ({
+  orderId: { not: null },
+  order: { status: OrderStatus.DISPUTED },
+});
+
+const resolveDisputeOrderId = (negotiation: {
+  order: { id: string; status: OrderStatus } | null;
+}) => (negotiation.order?.status === OrderStatus.DISPUTED ? negotiation.order.id : null);
+
+const CHAT_INBOX_SELECT = {
+  id: true,
+  status: true,
+  updatedAt: true,
+  createdAt: true,
+  totalEstimate: true,
+  buyer: { select: { id: true, fullName: true, email: true, avatarUrl: true } },
+  seller: { select: { id: true, fullName: true, email: true, avatarUrl: true } },
+  product: { select: { id: true, name: true } },
+  order: {
+    select: {
+      id: true,
+      orderNumber: true,
+      status: true,
+      dispute: {
+        select: {
+          mediationStartedAt: true,
+          readyToResolveAt: true,
+          status: true,
+        },
+      },
+    },
+  },
+  _count: { select: { messages: true } },
+  messages: {
+    where: { isDeleted: false },
+    orderBy: { createdAt: 'desc' as const },
+    take: 1,
+    select: {
+      id: true,
+      content: true,
+      createdAt: true,
+      isSystemMessage: true,
+      sender: { select: { id: true, fullName: true, role: true } },
+    },
+  },
+} as const;
+
+const mapChatInboxItems = (
+  items: Array<{
+    messages: Array<{
+      id: string;
+      content: string;
+      createdAt: Date;
+      isSystemMessage: boolean;
+      sender: { id: string; fullName: string; role: UserRole };
+    }>;
+    buyer: { id: string; fullName: string; email: string; avatarUrl: string | null };
+    seller: { id: string; fullName: string; email: string; avatarUrl: string | null };
+    order: {
+      id: string;
+      orderNumber: string;
+      status: OrderStatus;
+      dispute: {
+        mediationStartedAt: Date | null;
+        readyToResolveAt: Date | null;
+        status: string;
+      } | null;
+    } | null;
+    [key: string]: unknown;
+  }>,
+  scope: 'negotiation' | 'dispute',
+) =>
+  items.map(({ messages, ...rest }) => ({
+    ...rest,
+    buyer: attachUserMediaUrls({ ...rest.buyer }),
+    seller: attachUserMediaUrls({ ...rest.seller }),
+    lastMessage: messages[0] ?? null,
+    isDisputeMediation: scope === 'dispute',
+    mediationStartedAt: rest.order?.dispute?.mediationStartedAt ?? null,
+    readyToResolveAt: rest.order?.dispute?.readyToResolveAt ?? null,
+  }));
+
 /**
- * Inbox chat negosiasi — hanya ruang di mana user login adalah pembeli atau supplier.
+ * Inbox chat — negosiasi akun sendiri, atau grup mediasi sengketa (scope=dispute, admin).
  */
 export const listChatInbox = async (params: {
   userId: string;
+  userRole: UserRole;
   page: number;
   limit: number;
   search?: string;
   status?: NegotiationStatus;
+  scope?: 'negotiation' | 'dispute';
 }) => {
-  const { userId, page, limit, search, status } = params;
+  const { userId, userRole, page, limit, search, status, scope = 'negotiation' } = params;
   const skip = (page - 1) * limit;
 
+  if (scope === 'dispute' && userRole !== UserRole.ADMIN) {
+    throw new AppError('Grup mediasi sengketa hanya untuk admin.', 403);
+  }
+
+  const searchFilter: Prisma.NegotiationWhereInput | undefined = search
+    ? {
+        OR: [
+          { product: { name: { contains: search } } },
+          { buyer: { fullName: { contains: search } } },
+          { buyer: { email: { contains: search } } },
+          { seller: { fullName: { contains: search } } },
+          { seller: { email: { contains: search } } },
+          { order: { orderNumber: { contains: search } } },
+        ],
+      }
+    : undefined;
+
   const where: Prisma.NegotiationWhereInput = {
-    ...negotiationParticipantWhere(userId),
-    ...(status && { status }),
-    ...(search && {
-      OR: [
-        { product: { name: { contains: search } } },
-        { buyer: { fullName: { contains: search } } },
-        { buyer: { email: { contains: search } } },
-        { seller: { fullName: { contains: search } } },
-        { seller: { email: { contains: search } } },
-      ],
-    }),
+    ...(scope === 'dispute'
+      ? disputeMediationNegotiationWhere()
+      : negotiationParticipantWhere(userId)),
+    ...(status && scope === 'negotiation' ? { status } : {}),
+    ...(searchFilter ?? {}),
   };
 
   const [items, total] = await Promise.all([
@@ -1113,72 +1210,49 @@ export const listChatInbox = async (params: {
       orderBy: { updatedAt: 'desc' },
       skip,
       take: limit,
-      select: {
-        id: true,
-        status: true,
-        updatedAt: true,
-        createdAt: true,
-        totalEstimate: true,
-        buyer: { select: { id: true, fullName: true, email: true, avatarUrl: true } },
-        seller: { select: { id: true, fullName: true, email: true, avatarUrl: true } },
-        product: { select: { id: true, name: true } },
-        order: { select: { id: true, orderNumber: true, status: true } },
-        _count: { select: { messages: true } },
-        messages: {
-          where: { isDeleted: false },
-          orderBy: { createdAt: 'desc' },
-          take: 1,
-          select: {
-            id: true,
-            content: true,
-            createdAt: true,
-            isSystemMessage: true,
-            sender: { select: { id: true, fullName: true, role: true } },
-          },
-        },
-      },
+      select: CHAT_INBOX_SELECT,
     }),
     prisma.negotiation.count({ where }),
   ]);
 
   return {
-    items: items.map(({ messages, ...rest }) => ({
-      ...rest,
-      buyer: attachUserMediaUrls({ ...rest.buyer }),
-      seller: attachUserMediaUrls({ ...rest.seller }),
-      lastMessage: messages[0] ?? null,
-    })),
+    items: mapChatInboxItems(items, scope),
     pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
   };
 };
 
-export const getChatStats = async (userId: string) => {
+export const getChatStats = async (userId: string, userRole: UserRole) => {
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
   const participantWhere = negotiationParticipantWhere(userId);
 
-  const [totalRooms, totalMessages, activeRooms, openNegotiations] = await Promise.all([
-    prisma.negotiation.count({ where: participantWhere }),
-    prisma.chatMessage.count({
-      where: { isDeleted: false, negotiation: participantWhere },
-    }),
-    prisma.negotiation.count({
-      where: { ...participantWhere, updatedAt: { gte: sevenDaysAgo } },
-    }),
-    prisma.negotiation.count({
-      where: {
-        ...participantWhere,
-        status: NegotiationStatus.OPEN_NEGOTIATION,
-      },
-    }),
-  ]);
+  const [totalRooms, totalMessages, activeRooms, openNegotiations, disputeGroups] =
+    await Promise.all([
+      prisma.negotiation.count({ where: participantWhere }),
+      prisma.chatMessage.count({
+        where: { isDeleted: false, negotiation: participantWhere },
+      }),
+      prisma.negotiation.count({
+        where: { ...participantWhere, updatedAt: { gte: sevenDaysAgo } },
+      }),
+      prisma.negotiation.count({
+        where: {
+          ...participantWhere,
+          status: NegotiationStatus.OPEN_NEGOTIATION,
+        },
+      }),
+      userRole === UserRole.ADMIN
+        ? prisma.negotiation.count({ where: disputeMediationNegotiationWhere() })
+        : Promise.resolve(0),
+    ]);
 
-  return { totalRooms, totalMessages, activeRooms, openNegotiations };
+  return { totalRooms, totalMessages, activeRooms, openNegotiations, disputeGroups };
 };
 
 export const getChatThread = async (
   negotiationId: string,
   userId: string,
+  userRole: UserRole,
   params: { page: number; limit: number },
 ) => {
   const { page, limit } = params;
@@ -1199,13 +1273,35 @@ export const getChatThread = async (
       buyer: { select: { id: true, fullName: true, email: true, phone: true, avatarUrl: true } },
       seller: { select: { id: true, fullName: true, email: true, phone: true, avatarUrl: true } },
       product: { select: { id: true, name: true, unit: true } },
-      order: { select: { id: true, orderNumber: true, status: true } },
+      order: {
+        select: {
+          id: true,
+          orderNumber: true,
+          status: true,
+          dispute: {
+            select: {
+              mediationStartedAt: true,
+              readyToResolveAt: true,
+              status: true,
+            },
+          },
+        },
+      },
       _count: { select: { messages: true } },
     },
   });
 
   if (!negotiation) throw new AppError('Ruang chat tidak ditemukan', 404);
-  assertNegotiationParticipant(negotiation, userId);
+
+  const disputeOrderId = resolveDisputeOrderId(negotiation);
+  const isDisputeMediation = Boolean(disputeOrderId);
+  if (isDisputeMediation) {
+    if (userRole !== UserRole.ADMIN) {
+      throw new AppError('Grup mediasi sengketa hanya dapat dibuka oleh admin.', 403);
+    }
+  } else {
+    assertNegotiationParticipant(negotiation, userId);
+  }
 
   const [messages, total] = await Promise.all([
     prisma.chatMessage.findMany({
@@ -1225,6 +1321,9 @@ export const getChatThread = async (
       seller: attachUserMediaUrls({ ...negotiation.seller }),
     },
     messages,
+    isDisputeMediation,
+    mediationStartedAt: negotiation.order?.dispute?.mediationStartedAt ?? null,
+    readyToResolveAt: negotiation.order?.dispute?.readyToResolveAt ?? null,
     pagination: {
       total,
       page,
@@ -1237,10 +1336,42 @@ export const getChatThread = async (
 export const sendAdminChatMessage = async (
   negotiationId: string,
   userId: string,
+  userRole: UserRole,
   content: string,
 ) => {
   const trimmed = content.trim();
   if (!trimmed) throw new AppError('Pesan tidak boleh kosong.', 400);
+
+  const negotiation = await prisma.negotiation.findUnique({
+    where: { id: negotiationId },
+    select: {
+      buyerId: true,
+      sellerId: true,
+      order: { select: { id: true, status: true } },
+    },
+  });
+  if (!negotiation) throw new AppError('Ruang chat tidak ditemukan', 404);
+
+  const disputeOrderId = resolveDisputeOrderId(negotiation);
+  if (disputeOrderId) {
+    if (userRole !== UserRole.ADMIN) {
+      throw new AppError('Hanya admin yang dapat mengirim pesan di grup mediasi sengketa.', 403);
+    }
+    const message = await sendDisputeMediationMessage(disputeOrderId, userId, trimmed);
+    return {
+      id: message.id,
+      negotiationId: message.negotiationId,
+      senderId: message.senderId,
+      content: message.content,
+      attachmentUrl: message.attachmentUrl,
+      isSystemMessage: message.isSystemMessage,
+      isRead: message.isRead,
+      isDeleted: message.isDeleted,
+      editedAt: message.editedAt,
+      createdAt: message.createdAt,
+      sender: message.sender,
+    };
+  }
 
   const message = await negotiationService.sendChatMessage(negotiationId, userId, trimmed);
 

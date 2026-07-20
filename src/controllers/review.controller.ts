@@ -33,13 +33,25 @@ export const updateReview = catchAsync(async (req: AuthRequest, res: Response) =
  */
 export const getReviewsByProduct = catchAsync(async (req: Request, res: Response) => {
   const { productId } = req.params;
-  const page = parseInt(req.query.page as string) || 1;
-  const limit = parseInt(req.query.limit as string) || 10;
+  const query = req.query as {
+    page?: string;
+    limit?: string;
+    rating?: string;
+    hasMedia?: string;
+  };
+  const page = parseInt(query.page as string, 10) || 1;
+  const limit = parseInt(query.limit as string, 10) || 10;
+  const rating = query.rating != null ? parseInt(query.rating, 10) : undefined;
+  const hasMedia = query.hasMedia === 'true';
 
   const payload = await reviewService.getProductReviews(
     productId,
     Math.max(1, limit),
     Math.max(1, page),
+    {
+      rating: Number.isFinite(rating) ? rating : undefined,
+      hasMedia: hasMedia || undefined,
+    },
   );
 
   return paginatedResponse(

@@ -17,3 +17,12 @@ export const replyReviewSchema = z.object({
     .min(5, 'Balasan minimal 5 karakter')
     .max(1000, 'Balasan maksimal 1000 karakter'),
 });
+
+export const getProductReviewsQuerySchema = z.object({
+  page: z.coerce.number().min(1).default(1),
+  limit: z.coerce.number().min(1).max(50).default(10),
+  rating: z.coerce.number().int().min(1).max(5).optional(),
+  hasMedia: z
+    .preprocess((val) => val === 'true' || val === true, z.boolean())
+    .optional(),
+});

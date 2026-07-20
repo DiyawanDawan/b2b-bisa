@@ -222,25 +222,28 @@ export const deleteRegion = catchAsync(async (req: AuthRequest, res: Response) =
 });
 
 export const getChatStats = catchAsync(async (req: AuthRequest, res: Response) => {
-  const data = await extended.getChatStats(req.user!.id);
+  const data = await extended.getChatStats(req.user!.id, req.user!.role);
   return successResponse(res, data, 'Statistik chat berhasil diambil');
 });
 
 export const listChatInbox = catchAsync(async (req: AuthRequest, res: Response) => {
-  const { page, limit, search, status } = req.query as {
+  const { page, limit, search, status, scope } = req.query as {
     page?: string;
     limit?: string;
     search?: string;
     status?: NegotiationStatus;
+    scope?: 'negotiation' | 'dispute';
   };
   const pageNum = Number(page) || 1;
   const limitNum = Number(limit) || 20;
   const result = await extended.listChatInbox({
     userId: req.user!.id,
+    userRole: req.user!.role,
     page: pageNum,
     limit: limitNum,
     search,
     status,
+    scope,
   });
   return paginatedResponse(res, result.items, result.pagination.total, pageNum, limitNum);
 });
@@ -248,7 +251,7 @@ export const listChatInbox = catchAsync(async (req: AuthRequest, res: Response) 
 export const getChatThread = catchAsync(async (req: AuthRequest, res: Response) => {
   const pageNum = Number(req.query.page) || 1;
   const limitNum = Number(req.query.limit) || 100;
-  const data = await extended.getChatThread(req.params.negotiationId, req.user!.id, {
+  const data = await extended.getChatThread(req.params.negotiationId, req.user!.id, req.user!.role, {
     page: pageNum,
     limit: limitNum,
   });
@@ -260,6 +263,7 @@ export const sendAdminChatMessage = catchAsync(async (req: AuthRequest, res: Res
   const message = await extended.sendAdminChatMessage(
     req.params.negotiationId,
     req.user!.id,
+    req.user!.role,
     content,
   );
   return successResponse(res, attachNegotiationMessageMedia(message), 'Pesan moderasi terkirim');

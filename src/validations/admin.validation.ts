@@ -265,6 +265,7 @@ export const listAdminPartnershipsSchema = z.object({
 
 export const listChatInboxSchema = paginationQuerySchema.extend({
   status: z.nativeEnum(NegotiationStatus, { message: 'Status negosiasi tidak valid' }).optional(),
+  scope: z.enum(['negotiation', 'dispute']).optional(),
 });
 
 export const adminChatMessageSchema = z.object({

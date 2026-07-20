@@ -199,12 +199,29 @@ export const getProductReviews = async (
   productId: string,
   limit: number = 10,
   page: number = 1,
+  options?: { rating?: number; hasMedia?: boolean },
 ) => {
   const skip = (page - 1) * limit;
 
+  const where: {
+    productId: string;
+    rating?: number;
+    imageUrl?: { not: null };
+    NOT?: { imageUrl: string };
+  } = { productId };
+
+  if (options?.rating != null) {
+    where.rating = options.rating;
+  }
+
+  if (options?.hasMedia) {
+    where.imageUrl = { not: null };
+    where.NOT = { imageUrl: '' };
+  }
+
   const [reviews, total] = await Promise.all([
     prisma.review.findMany({
-      where: { productId },
+      where,
       select: {
         id: true,
         orderId: true,
@@ -221,7 +238,7 @@ export const getProductReviews = async (
       skip,
       take: limit,
     }),
-    prisma.review.count({ where: { productId } }),
+    prisma.review.count({ where }),
   ]);
 
   return {
