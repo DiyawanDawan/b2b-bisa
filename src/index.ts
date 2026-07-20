@@ -33,17 +33,42 @@ const isDev = process.env.NODE_ENV !== 'production';
 const isLocalDevOrigin = (origin: string) =>
   /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
 
+/** Admin / web produksi BISA (office, www, app, dll.) — HTTPS saja. */
+const isBisaagriHttpsOrigin = (origin: string) =>
+  /^https:\/\/([a-z0-9-]+\.)*bisaagri\.com$/i.test(origin);
+
 const corsOriginDelegate: cors.CorsOptions['origin'] = (origin, callback) => {
   if (!origin) {
     callback(null, true);
     return;
   }
-  if (corsOrigins.includes(origin) || (isDev && isLocalDevOrigin(origin))) {
+  if (
+    corsOrigins.includes(origin) ||
+    (isDev && isLocalDevOrigin(origin)) ||
+    isBisaagriHttpsOrigin(origin)
+  ) {
     callback(null, true);
     return;
   }
   // Jangan throw Error — preflight OPTIONS jadi non-2xx tanpa header CORS yang jelas.
   callback(null, false);
+};
+
+const corsOptions: cors.CorsOptions = {
+  origin: corsOriginDelegate,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'ngrok-skip-browser-warning',
+    'Accept',
+    'X-Requested-With',
+    'X-ML-API-Key',
+    'X-Device-Token',
+  ],
+  preflightContinue: false,
+  optionsSuccessStatus: 204,
 };
 
 import authRoutes from '#routes/auth';
@@ -108,26 +133,11 @@ app.use(
   }),
 );
 app.use(
-  cors({
-    origin: corsOriginDelegate,
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: [
-      'Content-Type',
-      'Authorization',
-      'ngrok-skip-browser-warning',
-      'Accept',
-      'X-Requested-With',
-      'X-ML-API-Key',
-      'X-Device-Token',
-    ],
-    preflightContinue: false,
-    optionsSuccessStatus: 204,
-  }),
+  cors(corsOptions),
 );
 
-// Explicit OPTIONS handler for all routes
-app.options('*', cors());
+// Explicit OPTIONS handler — pakai konfigurasi yang sama (bukan default cors()).
+app.options('*', cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 // SEC-BE-023: format produksi 'combined' (terstruktur, redact-friendly via reverse proxy);

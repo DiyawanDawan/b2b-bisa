@@ -307,10 +307,10 @@ export const getDisputeDetail = catchAsync(async (req: AuthRequest, res: Respons
  */
 export const getDisputeChatThread = catchAsync(async (req: AuthRequest, res: Response) => {
   const { orderId } = req.params;
-  const { page = 1, limit = 200 } = req.query;
+  const { page, limit } = req.query as { page: number; limit: number };
   const data = await disputeMediationService.getDisputeChatThread(orderId, {
-    page: Number(page),
-    limit: Number(limit),
+    page,
+    limit,
   });
   successResponse(res, data, 'Chat mediasi sengketa berhasil diambil');
 });

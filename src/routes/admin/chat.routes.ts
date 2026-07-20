@@ -22,7 +22,11 @@ router.get(
 /**
  * GET /api/v1/admin/chat/:negotiationId
  */
-router.get('/:negotiationId', extendedController.getChatThread);
+router.get(
+  '/:negotiationId',
+  validate(adminValidation.getChatThreadQuerySchema, 'query'),
+  extendedController.getChatThread,
+);
 
 /**
  * POST /api/v1/admin/chat/:negotiationId/messages

@@ -1299,7 +1299,7 @@ export const getChatThread = async (
     if (userRole !== UserRole.ADMIN) {
       throw new AppError('Grup mediasi sengketa hanya dapat dibuka oleh admin.', 403);
     }
-  } else {
+  } else if (userRole !== UserRole.ADMIN) {
     assertNegotiationParticipant(negotiation, userId);
   }
 

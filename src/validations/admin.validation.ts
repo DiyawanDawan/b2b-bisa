@@ -153,11 +153,9 @@ export const resolveDisputeSchema = z.object({
   note: z.string().min(5, 'Catatan resolusi wajib diisi minimal 5 karakter'),
 });
 
-export const disputeChatQuerySchema = z.object({
-  page: z.preprocess((val) => Number(val), z.number().int().min(1).default(1)),
-  // Thread mediasi butuh history penuh; admin UI request limit=200.
-  limit: z.preprocess((val) => Number(val), z.number().int().min(1).max(500).default(100)),
-});
+export const disputeChatQuerySchema = paginationQuerySchema;
+
+export const getChatThreadQuerySchema = paginationQuerySchema;
 
 /**
  * Phase 5 Extension Schemas
