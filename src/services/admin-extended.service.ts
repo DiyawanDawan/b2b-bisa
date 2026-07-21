@@ -34,25 +34,29 @@ export const listOrders = async (params: {
   const skip = (page - 1) * limit;
   const courierFilter = courierCode?.trim().toLowerCase();
 
-  const where: Prisma.OrderWhereInput = {
-    ...(status && { status }),
-    ...(search && {
+  const and: Prisma.OrderWhereInput[] = [];
+  if (status) and.push({ status });
+  if (search) {
+    and.push({
       OR: [
         { orderNumber: { contains: search } },
         { buyer: { fullName: { contains: search } } },
         { seller: { fullName: { contains: search } } },
       ],
-    }),
-    ...(courierFilter && {
+    });
+  }
+  if (courierFilter) {
+    and.push({
       OR: [
         { orderShipping: { courierCode: courierFilter } },
         { shipment: { courierCode: courierFilter } },
       ],
-    }),
-    ...(deliveryStatus?.trim() && {
-      shipment: { deliveryStatus: deliveryStatus.trim() },
-    }),
-  };
+    });
+  }
+  if (deliveryStatus?.trim()) {
+    and.push({ shipment: { deliveryStatus: deliveryStatus.trim() } });
+  }
+  const where: Prisma.OrderWhereInput = and.length > 0 ? { AND: and } : {};
 
   const [orders, total] = await Promise.all([
     prisma.order.findMany({
@@ -496,15 +500,28 @@ const mapAdminForumPost = <
 >(
   post: T,
 ) => {
-  const withMedia = attachForumMediaUrls({ ...post });
-  if (withMedia.group) {
-    withMedia.group = {
-      ...withMedia.group,
-      avatarUrl: resolveMediaField(withMedia.group.avatarUrl as string | null),
-      bannerUrl: resolveMediaField(withMedia.group.bannerUrl as string | null),
-    };
-  }
-  return withMedia;
+  const withMedia = attachForumMediaUrls({
+    ...post,
+    mediaUrls: Array.isArray(post.mediaUrls) ? post.mediaUrls : post.mediaUrls ?? null,
+  } as T & { mediaUrls?: unknown[] | null });
+
+  const user = withMedia.user
+    ? attachUserMediaUrls({ ...withMedia.user })
+    : withMedia.user;
+
+  const group = withMedia.group
+    ? {
+        ...withMedia.group,
+        avatarUrl: resolveMediaField(
+          (withMedia.group as { avatarUrl?: string | null }).avatarUrl ?? null,
+        ),
+        bannerUrl: resolveMediaField(
+          (withMedia.group as { bannerUrl?: string | null }).bannerUrl ?? null,
+        ),
+      }
+    : withMedia.group;
+
+  return { ...withMedia, user, group };
 };
 
 export const moderateForumPost = async (postId: string, status: PostStatus) => {

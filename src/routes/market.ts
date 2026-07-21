@@ -25,11 +25,6 @@ router.get(
 // Langganan PRO hanya untuk IoT (lihat routes/iot.ts).
 router.get('/supply-demand', requireAuth, marketController.getSupplyDemand);
 
-router.post(
-  '/sync',
-  requireAuth,
-  requireRole(UserRole.ADMIN),
-  marketController.syncMarketData,
-);
+router.post('/sync', requireAuth, requireRole(UserRole.ADMIN), marketController.syncMarketData);
 
 export default router;

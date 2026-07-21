@@ -13,14 +13,33 @@ import {
   PayoutStatus,
   OrderStatus,
   NegotiationStatus,
+  ProductMode,
+  BiomassaType,
 } from '#prisma';
+
+/**
+ * Coerce query number without turning missing/empty into NaN
+ * (Number(undefined) === NaN breaks .default()).
+ */
+const queryPage = z.preprocess((val) => {
+  if (val === undefined || val === null || val === '') return undefined;
+  const n = Number(val);
+  return Number.isFinite(n) ? n : undefined;
+}, z.number().int().min(1).default(1));
+
+const queryLimit = (max: number, fallback: number) =>
+  z.preprocess((val) => {
+    if (val === undefined || val === null || val === '') return undefined;
+    const n = Number(val);
+    return Number.isFinite(n) ? n : undefined;
+  }, z.number().int().min(1).max(max).default(fallback));
 
 /**
  * Common pagination and search query schema
  */
 export const paginationQuerySchema = z.object({
-  page: z.preprocess((val) => Number(val), z.number().int().min(1).default(1)),
-  limit: z.preprocess((val) => Number(val), z.number().int().min(1).max(100).default(10)),
+  page: queryPage,
+  limit: queryLimit(100, 10),
   search: z.string().optional(),
 });
 
@@ -112,12 +131,48 @@ export const moderateProductSchema = z
 
 /**
  * Category Master Data Schemas
+ * PRODUK wajib productMode: BIOMASS_MATERIAL (biomassa/biochar) | ORGANIC_PRODUCE (hasil tani).
  */
-export const categorySchema = z.object({
-  name: z.string().min(2, 'Nama kategori minimal 2 karakter'),
-  description: z.string().optional(),
-  categoryType: z.nativeEnum(CATEGORY_TYPE, { message: 'Tipe kategori tidak valid' }),
+export const listCategoriesQuerySchema = z.object({
+  categoryType: z.nativeEnum(CATEGORY_TYPE, { message: 'Tipe kategori tidak valid' }).optional(),
+  productMode: z.nativeEnum(ProductMode, { message: 'Rak produk tidak valid' }).optional(),
+  biomassaType: z.nativeEnum(BiomassaType, { message: 'Jenis biomassa tidak valid' }).optional(),
+  search: z.string().optional(),
 });
+
+export const categorySchema = z
+  .object({
+    name: z.string().min(2, 'Nama kategori minimal 2 karakter'),
+    description: z.string().optional(),
+    categoryType: z.nativeEnum(CATEGORY_TYPE, { message: 'Tipe kategori tidak valid' }),
+    productMode: z.nativeEnum(ProductMode).nullable().optional(),
+    biomassaType: z.nativeEnum(BiomassaType).nullable().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.categoryType === CATEGORY_TYPE.PRODUK) {
+      if (!data.productMode) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Mode produk wajib: Biomassa atau Hasil Tani',
+          path: ['productMode'],
+        });
+      }
+      if (data.productMode === ProductMode.BIOMASS_MATERIAL && !data.biomassaType) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Jenis biomassa wajib untuk kategori Biomassa/Biochar',
+          path: ['biomassaType'],
+        });
+      }
+      if (data.productMode === ProductMode.ORGANIC_PRODUCE && data.biomassaType) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Jenis biomassa hanya untuk mode Biomassa',
+          path: ['biomassaType'],
+        });
+      }
+    }
+  });
 
 /**
  * Finance & Fee Schemas
@@ -138,7 +193,15 @@ export const feeSchema = z.object({
 
 export const updateFeeSchema = z.object({
   amount: z.number().min(0).optional(),
+  type: z.nativeEnum(FeeCalculationType, { message: 'Tipe fee tidak valid' }).optional(),
+  description: z.string().nullable().optional(),
   isActive: z.boolean().optional(),
+}).refine((data) => Object.keys(data).length > 0, {
+  message: 'Minimal satu field biaya harus diperbarui',
+});
+
+export const feeIdParamSchema = z.object({
+  id: z.string().uuid('ID biaya tidak valid'),
 });
 
 /**
@@ -241,8 +304,8 @@ export const updatePolicySchema = z.object({
 });
 
 export const listAdminPartnershipsSchema = z.object({
-  page: z.preprocess((val) => Number(val), z.number().int().min(1).default(1)),
-  limit: z.preprocess((val) => Number(val), z.number().int().min(1).max(50).default(20)),
+  page: queryPage,
+  limit: queryLimit(50, 20),
   search: z.string().optional(),
   status: z
     .enum([

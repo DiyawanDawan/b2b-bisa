@@ -22,7 +22,5 @@ export const getProductReviewsQuerySchema = z.object({
   page: z.coerce.number().min(1).default(1),
   limit: z.coerce.number().min(1).max(50).default(10),
   rating: z.coerce.number().int().min(1).max(5).optional(),
-  hasMedia: z
-    .preprocess((val) => val === 'true' || val === true, z.boolean())
-    .optional(),
+  hasMedia: z.preprocess((val) => val === 'true' || val === true, z.boolean()).optional(),
 });

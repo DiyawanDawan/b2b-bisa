@@ -14,12 +14,15 @@ import {
   PlatformFeeType,
   FeeCalculationType,
   CATEGORY_TYPE,
+  ProductMode,
+  BiomassaType,
   NotificationType,
   NotificationPriority,
   PayoutStatus,
 } from '#prisma';
 import { createNotification } from '#services/notification.service';
 import { notifyOrderStatusChange } from '#services/orderNotification.service';
+import { activeApprovedCertificateWhere } from '#utils/certificate.util';
 import { invalidateCategories } from '#utils/cache.util';
 import { decryptField, isEncryptedPayload } from '#utils/encryption.util';
 import { formatPayoutAccountForAdmin } from '#utils/payoutAccount.util';
@@ -517,9 +520,20 @@ export const getDashboardVisualGallery = async () => {
 
   const forumMedia = rawForumPosts
     .map((post) => {
-      const urls = Array.isArray(post.mediaUrls)
-        ? (post.mediaUrls as string[]).map((u) => resolveMediaField(u) ?? u).filter(Boolean)
-        : [];
+      const rawMedia = Array.isArray(post.mediaUrls) ? post.mediaUrls : [];
+      const urls = rawMedia
+        .map((item): string | null => {
+          if (typeof item === 'string') {
+            return resolveMediaField(item) ?? item;
+          }
+          if (item && typeof item === 'object') {
+            const path = (item as { url?: unknown }).url;
+            if (typeof path !== 'string' || !path.trim()) return null;
+            return resolveMediaField(path) ?? path;
+          }
+          return null;
+        })
+        .filter((u): u is string => Boolean(u));
       if (urls.length === 0) return null;
       const author = post.user ? attachUserMediaUrls({ ...post.user }) : null;
       return {
@@ -849,7 +863,54 @@ export const listAllProducts = async (params: {
 };
 
 /**
- * Verify / Certify a product
+ * Full product detail for admin review/moderation.
+ */
+export const getAdminProductDetail = async (productId: string) => {
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
+    include: {
+      user: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          phone: true,
+          avatarUrl: true,
+          profile: { select: { companyName: true } },
+        },
+      },
+      category: {
+        select: {
+          id: true,
+          name: true,
+          productMode: true,
+          biomassaType: true,
+        },
+      },
+      images: { orderBy: [{ isPrimary: 'desc' }, { order: 'asc' }] },
+      video: true,
+      technicalSpec: true,
+      specs: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] },
+      _count: {
+        select: {
+          reviews: true,
+          orderItems: true,
+          certificates: true,
+          questions: true,
+        },
+      },
+    },
+  });
+
+  if (!product) {
+    throw new AppError('Produk tidak ditemukan', 404);
+  }
+
+  return attachProductMediaUrls(product);
+};
+
+/**
+ * Verify / Certify a product — derived from approved certificate records only.
  */
 export const verifyProduct = async (productId: string, isCertified: boolean) => {
   const existing = await prisma.product.findUnique({
@@ -859,6 +920,24 @@ export const verifyProduct = async (productId: string, isCertified: boolean) => 
 
   if (!existing) {
     throw new AppError('Produk tidak ditemukan', 404);
+  }
+
+  const approvedCount = await prisma.productCertificate.count({
+    where: { productId, ...activeApprovedCertificateWhere() },
+  });
+
+  if (isCertified && approvedCount === 0) {
+    throw new AppError(
+      'Sertifikasi produk hanya dapat diberikan setelah ada sertifikat disetujui. Gunakan antrean sertifikat.',
+      409,
+    );
+  }
+
+  if (!isCertified && approvedCount > 0) {
+    throw new AppError(
+      'Tidak dapat mencabut badge manual selama masih ada sertifikat aktif yang disetujui. Tolak atau tunggu kedaluwarsa sertifikat terlebih dahulu.',
+      409,
+    );
   }
 
   const include = {
@@ -917,14 +996,19 @@ export const listTransactions = async (params: {
       orderBy: { createdAt: 'desc' },
       include: {
         order: { select: { orderNumber: true } },
-        user: { select: { fullName: true, email: true } },
+        user: { select: { fullName: true, email: true, avatarUrl: true } },
       },
     }),
     prisma.transaction.count({ where }),
   ]);
 
+  const mappedTransactions = transactions.map((tx) => ({
+    ...tx,
+    user: tx.user ? attachUserMediaUrls({ ...tx.user }) : null,
+  }));
+
   return {
-    transactions,
+    transactions: mappedTransactions,
     pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
   };
 };
@@ -1457,14 +1541,19 @@ export const listPlatformFees = async () => {
  */
 export const updatePlatformFee = async (
   id: string,
-  data: { amount: number; isActive: boolean },
+  data: {
+    amount?: number;
+    type?: FeeCalculationType;
+    description?: string | null;
+    isActive?: boolean;
+  },
 ) => {
+  const existing = await prisma.platformFeeSetting.findUnique({ where: { id } });
+  if (!existing) throw new AppError('Pengaturan biaya platform tidak ditemukan', 404);
+
   return prisma.platformFeeSetting.update({
     where: { id },
-    data: {
-      amount: data.amount,
-      isActive: data.isActive,
-    },
+    data,
   });
 };
 
@@ -1482,22 +1571,102 @@ export const createPlatformFee = async (data: {
     data,
   });
 };
+
 /**
- * Categories management
+ * Delete an inactive Platform Fee setting.
  */
-export const listCategories = async () => {
+export const deletePlatformFee = async (id: string) => {
+  const existing = await prisma.platformFeeSetting.findUnique({ where: { id } });
+  if (!existing) throw new AppError('Pengaturan biaya platform tidak ditemukan', 404);
+  if (existing.isActive) {
+    throw new AppError('Nonaktifkan biaya sebelum menghapusnya', 409);
+  }
+
+  return prisma.platformFeeSetting.delete({ where: { id } });
+};
+/**
+ * Categories management — productMode memisahkan rak Biomassa vs Hasil Tani.
+ */
+function normalizeCategoryPayload(data: {
+  name?: string;
+  description?: string;
+  categoryType?: CATEGORY_TYPE;
+  productMode?: ProductMode | null;
+  biomassaType?: BiomassaType | null;
+}) {
+  const categoryType = data.categoryType;
+  const isProduk = categoryType === CATEGORY_TYPE.PRODUK;
+  const productMode = isProduk ? (data.productMode ?? null) : null;
+  const biomassaType =
+    isProduk && productMode === ProductMode.BIOMASS_MATERIAL ? (data.biomassaType ?? null) : null;
+
+  return {
+    ...(data.name !== undefined && { name: data.name }),
+    ...(data.description !== undefined && { description: data.description }),
+    ...(categoryType !== undefined && { categoryType }),
+    productMode,
+    biomassaType,
+  };
+}
+
+export const listCategories = async (params?: {
+  categoryType?: CATEGORY_TYPE;
+  productMode?: ProductMode;
+  biomassaType?: BiomassaType;
+  search?: string;
+}) => {
+  const q = params?.search?.trim();
   return prisma.category.findMany({
-    orderBy: { name: 'asc' },
+    where: {
+      ...(params?.categoryType && { categoryType: params.categoryType }),
+      ...(params?.productMode && { productMode: params.productMode }),
+      ...(params?.biomassaType && { biomassaType: params.biomassaType }),
+      ...(q && {
+        OR: [{ name: { contains: q } }, { description: { contains: q } }],
+      }),
+    },
+    orderBy: [{ productMode: 'asc' }, { biomassaType: 'asc' }, { name: 'asc' }],
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      categoryType: true,
+      productMode: true,
+      biomassaType: true,
+      createdAt: true,
+      _count: { select: { products: true, articles: true, forumPosts: true } },
+    },
   });
 };
+
+const categorySelect = {
+  id: true,
+  name: true,
+  description: true,
+  categoryType: true,
+  productMode: true,
+  biomassaType: true,
+  createdAt: true,
+  _count: { select: { products: true, articles: true, forumPosts: true } },
+} as const;
 
 export const createCategory = async (data: {
   name: string;
   description?: string;
   categoryType: CATEGORY_TYPE;
+  productMode?: ProductMode | null;
+  biomassaType?: BiomassaType | null;
 }) => {
+  const payload = normalizeCategoryPayload(data);
   const created = await prisma.category.create({
-    data,
+    data: {
+      name: payload.name!,
+      description: payload.description,
+      categoryType: payload.categoryType!,
+      productMode: payload.productMode,
+      biomassaType: payload.biomassaType,
+    },
+    select: categorySelect,
   });
   void invalidateCategories();
   return created;
@@ -1509,11 +1678,24 @@ export const updateCategory = async (
     name?: string;
     description?: string;
     categoryType?: CATEGORY_TYPE;
+    productMode?: ProductMode | null;
+    biomassaType?: BiomassaType | null;
   },
 ) => {
+  const existing = await prisma.category.findUnique({ where: { id } });
+  if (!existing) throw new AppError('Kategori tidak ditemukan', 404);
+
+  const payload = normalizeCategoryPayload({
+    ...data,
+    categoryType: data.categoryType ?? existing.categoryType,
+    productMode: data.productMode !== undefined ? data.productMode : existing.productMode,
+    biomassaType: data.biomassaType !== undefined ? data.biomassaType : existing.biomassaType,
+  });
+
   const updated = await prisma.category.update({
     where: { id },
-    data,
+    data: payload,
+    select: categorySelect,
   });
   void invalidateCategories();
   return updated;

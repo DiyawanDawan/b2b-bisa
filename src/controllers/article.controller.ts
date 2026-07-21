@@ -62,13 +62,20 @@ export const createArticle = catchAsync(async (req: AuthRequest, res: Response) 
 
 export const updateArticle = catchAsync(async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
-  const data = {
-    ...req.body,
-    ...(req.body.categoryId && { category: { connect: { id: req.body.categoryId } } }),
+  const { categoryId, ...rest } = req.body as {
+    categoryId?: string | null;
+    title?: string;
+    content?: string;
+    imageUrl?: string | null;
+    status?: PostStatus;
   };
 
-  // Same as create
-  delete data.categoryId;
+  const data: Record<string, unknown> = { ...rest };
+  if (categoryId === null) {
+    data.category = { disconnect: true };
+  } else if (categoryId) {
+    data.category = { connect: { id: categoryId } };
+  }
 
   const article = await articleService.updateArticle(id, data);
   return successResponse(res, attachArticleMediaUrls(article), 'Artikel berhasil diperbarui');

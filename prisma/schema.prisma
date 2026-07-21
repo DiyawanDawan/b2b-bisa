@@ -512,6 +512,8 @@ model User {
   supportMessages   SupportMessage[] @relation("SupportMessageSender")
   bisaExpressDriver BisaExpressDriver?
   reviewedProductCertificates ProductCertificate[] @relation("ProductCertificateReviewer")
+  supplierStoreCertificates SupplierStoreCertificate[] @relation("SupplierStoreCertificates")
+  reviewedSupplierStoreCertificates SupplierStoreCertificate[] @relation("SupplierStoreCertificateReviewer")
 
   @@index([role])
   @@index([referralCode])
@@ -794,6 +796,37 @@ model ProductCertificate {
   @@index([status, createdAt])
   @@index([reviewedById])
   @@map("product_certificates")
+}
+
+/// Sertifikat tingkat toko/supplier (NIB, ISO perusahaan, dll.) — terpisah dari sertifikat produk.
+model SupplierStoreCertificate {
+  id                String                   @id @default(uuid())
+  supplierId        String                   @map("supplier_id")
+  title             String
+  certificateType   String                   @map("certificate_type")
+  issuerName        String?                  @map("issuer_name")
+  certificateNumber String?                  @map("certificate_number")
+  issuedAt          DateTime?                @map("issued_at")
+  expiresAt         DateTime?                @map("expires_at")
+  storageKey        String                   @db.Text @map("storage_key")
+  fileName          String                   @map("file_name")
+  mimeType          String                   @map("mime_type")
+  fileSizeBytes     BigInt                   @map("file_size_bytes")
+  sha256            String?                  @map("sha256")
+  status            ProductCertificateStatus @default(PENDING)
+  reviewedById      String?                  @map("reviewed_by_id")
+  reviewedAt        DateTime?                @map("reviewed_at")
+  rejectionReason   String?                  @db.Text @map("rejection_reason")
+  createdAt         DateTime                 @default(now()) @map("created_at")
+  updatedAt         DateTime                 @updatedAt @map("updated_at")
+
+  supplier   User  @relation("SupplierStoreCertificates", fields: [supplierId], references: [id], onDelete: Cascade)
+  reviewedBy User? @relation("SupplierStoreCertificateReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([supplierId, status])
+  @@index([status, createdAt])
+  @@index([reviewedById])
+  @@map("supplier_store_certificates")
 }
 
 model ProductHarvestLot {

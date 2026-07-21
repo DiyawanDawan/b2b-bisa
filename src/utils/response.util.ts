@@ -8,6 +8,7 @@ const BLACKLISTED_FIELDS = ['password', 'enable2FA'];
 
 const transformDecimal = (obj: any): any => {
   if (obj === null || obj === undefined) return obj;
+  if (typeof obj === 'bigint') return Number(obj);
   if (typeof obj !== 'object') return obj;
   if (obj instanceof Date) return obj.toISOString();
   if (Array.isArray(obj)) return obj.map(transformDecimal);

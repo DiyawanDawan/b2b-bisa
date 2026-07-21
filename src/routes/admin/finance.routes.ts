@@ -35,7 +35,22 @@ router.post('/fees', validate(adminValidation.feeSchema), adminController.create
 /**
  * PATCH /api/v1/admin/finance/fees/:id
  */
-router.patch('/fees/:id', validate(adminValidation.updateFeeSchema), adminController.updateFee);
+router.patch(
+  '/fees/:id',
+  validate(adminValidation.feeIdParamSchema, 'params'),
+  validate(adminValidation.updateFeeSchema),
+  adminController.updateFee,
+);
+
+/**
+ * DELETE /api/v1/admin/finance/fees/:id
+ * Biaya aktif harus dinonaktifkan terlebih dahulu.
+ */
+router.delete(
+  '/fees/:id',
+  validate(adminValidation.feeIdParamSchema, 'params'),
+  adminController.deleteFee,
+);
 
 /**
  * Payout & Reporting Extensions (Phase 5)

@@ -179,7 +179,7 @@ export async function seedProducts(prisma, users) {
             ...(organicMedia.videoUrl && {
               video: { create: { url: organicMedia.videoUrl } },
             }),
-            isCertified: true,
+            isCertified: false,
             isIotMonitored: faker.datatype.boolean(),
             images: {
               create: organicMedia.images,
@@ -263,7 +263,7 @@ export async function seedProducts(prisma, users) {
             ...(biomassMedia.videoUrl && {
               video: { create: { url: biomassMedia.videoUrl } },
             }),
-            isCertified: faker.datatype.boolean() || isBiochar, // Biochar often certified
+            isCertified: false,
             isIotMonitored: isBiochar || faker.datatype.boolean(),
             images: {
               create: biomassMedia.images,

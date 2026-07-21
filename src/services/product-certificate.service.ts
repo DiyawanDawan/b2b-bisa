@@ -11,6 +11,12 @@ import {
 import * as storageService from '#services/storage.service';
 import { createNotification } from '#services/notification.service';
 import { createHash } from 'crypto';
+import {
+  activeApprovedCertificateWhere,
+  assertCertificateStorageKeyUnused,
+  serializeCertificateRow,
+  syncProductIsCertifiedFlag,
+} from '#utils/certificate.util';
 
 const publicCertificateSelect = {
   id: true,
@@ -26,10 +32,7 @@ const publicCertificateSelect = {
   reviewedAt: true,
 } satisfies Prisma.ProductCertificateSelect;
 
-const activeApprovedWhere = () => ({
-  status: ProductCertificateStatus.APPROVED,
-  OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
-});
+const activeApprovedWhere = activeApprovedCertificateWhere;
 
 const computeStorageSha256 = async (storageKey: string): Promise<string> => {
   const file = await storageService.getFileStream(storageKey);
@@ -82,37 +85,63 @@ export const submitCertificate = async (
     throw new AppError('Dokumen belum selesai diunggah atau bukan milik Anda.', 400);
   }
 
-  const existingCount = await prisma.productCertificate.count({ where: { productId } });
-  if (existingCount >= 20) {
-    throw new AppError('Maksimal 20 sertifikat per produk.', 400);
-  }
-  const sha256 = await computeStorageSha256(normalizedKey);
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const existingCount = await tx.productCertificate.count({ where: { productId } });
+      if (existingCount >= 20) {
+        throw new AppError('Maksimal 20 sertifikat per produk.', 400);
+      }
+      try {
+        await assertCertificateStorageKeyUnused(normalizedKey, tx);
+      } catch {
+        throw new AppError('File sertifikat ini sudah dipakai untuk sertifikat lain.', 409);
+      }
 
-  return prisma.productCertificate.create({
-    data: {
-      productId,
-      title: data.title,
-      certificateType: data.certificateType,
-      issuerName: data.issuerName,
-      certificateNumber: data.certificateNumber,
-      issuedAt: data.issuedAt,
-      expiresAt: data.expiresAt,
-      storageKey: normalizedKey,
-      fileName: session.fileName,
-      mimeType: session.mimeType,
-      fileSizeBytes: session.totalBytes,
-      sha256,
-    },
-  });
+      const sha256 = await computeStorageSha256(normalizedKey);
+      return serializeCertificateRow(
+        await tx.productCertificate.create({
+          data: {
+            productId,
+            title: data.title,
+            certificateType: data.certificateType,
+            issuerName: data.issuerName,
+            certificateNumber: data.certificateNumber,
+            issuedAt: data.issuedAt,
+            expiresAt: data.expiresAt,
+            storageKey: normalizedKey,
+            fileName: session.fileName,
+            mimeType: session.mimeType,
+            fileSizeBytes: session.totalBytes,
+            sha256,
+          },
+        }),
+      );
+    });
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    throw error;
+  }
 };
 
-export const listOwnerCertificates = async (productId: string, userId: string, isAdmin = false) => {
+export const listOwnerCertificates = async (
+  productId: string,
+  userId: string,
+  isAdmin = false,
+  baseUrl?: string,
+) => {
   await loadOwnedProduct(productId, userId, isAdmin);
   const rows = await prisma.productCertificate.findMany({
     where: { productId },
     orderBy: { createdAt: 'desc' },
   });
-  return rows.map((row) => ({ ...row, fileSizeBytes: Number(row.fileSizeBytes) }));
+  return rows.map((row) => {
+    const serialized = serializeCertificateRow(row);
+    const documentUrl =
+      row.status === ProductCertificateStatus.APPROVED && baseUrl
+        ? `${baseUrl}/api/v1/products/${productId}/certificates/${row.id}/document`
+        : null;
+    return { ...serialized, documentUrl };
+  });
 };
 
 export const deleteOwnerCertificate = async (
@@ -131,6 +160,7 @@ export const deleteOwnerCertificate = async (
   }
   await prisma.productCertificate.delete({ where: { id: certificateId } });
   void storageService.deleteFile(certificate.storageKey);
+  await syncProductIsCertifiedFlag(productId);
 };
 
 export const listPublicProductCertificates = (productId: string) =>
@@ -217,9 +247,28 @@ export const listAdminQueue = async (params: {
     prisma.productCertificate.count({ where }),
   ]);
   return {
-    rows: rows.map((row) => ({ ...row, fileSizeBytes: Number(row.fileSizeBytes) })),
+    rows: rows.map((row) => serializeCertificateRow(row)),
     total,
   };
+};
+
+export const listAdminByProduct = async (productId: string) => {
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
+    select: { id: true, name: true },
+  });
+  if (!product) throw new AppError('Produk tidak ditemukan', 404);
+  const rows = await prisma.productCertificate.findMany({
+    where: { productId },
+    orderBy: { createdAt: 'desc' },
+    include: {
+      reviewedBy: { select: { id: true, fullName: true } },
+    },
+  });
+  return rows.map((row) => ({
+    ...serializeCertificateRow(row),
+    documentUrl: storageService.getSignedProxyUrl(row.storageKey, 900),
+  }));
 };
 
 export const getAdminDetail = async (certificateId: string) => {
@@ -239,8 +288,7 @@ export const getAdminDetail = async (certificateId: string) => {
   });
   if (!row) throw new AppError('Sertifikat tidak ditemukan.', 404);
   return {
-    ...row,
-    fileSizeBytes: Number(row.fileSizeBytes),
+    ...serializeCertificateRow(row),
     documentUrl: storageService.getSignedProxyUrl(row.storageKey, 900),
     storageKey: undefined,
   };
@@ -280,13 +328,7 @@ export const reviewCertificate = async (
     const updated = await tx.productCertificate.findUniqueOrThrow({
       where: { id: certificateId },
     });
-    const approvedCount = await tx.productCertificate.count({
-      where: { productId: current.productId, ...activeApprovedWhere() },
-    });
-    await tx.product.update({
-      where: { id: current.productId },
-      data: { isCertified: approvedCount > 0 },
-    });
+    await syncProductIsCertifiedFlag(current.productId, tx);
     await tx.auditLog.create({
       data: {
         userId: adminId,
@@ -317,5 +359,5 @@ export const reviewCertificate = async (
         : NotificationPriority.HIGH,
     refId: result.product.id,
   });
-  return result.updated;
+  return getAdminDetail(certificateId);
 };

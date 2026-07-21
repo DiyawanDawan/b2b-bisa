@@ -3,6 +3,7 @@ import * as adminController from '#controllers/admin.controller';
 import validate from '#middlewares/validate';
 import * as adminValidation from '#validations/admin.validation';
 import * as productCertificateController from '#controllers/product-certificate.controller';
+import * as storeCertificateController from '#controllers/supplier-store-certificate.controller';
 import * as certificateValidation from '#validations/product-certificate.validation';
 
 const router = Router();
@@ -20,7 +21,11 @@ router.get(
  * GET /api/v1/admin/products/categories
  * Static path sebelum /:id/*
  */
-router.get('/categories', adminController.listCategories);
+router.get(
+  '/categories',
+  validate(adminValidation.listCategoriesQuerySchema, 'query'),
+  adminController.listCategories,
+);
 
 /**
  * POST /api/v1/admin/products/categories
@@ -55,6 +60,41 @@ router.patch(
   validate(certificateValidation.certificateIdParamSchema, 'params'),
   validate(certificateValidation.reviewCertificateSchema),
   productCertificateController.review,
+);
+
+router.get(
+  '/store-certificates',
+  validate(certificateValidation.listCertificateQueueSchema, 'query'),
+  storeCertificateController.listAdmin,
+);
+router.get(
+  '/store-certificates/:certificateId',
+  validate(certificateValidation.certificateIdParamSchema, 'params'),
+  storeCertificateController.adminDetail,
+);
+router.patch(
+  '/store-certificates/:certificateId/review',
+  validate(certificateValidation.certificateIdParamSchema, 'params'),
+  validate(certificateValidation.reviewCertificateSchema),
+  storeCertificateController.review,
+);
+
+/**
+ * GET /api/v1/admin/products/:id/certificates
+ */
+router.get(
+  '/:id/certificates',
+  validate(adminValidation.productIdParamSchema, 'params'),
+  productCertificateController.listAdminByProduct,
+);
+
+/**
+ * GET /api/v1/admin/products/:id
+ */
+router.get(
+  '/:id',
+  validate(adminValidation.productIdParamSchema, 'params'),
+  adminController.getProductDetail,
 );
 
 /**

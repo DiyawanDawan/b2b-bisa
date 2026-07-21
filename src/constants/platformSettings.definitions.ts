@@ -1,4 +1,10 @@
-export type PlatformSettingFieldType = 'text' | 'url' | 'email' | 'phone' | 'number';
+export type PlatformSettingFieldType =
+  | 'text'
+  | 'url'
+  | 'email'
+  | 'phone'
+  | 'number'
+  | 'image';
 
 export interface PlatformSettingDefinition {
   key: string;
@@ -7,9 +13,20 @@ export interface PlatformSettingDefinition {
   type: PlatformSettingFieldType;
   placeholder?: string;
   envFallback?: string;
+  /** Boleh dikosongkan (mis. logo). Nilai kosong akan menghapus setting. */
+  optional?: boolean;
 }
 
 export const PLATFORM_SETTING_DEFINITIONS: PlatformSettingDefinition[] = [
+  {
+    key: 'APP_LOGO_URL',
+    label: 'Logo Aplikasi',
+    description:
+      'Logo BISA yang dipakai aplikasi mobile & halaman publik. Unggah gambar (PNG/JPG/WebP), disarankan latar transparan.',
+    type: 'image',
+    placeholder: '',
+    optional: true,
+  },
   {
     key: 'SUPPORT_WHATSAPP',
     label: 'WhatsApp Customer Service',

@@ -20,13 +20,13 @@ Enkripsi database **bukan pengganti authorization**. Perlindungan wajib terdiri 
 
 ## Klasifikasi dan kebijakan akses
 
-| Kelas | Contoh | Akses |
-|---|---|---|
-| Publik | nama toko, provinsi/kabupaten, status verifikasi | Semua pengguna |
-| Privat pemilik | alamat tersimpan, telepon profil, NPWP, rekening | Pemilik; admin terotorisasi |
-| Privat transaksi | snapshot alamat order, kontak pickup/delivery | Buyer, supplier order terkait, driver yang ditugaskan; admin |
-| Sangat sensitif | KTP, selfie, NIB/SIUP, tax ID, koordinat live | Pemilik untuk status; dokumen hanya admin reviewer; pihak operasional minimum |
-| Internal | storage key, hash, encryption metadata | Service backend saja |
+| Kelas            | Contoh                                           | Akses                                                                         |
+| ---------------- | ------------------------------------------------ | ----------------------------------------------------------------------------- |
+| Publik           | nama toko, provinsi/kabupaten, status verifikasi | Semua pengguna                                                                |
+| Privat pemilik   | alamat tersimpan, telepon profil, NPWP, rekening | Pemilik; admin terotorisasi                                                   |
+| Privat transaksi | snapshot alamat order, kontak pickup/delivery    | Buyer, supplier order terkait, driver yang ditugaskan; admin                  |
+| Sangat sensitif  | KTP, selfie, NIB/SIUP, tax ID, koordinat live    | Pemilik untuk status; dokumen hanya admin reviewer; pihak operasional minimum |
+| Internal         | storage key, hash, encryption metadata           | Service backend saja                                                          |
 
 ## Temuan yang harus ditutup
 
@@ -54,7 +54,7 @@ Enkripsi database **bukan pengganti authorization**. Perlindungan wajib terdiri 
 Pertahankan `Backend/src/utils/encryption.util.ts` sebagai primitive tunggal:
 
 ```ts
-const sealed = encryptField(plaintext);       // random IV, field biasa
+const sealed = encryptField(plaintext); // random IV, field biasa
 const value = decryptField(sealed);
 
 const sealedJson = encryptJsonValue(snapshot);
@@ -64,11 +64,9 @@ const snapshot = decryptJsonValue(sealedJson);
 Tambahkan wrapper per domain agar context dan fallback migration konsisten:
 
 ```ts
-export const sealAddress = (value: string | null) =>
-  value ? encryptField(value) : value;
+export const sealAddress = (value: string | null) => (value ? encryptField(value) : value);
 
-export const revealAddress = (value: string | null) =>
-  value ? decryptField(value) : value;
+export const revealAddress = (value: string | null) => (value ? decryptField(value) : value);
 ```
 
 Field yang perlu pencarian exact/unique tidak boleh memakai random encryption. Gunakan blind index HMAC terpisah:
@@ -101,10 +99,7 @@ Tambahkan migration hanya untuk perubahan tipe/index. Backfill ciphertext dilaku
 Tambahkan helper yang menghasilkan `403`, bukan `404` yang membocorkan detail berbeda:
 
 ```ts
-export const assertOwnerOrAdmin = (
-  requester: { id: string; role: UserRole },
-  ownerId: string,
-) => {
+export const assertOwnerOrAdmin = (requester: { id: string; role: UserRole }, ownerId: string) => {
   if (requester.id !== ownerId && requester.role !== UserRole.ADMIN) {
     throw new AppError('Akses ditolak.', 403);
   }

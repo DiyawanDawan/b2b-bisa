@@ -132,9 +132,7 @@ app.use(
     crossOriginResourcePolicy: isDev ? { policy: 'cross-origin' } : undefined,
   }),
 );
-app.use(
-  cors(corsOptions),
-);
+app.use(cors(corsOptions));
 
 // Explicit OPTIONS handler — pakai konfigurasi yang sama (bukan default cors()).
 app.options('*', cors(corsOptions));

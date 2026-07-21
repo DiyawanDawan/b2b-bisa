@@ -36,7 +36,7 @@ export const isPublicAssetPath = (path: string): boolean => {
  * Fixes legacy rows that stored full r2.cloudflarestorage.com URLs.
  */
 export const normalizeStorageKey = (value: string | null | undefined): string | null => {
-  if (!value?.trim()) return null;
+  if (typeof value !== 'string' || !value.trim()) return null;
 
   const trimmed = value.trim();
   if (!trimmed.startsWith('http')) {

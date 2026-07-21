@@ -19,6 +19,7 @@ import { seedPolicies } from './14-policies.seeder.js';
 import { seedOrdersAndNegotiations } from './15-orders-negotiations.seeder.js';
 import { seedFaqs } from './16-faqs.seeder.js';
 import { seedStoreBanners } from './17-store-banners.seeder.js';
+import { seedCertificates } from './25-certificates.seeder.js';
 import { seedSummary } from './18-seed-summary.seeder.js';
 import { seedPickupVehicles } from './19-pickup-vehicles.seeder.js';
 import { seedRegionalMarketSales } from './21-regional-market-sales.seeder.js';
@@ -43,6 +44,7 @@ async function main() {
     if (users && users.allSuppliers && users.allSuppliers.length > 0) {
       await seedProducts(prisma, users);
       await seedStoreBanners(prisma, users);
+      await seedCertificates(prisma, users);
       await seedIoT(prisma, users);
     } else {
       logger.warn('Seeding Produk, Banner & IoT dilewati karena Supplier tidak ditemukan.');

@@ -16,6 +16,9 @@ export const ALLOWED_MEDIA_FOLDERS = [
   'verification',
   'product-certificates',
   'disputes',
+  'articles',
+  'branding',
+  'store-certificates',
 ] as const;
 
 export type AllowedMediaFolder = (typeof ALLOWED_MEDIA_FOLDERS)[number];

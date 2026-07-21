@@ -1,13 +1,16 @@
 import { Router } from 'express';
 import * as userController from '#controllers/user.controller';
 import validate from '#middlewares/validate';
-import { requireAuth, optionalAuth } from '#middlewares/authMiddleware';
+import { requireAuth, optionalAuth, requireRole } from '#middlewares/authMiddleware';
 import upload from '#middlewares/upload';
 import * as v from '#validations/auth.validation';
 import * as uv from '#validations/user.validation';
 import * as verificationController from '#controllers/verification.controller';
 import * as storeBannerController from '#controllers/storeBanner.controller';
 import * as sbv from '#validations/storeBanner.validation';
+import * as storeCertificateController from '#controllers/supplier-store-certificate.controller';
+import * as certificateValidation from '#validations/product-certificate.validation';
+import { UserRole } from '#prisma';
 import * as savedPaymentController from '#controllers/saved-payment.controller';
 import { savedPaymentIdParamSchema } from '#validations/saved-payment.validation';
 
@@ -60,6 +63,29 @@ router.delete(
   requireAuth,
   validate(sbv.bannerIdParamSchema, 'all'),
   storeBannerController.deleteStoreBanner,
+);
+
+// ─── Store Certificates (Supplier) ───────────────────────
+
+router.get(
+  '/me/store-certificates',
+  requireAuth,
+  requireRole(UserRole.SUPPLIER, UserRole.ADMIN),
+  storeCertificateController.listMine,
+);
+router.post(
+  '/me/store-certificates',
+  requireAuth,
+  requireRole(UserRole.SUPPLIER, UserRole.ADMIN),
+  validate(certificateValidation.submitStoreCertificateSchema),
+  storeCertificateController.submitMine,
+);
+router.delete(
+  '/me/store-certificates/:certificateId',
+  requireAuth,
+  requireRole(UserRole.SUPPLIER, UserRole.ADMIN),
+  validate(certificateValidation.certificateIdParamSchema, 'params'),
+  storeCertificateController.removeMine,
 );
 
 router.get(

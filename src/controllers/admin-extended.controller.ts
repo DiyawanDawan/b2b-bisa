@@ -250,10 +250,15 @@ export const listChatInbox = catchAsync(async (req: AuthRequest, res: Response) 
 
 export const getChatThread = catchAsync(async (req: AuthRequest, res: Response) => {
   const { page, limit } = req.query as { page: number; limit: number };
-  const data = await extended.getChatThread(req.params.negotiationId, req.user!.id, req.user!.role, {
-    page,
-    limit,
-  });
+  const data = await extended.getChatThread(
+    req.params.negotiationId,
+    req.user!.id,
+    req.user!.role,
+    {
+      page,
+      limit,
+    },
+  );
   return successResponse(res, attachAdminChatThreadMedia(data), 'Riwayat chat berhasil diambil');
 });
 

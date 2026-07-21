@@ -16,10 +16,12 @@ export const submit = catchAsync(async (req: AuthRequest, res: Response) => {
 });
 
 export const listMine = catchAsync(async (req: AuthRequest, res: Response) => {
+  const baseUrl = `${req.protocol}://${req.get('host')}`;
   const result = await certificateService.listOwnerCertificates(
     req.params.productId,
     req.user!.id,
     req.user!.role === UserRole.ADMIN,
+    baseUrl,
   );
   successResponse(res, result, 'Daftar sertifikat produk berhasil diambil.');
 });
@@ -92,6 +94,11 @@ export const listAdmin = catchAsync(async (req: AuthRequest, res: Response) => {
 export const adminDetail = catchAsync(async (req: AuthRequest, res: Response) => {
   const result = await certificateService.getAdminDetail(req.params.certificateId);
   successResponse(res, result, 'Detail sertifikat berhasil diambil.');
+});
+
+export const listAdminByProduct = catchAsync(async (req: AuthRequest, res: Response) => {
+  const result = await certificateService.listAdminByProduct(req.params.id);
+  successResponse(res, result, 'Sertifikat produk berhasil diambil.');
 });
 
 export const review = catchAsync(async (req: AuthRequest, res: Response) => {

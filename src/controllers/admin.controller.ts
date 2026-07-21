@@ -18,6 +18,8 @@ import {
   PlatformFeeType,
   FeeCalculationType,
   CATEGORY_TYPE,
+  ProductMode,
+  BiomassaType,
   NotificationPriority,
   PayoutStatus,
 } from '#prisma';
@@ -215,6 +217,14 @@ export const listAllProducts = catchAsync(async (req: AuthRequest, res: Response
 });
 
 /**
+ * GET /api/v1/admin/products/:id
+ */
+export const getProductDetail = catchAsync(async (req: AuthRequest, res: Response) => {
+  const product = await adminService.getAdminProductDetail(req.params.id);
+  return successResponse(res, product, 'Detail produk berhasil diambil');
+});
+
+/**
  * PATCH /api/v1/admin/products/:id/certify
  */
 export const certifyProduct = catchAsync(async (req: AuthRequest, res: Response) => {
@@ -307,7 +317,7 @@ export const getDisputeDetail = catchAsync(async (req: AuthRequest, res: Respons
  */
 export const getDisputeChatThread = catchAsync(async (req: AuthRequest, res: Response) => {
   const { orderId } = req.params;
-  const { page, limit } = req.query as { page: number; limit: number };
+  const { page, limit } = req.query as unknown as { page: number; limit: number };
   const data = await disputeMediationService.getDisputeChatThread(orderId, {
     page,
     limit,
@@ -433,23 +443,59 @@ export const createFee = catchAsync(async (req: AuthRequest, res: Response) => {
     userId: req.user!.id,
     action: 'CREATE_FEE',
     entity: 'PLATFORM_FEE',
-    entityId: (result as { id: string }).id,
+    entityId: result.id,
     newValue: {
-      name: (result as any).name,
-      amount: (result as any).amount,
-      type: (result as any).type,
-      isActive: (result as any).isActive,
+      name: result.name,
+      amount: Number(result.amount),
+      type: result.type,
+      isActive: result.isActive,
     },
   });
 
+  void invalidateAdminAnalytics();
   successResponse(res, result, 'Pengaturan biaya platform berhasil ditambahkan');
+});
+
+/**
+ * DELETE /api/v1/admin/finance/fees/:id
+ */
+export const deleteFee = catchAsync(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params;
+  const result = await adminService.deletePlatformFee(id);
+
+  await adminService.createAuditLog({
+    userId: req.user!.id,
+    action: 'DELETE_FEE',
+    entity: 'PLATFORM_FEE',
+    entityId: id,
+    oldValue: {
+      name: result.name,
+      amount: Number(result.amount),
+      type: result.type,
+      isActive: result.isActive,
+    },
+  });
+
+  void invalidateAdminAnalytics();
+  successResponse(res, result, 'Pengaturan biaya platform berhasil dihapus');
 });
 
 /**
  * GET /api/v1/admin/products/categories
  */
 export const listCategories = catchAsync(async (req: AuthRequest, res: Response) => {
-  const result = await adminService.listCategories();
+  const { categoryType, productMode, biomassaType, search } = req.query as {
+    categoryType?: CATEGORY_TYPE;
+    productMode?: ProductMode;
+    biomassaType?: BiomassaType;
+    search?: string;
+  };
+  const result = await adminService.listCategories({
+    categoryType,
+    productMode,
+    biomassaType,
+    search,
+  });
   successResponse(res, result, 'Data kategori berhasil diambil');
 });
 
@@ -462,6 +508,8 @@ export const createCategory = catchAsync(async (req: AuthRequest, res: Response)
       name: string;
       description?: string;
       categoryType: CATEGORY_TYPE;
+      productMode?: ProductMode | null;
+      biomassaType?: BiomassaType | null;
     },
   );
 
@@ -488,6 +536,8 @@ export const updateCategory = catchAsync(async (req: AuthRequest, res: Response)
       name?: string;
       description?: string;
       categoryType?: CATEGORY_TYPE;
+      productMode?: ProductMode | null;
+      biomassaType?: BiomassaType | null;
     },
   );
 
