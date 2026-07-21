@@ -6,6 +6,7 @@
     "strict": true,
     "esModuleInterop": true,
     "ignoreDeprecations": "5.0",
+    "types": ["node", "jest"],
     "outDir": "./dist",
     "rootDir": "./",
     "paths": {

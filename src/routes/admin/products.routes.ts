@@ -2,6 +2,8 @@ import { Router } from 'express';
 import * as adminController from '#controllers/admin.controller';
 import validate from '#middlewares/validate';
 import * as adminValidation from '#validations/admin.validation';
+import * as productCertificateController from '#controllers/product-certificate.controller';
+import * as certificateValidation from '#validations/product-certificate.validation';
 
 const router = Router();
 
@@ -36,6 +38,23 @@ router.put(
   '/categories/:id',
   validate(adminValidation.categorySchema),
   adminController.updateCategory,
+);
+
+router.get(
+  '/certificates',
+  validate(certificateValidation.listCertificateQueueSchema, 'query'),
+  productCertificateController.listAdmin,
+);
+router.get(
+  '/certificates/:certificateId',
+  validate(certificateValidation.certificateIdParamSchema, 'params'),
+  productCertificateController.adminDetail,
+);
+router.patch(
+  '/certificates/:certificateId/review',
+  validate(certificateValidation.certificateIdParamSchema, 'params'),
+  validate(certificateValidation.reviewCertificateSchema),
+  productCertificateController.review,
 );
 
 /**

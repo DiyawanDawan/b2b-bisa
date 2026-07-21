@@ -728,6 +728,26 @@ export const getProductById = async (id: string, requestUserId?: string) => {
         },
       },
       images: productImagesSelect,
+      certificates: {
+        where: {
+          status: 'APPROVED',
+          OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+        },
+        select: {
+          id: true,
+          productId: true,
+          title: true,
+          certificateType: true,
+          issuerName: true,
+          certificateNumber: true,
+          issuedAt: true,
+          expiresAt: true,
+          mimeType: true,
+          fileName: true,
+          reviewedAt: true,
+        },
+        orderBy: { reviewedAt: 'desc' },
+      },
       user: {
         select: publicProductUserSelect,
       },
@@ -753,6 +773,7 @@ export const getProductById = async (id: string, requestUserId?: string) => {
   const reserved = Number((product as { reservedStock?: Prisma.Decimal }).reservedStock ?? 0);
   const base = {
     ...product,
+    isCertified: product.certificates.length > 0,
     reservedStock: reserved,
     availableStock: Math.max(0, stock - reserved),
     canBook: product.status === ProductStatus.ACTIVE && stock - reserved > 0,

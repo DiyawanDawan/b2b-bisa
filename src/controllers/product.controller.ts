@@ -380,7 +380,17 @@ export const getProductById = catchAsync(async (req: AuthRequest, res: Response)
     user.phone = undefined;
   }
 
-  return successResponse(res, attachProductMediaUrls(product), 'Detail produk berhasil diambil');
+  const mapped = attachProductMediaUrls(product) as typeof product & {
+    certificates?: Array<Record<string, unknown> & { id: string }>;
+  };
+  if (mapped.certificates) {
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    mapped.certificates = mapped.certificates.map((certificate) => ({
+      ...certificate,
+      documentUrl: `${baseUrl}/api/v1/products/${req.params.id}/certificates/${certificate.id}/document`,
+    }));
+  }
+  return successResponse(res, mapped, 'Detail produk berhasil diambil');
 });
 
 /**

@@ -1,4 +1,5 @@
 import AppError from '#utils/appError';
+import { randomUUID } from 'crypto';
 import {
   MEDIA_CHUNK_SIZE_BYTES,
   MEDIA_MAX_IMAGE_BYTES,
@@ -13,6 +14,7 @@ export const ALLOWED_MEDIA_FOLDERS = [
   'forum',
   'chat',
   'verification',
+  'product-certificates',
   'disputes',
 ] as const;
 
@@ -43,6 +45,15 @@ export const maxBytesForMime = (mimeType: string): number => {
   return MEDIA_MAX_IMAGE_BYTES;
 };
 
+export const assertMimeAllowedForFolder = (folder: AllowedMediaFolder, mimeType: string): void => {
+  if (
+    folder === 'product-certificates' &&
+    !['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'].includes(mimeType)
+  ) {
+    throw new AppError('Sertifikat hanya mendukung PDF, JPG, JPEG, atau PNG.', 400);
+  }
+};
+
 export const computeMultipartPlan = (
   totalBytes: number,
 ): { partSize: number; totalParts: number } => {
@@ -69,10 +80,8 @@ export const buildR2ObjectKey = (
 ): string => {
   const safe = sanitizeUploadFileName(fileName);
   const ext = safe.includes('.') ? safe.split('.').pop() : 'bin';
-  return `${folder}/${userId}/${Date.now()}-${cryptoRandom()}.${ext}`;
+  return `${folder}/${userId}/${Date.now()}-${randomUUID()}.${ext}`;
 };
-
-const cryptoRandom = (): string => Math.random().toString(36).slice(2, 10);
 
 export type CompletedPartRecord = {
   partNumber: number;

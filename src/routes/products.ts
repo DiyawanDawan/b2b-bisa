@@ -2,7 +2,6 @@ import { Router } from 'express';
 import * as productController from '#controllers/product.controller';
 import validate from '#middlewares/validate';
 import { requireAuth, requireRole, optionalAuth } from '#middlewares/authMiddleware';
-import upload from '#middlewares/upload';
 import uploadProduct from '#middlewares/uploadProduct';
 import uploadProductVideo from '#middlewares/uploadProductVideo';
 import * as v from '#validations/product.validation';
@@ -11,6 +10,8 @@ import * as productBulkController from '#controllers/product-bulk.controller';
 import * as pq from '#validations/product-question.validation';
 import { UserRole } from '#prisma';
 import uploadCsv from '#middlewares/uploadCsv';
+import * as productCertificateController from '#controllers/product-certificate.controller';
+import * as certificateValidation from '#validations/product-certificate.validation';
 
 const router = Router();
 
@@ -91,6 +92,40 @@ router.post(
   requireRole(UserRole.BUYER, UserRole.ADMIN),
   validate(pq.askProductQuestionSchema),
   productQuestionController.askQuestion,
+);
+router.get(
+  '/:productId/certificates',
+  optionalAuth,
+  validate(certificateValidation.productIdParamSchema, 'params'),
+  productCertificateController.listPublicProduct,
+);
+router.get(
+  '/:productId/certificates/:certificateId/document',
+  optionalAuth,
+  validate(certificateValidation.certificateParamSchema, 'params'),
+  productCertificateController.openPublicDocument,
+);
+router.get(
+  '/:productId/certificates/me',
+  requireAuth,
+  requireRole(UserRole.SUPPLIER, UserRole.ADMIN),
+  validate(certificateValidation.productIdParamSchema, 'params'),
+  productCertificateController.listMine,
+);
+router.post(
+  '/:productId/certificates',
+  requireAuth,
+  requireRole(UserRole.SUPPLIER, UserRole.ADMIN),
+  validate(certificateValidation.productIdParamSchema, 'params'),
+  validate(certificateValidation.submitCertificateSchema),
+  productCertificateController.submit,
+);
+router.delete(
+  '/:productId/certificates/:certificateId',
+  requireAuth,
+  requireRole(UserRole.SUPPLIER, UserRole.ADMIN),
+  validate(certificateValidation.certificateParamSchema, 'params'),
+  productCertificateController.removeMine,
 );
 router.get('/:id', optionalAuth, productController.getProductById);
 

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import * as userController from '#controllers/user.controller';
 import * as supplierTradeController from '#controllers/supplier-trade.controller';
 import { optionalAuth } from '#middlewares/authMiddleware';
+import * as productCertificateController from '#controllers/product-certificate.controller';
 
 const router = Router();
 
@@ -20,6 +21,7 @@ router.get('/', optionalAuth, userController.listSuppliers);
  */
 router.get('/:id/trade-stats', optionalAuth, supplierTradeController.getTradeStats);
 router.get('/:id/products', optionalAuth, userController.getSupplierProducts);
+router.get('/:id/certificates', optionalAuth, productCertificateController.listPublicSupplier);
 
 /**
  * @route   GET /api/v1/suppliers/:id/verification-status

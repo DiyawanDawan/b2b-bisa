@@ -15,6 +15,7 @@ import * as storageService from '#services/storage.service';
 import { MEDIA_UPLOAD_PROXY_MODE, MEDIA_UPLOAD_SESSION_TTL_HOURS } from '#utils/env.util';
 import {
   assertAllowedFolder,
+  assertMimeAllowedForFolder,
   buildR2ObjectKey,
   computeMultipartPlan,
   maxBytesForMime,
@@ -73,6 +74,7 @@ export const initUpload = async (params: {
   totalBytes: number;
 }) => {
   const folder = assertAllowedFolder(params.folder);
+  assertMimeAllowedForFolder(folder, params.mimeType);
   const maxBytes = maxBytesForMime(params.mimeType);
   if (params.totalBytes > maxBytes) {
     throw new AppError(`Ukuran file melebihi batas (${maxBytes} bytes).`, 400);

@@ -57,6 +57,14 @@ export const VerificationStatus = {
   REJECTED: 'REJECTED',
 } as const;
 
+export const ProductCertificateStatus = {
+  PENDING: 'PENDING',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
+} as const;
+export type ProductCertificateStatus =
+  (typeof ProductCertificateStatus)[keyof typeof ProductCertificateStatus];
+
 export const TransactionStatus = {
   PENDING: 'PENDING',
   ESCROW_HELD: 'ESCROW_HELD',
@@ -100,6 +108,15 @@ export const DisputeStatus = {
 
 export const NotificationPriority = {
   HIGH: 'HIGH',
+  MEDIUM: 'MEDIUM',
+} as const;
+
+export const MediaUploadSessionStatus = {
+  COMPLETED: 'COMPLETED',
+} as const;
+
+export const ProductStatus = {
+  ACTIVE: 'ACTIVE',
 } as const;
 
 export const TokenType = {
@@ -116,6 +133,7 @@ export const UserRole = {
 
 export const NotificationType = {
   DISPUTE: 'DISPUTE',
+  PRODUCT_CERTIFICATE: 'PRODUCT_CERTIFICATE',
 } as const;
 
 export type VerificationStatus = (typeof VerificationStatus)[keyof typeof VerificationStatus];
