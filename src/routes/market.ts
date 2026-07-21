@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import * as marketController from '#controllers/market.controller';
-import { optionalAuth, requireAuth, requireTierPro } from '#middlewares/authMiddleware';
+import { optionalAuth, requireAuth, requireRole } from '#middlewares/authMiddleware';
+import { UserRole } from '#prisma';
 
 import validate from '#middlewares/validate';
 import * as marketValidation from '#validations/market.validation';
@@ -16,13 +17,19 @@ router.get(
 router.get(
   '/prediction/:id',
   requireAuth,
-  requireTierPro,
   validate(marketValidation.getPredictionSchema, 'params'),
   marketController.getPrediction,
 );
 
-router.get('/supply-demand', requireAuth, requireTierPro, marketController.getSupplyDemand);
+// Analitik pasar & prediksi AI tersedia untuk semua user login.
+// Langganan PRO hanya untuk IoT (lihat routes/iot.ts).
+router.get('/supply-demand', requireAuth, marketController.getSupplyDemand);
 
-router.post('/sync', requireAuth, requireTierPro, marketController.syncMarketData);
+router.post(
+  '/sync',
+  requireAuth,
+  requireRole(UserRole.ADMIN),
+  marketController.syncMarketData,
+);
 
 export default router;
