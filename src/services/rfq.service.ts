@@ -289,6 +289,27 @@ export const listSupplierRfqInbox = async (supplierId: string, page = 1, limit =
   return { items, total, page, limit };
 };
 
+export const getSupplierRfqDetail = async (supplierId: string, rfqId: string) => {
+  const rfq = await prisma.rfq.findUnique({
+    where: { id: rfqId },
+    select: rfqSelect,
+  });
+  if (!rfq || rfq.status !== RfqStatus.OPEN) {
+    throw new AppError('RFQ tidak ditemukan atau sudah ditutup.', 404);
+  }
+
+  const matchingProduct = await pickSupplierProductForRfq(supplierId, rfq);
+  if (!matchingProduct) {
+    throw new AppError('RFQ ini tidak cocok dengan katalog aktif Anda.', 403);
+  }
+
+  return {
+    ...rfq,
+    responses: rfq.responses.filter((response) => response.supplierId === supplierId),
+    matchingProduct,
+  };
+};
+
 const pickSupplierProductForRfq = async (
   supplierId: string,
   rfq: { productMode: ProductMode; biomassaType: string | null; categoryId: string | null },

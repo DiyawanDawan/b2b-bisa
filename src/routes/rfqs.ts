@@ -22,6 +22,13 @@ router.get(
   rfqController.listInbox,
 );
 router.get(
+  '/inbox/:id',
+  requireAuth,
+  requireRole(UserRole.SUPPLIER, UserRole.ADMIN),
+  validate(v.rfqIdParamSchema, 'params'),
+  rfqController.getInboxDetail,
+);
+router.get(
   '/:id',
   requireAuth,
   requireRole(UserRole.BUYER, UserRole.ADMIN),

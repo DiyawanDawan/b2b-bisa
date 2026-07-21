@@ -23,6 +23,11 @@ export const listInbox = catchAsync(async (req: AuthRequest, res: Response) => {
   paginatedResponse(res, result.items, result.total, page, limit);
 });
 
+export const getInboxDetail = catchAsync(async (req: AuthRequest, res: Response) => {
+  const result = await rfqService.getSupplierRfqDetail(req.user!.id, req.params.id);
+  successResponse(res, result, 'Detail RFQ masuk berhasil diambil.');
+});
+
 export const respond = catchAsync(async (req: AuthRequest, res: Response) => {
   const result = await rfqService.respondToRfq(req.user!.id, req.params.id, req.body.message);
   successResponse(res, result, 'Respons RFQ berhasil — ruang chat dibuka.');
