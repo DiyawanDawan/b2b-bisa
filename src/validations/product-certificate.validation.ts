@@ -28,8 +28,6 @@ export const listPublicSupplierCertificatesSchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(20),
 });
 
-export const submitStoreCertificateSchema = submitCertificateSchema;
-
 export const submitCertificateSchema = z
   .object({
     title: z.string().trim().min(2).max(120),
@@ -44,6 +42,8 @@ export const submitCertificateSchema = z
     path: ['expiresAt'],
     message: 'Tanggal kedaluwarsa harus setelah tanggal terbit.',
   });
+
+export const submitStoreCertificateSchema = submitCertificateSchema;
 
 export const listCertificateQueueSchema = z.object({
   status: z.nativeEnum(ProductCertificateStatus).optional(),
