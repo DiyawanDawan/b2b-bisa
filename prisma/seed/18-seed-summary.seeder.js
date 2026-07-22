@@ -10,6 +10,9 @@ export async function seedSummary(prisma) {
     users,
     suppliers,
     products,
+    organicPreHarvest,
+    harvestLots,
+    bookings,
     productSpecs,
     storeBanners,
     iotDevices,
@@ -19,10 +22,20 @@ export async function seedSummary(prisma) {
     faqs,
     categories,
     collections,
+    payoutPending,
+    productQuestions,
+    rfqs,
+    supportTickets,
+    platformSettings,
   ] = await Promise.all([
     prisma.user.count(),
     prisma.user.count({ where: { role: 'SUPPLIER' } }),
     prisma.product.count(),
+    prisma.product.count({
+      where: { productMode: 'ORGANIC_PRODUCE', availabilityType: 'PRE_HARVEST' },
+    }),
+    prisma.productHarvestLot.count(),
+    prisma.booking.count(),
     prisma.productSpec.count(),
     prisma.storeBanner.count(),
     prisma.iotDevice.count(),
@@ -32,12 +45,20 @@ export async function seedSummary(prisma) {
     prisma.faq.count(),
     prisma.category.count(),
     prisma.productCollection.count(),
+    prisma.transaction.count({ where: { type: 'PAYOUT', status: 'PENDING' } }),
+    prisma.productQuestion.count(),
+    prisma.rfq.count(),
+    prisma.supportTicket.count({ where: { subject: { startsWith: '[SEED]' } } }),
+    prisma.platformSetting.count(),
   ]);
 
   const summary = {
     users,
     suppliers,
     products,
+    organicPreHarvest,
+    harvestLots,
+    bookings,
     productSpecs,
     storeBanners,
     iotDevices,
@@ -47,6 +68,11 @@ export async function seedSummary(prisma) {
     faqs,
     categories,
     collections,
+    payoutPending,
+    productQuestions,
+    rfqs,
+    supportTickets,
+    platformSettings,
   };
 
   logger.info('📊 Seed summary:', summary);
@@ -54,10 +80,14 @@ export async function seedSummary(prisma) {
   const warnings = [];
   if (suppliers === 0) warnings.push('Tidak ada supplier');
   if (products === 0) warnings.push('Tidak ada produk');
+  if (organicPreHarvest === 0) warnings.push('Tidak ada produk organik PRE_HARVEST');
+  if (harvestLots === 0) warnings.push('Tidak ada harvest lots');
+  if (bookings === 0) warnings.push('Tidak ada booking');
   if (productSpecs === 0) warnings.push('Tidak ada product_specs');
   if (storeBanners === 0) warnings.push('Tidak ada store_banners');
   if (iotDevices === 0) warnings.push('Tidak ada perangkat IoT');
   if (faqs === 0) warnings.push('Tidak ada FAQ');
+  if (platformSettings === 0) warnings.push('Tidak ada platform settings');
 
   const suppliersMissingActiveBanner = await prisma.user.count({
     where: {

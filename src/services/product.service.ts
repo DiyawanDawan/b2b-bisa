@@ -205,6 +205,11 @@ type CreateProductInput = {
   fertilizerType?: string;
   isChemicalFree?: boolean;
   cropType?: string;
+  availabilityType?: string;
+  nextHarvestDate?: Date | string;
+  nextHarvestQtyTon?: number;
+  shelfLifeDays?: number;
+  landAreaHa?: number;
   specs?: ProductSpecInput[];
   // Tech Specs
   moistureContent?: number;
@@ -294,6 +299,8 @@ export const createProduct = async (
     bagDimension: mappedFromSpecs.bagDimension ?? bagDimension,
     cropType: mappedFromSpecs.cropType ?? productData.cropType,
     fertilizerType: mappedFromSpecs.fertilizerType ?? productData.fertilizerType,
+    shelfLifeDays: mappedFromSpecs.shelfLifeDays ?? productData.shelfLifeDays,
+    landAreaHa: mappedFromSpecs.landAreaHa ?? productData.landAreaHa,
     isChemicalFree:
       mappedFromSpecs.isChemicalFree !== undefined
         ? mappedFromSpecs.isChemicalFree
@@ -313,6 +320,21 @@ export const createProduct = async (
       cropType: merged.cropType as string | undefined,
       fertilizerType: merged.fertilizerType as string | undefined,
       isChemicalFree: isChemicalFreeVal,
+      ...(merged.shelfLifeDays != null && {
+        shelfLifeDays: Number(merged.shelfLifeDays),
+      }),
+      ...(merged.landAreaHa != null && {
+        landAreaHa: new Prisma.Decimal(merged.landAreaHa as number),
+      }),
+      ...(productData.availabilityType && {
+        availabilityType: productData.availabilityType as never,
+      }),
+      ...(productData.nextHarvestDate && {
+        nextHarvestDate: new Date(productData.nextHarvestDate),
+      }),
+      ...(productData.nextHarvestQtyTon != null && {
+        nextHarvestQtyTon: new Prisma.Decimal(productData.nextHarvestQtyTon),
+      }),
       pricePerUnit: new Prisma.Decimal(pricePerUnit),
       ...(originalPrice !== undefined && { originalPrice: new Prisma.Decimal(originalPrice) }),
       stock: new Prisma.Decimal(stock),
@@ -380,6 +402,8 @@ export const createProduct = async (
       availabilityType: true,
       nextHarvestDate: true,
       nextHarvestQtyTon: true,
+      shelfLifeDays: true,
+      landAreaHa: true,
       specs: productSpecsSelect,
       harvestLots: {
         orderBy: { expectedHarvestDate: 'asc' },
@@ -687,6 +711,8 @@ export const getProductById = async (id: string, requestUserId?: string) => {
       availabilityType: true,
       nextHarvestDate: true,
       nextHarvestQtyTon: true,
+      shelfLifeDays: true,
+      landAreaHa: true,
       specs: productSpecsSelect,
       isCertified: true,
       isIotMonitored: true,
@@ -954,6 +980,8 @@ export const duplicateProduct = async (id: string, userId: string) => {
       availabilityType: true,
       nextHarvestDate: true,
       nextHarvestQtyTon: true,
+      shelfLifeDays: true,
+      landAreaHa: true,
       specs: productSpecsSelect,
       isCertified: true,
       isIotMonitored: true,
@@ -1145,6 +1173,28 @@ export const updateProduct = async (
         }),
         ...(mappedFromSpecs.fertilizerType !== undefined && {
           fertilizerType: mappedFromSpecs.fertilizerType as string,
+        }),
+        ...(mappedFromSpecs.shelfLifeDays !== undefined && {
+          shelfLifeDays: Number(mappedFromSpecs.shelfLifeDays),
+        }),
+        ...(mappedFromSpecs.landAreaHa !== undefined && {
+          landAreaHa: new Prisma.Decimal(mappedFromSpecs.landAreaHa as number),
+        }),
+        ...(data.shelfLifeDays !== undefined && {
+          shelfLifeDays: data.shelfLifeDays,
+        }),
+        ...(data.landAreaHa !== undefined && {
+          landAreaHa: new Prisma.Decimal(data.landAreaHa),
+        }),
+        ...(data.availabilityType !== undefined && {
+          availabilityType: data.availabilityType as never,
+        }),
+        ...(data.nextHarvestDate !== undefined && {
+          nextHarvestDate: data.nextHarvestDate ? new Date(data.nextHarvestDate) : null,
+        }),
+        ...(data.nextHarvestQtyTon !== undefined && {
+          nextHarvestQtyTon:
+            data.nextHarvestQtyTon == null ? null : new Prisma.Decimal(data.nextHarvestQtyTon),
         }),
         ...(isChemicalFreeVal !== undefined && { isChemicalFree: isChemicalFreeVal }),
         ...(pricePerUnit !== undefined && { pricePerUnit: new Prisma.Decimal(pricePerUnit) }),

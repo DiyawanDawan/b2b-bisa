@@ -41,6 +41,21 @@ const REVIEW_TEMPLATES = [
   },
 ];
 
+const ORGANIC_REVIEW_TEMPLATES = [
+  {
+    rating: 5,
+    comment:
+      'Hasil tani organik segar, ketahanan sesuai info, packing dingin rapi. Cocok untuk kebutuhan industri makanan.',
+    reply: 'Terima kasih — kami jaga cold chain dan panen sesuai jadwal booking.',
+  },
+  {
+    rating: 4,
+    comment:
+      'Pre-harvest booking lancar, kualitas bayam organik bagus. Estimasi panen sesuai lot yang dipilih.',
+    reply: 'Senang booking pre-harvest Anda berjalan mulus. Siap lot berikutnya.',
+  },
+];
+
 function buildTrackingSnapshot({ awb, courier, deliveredAt, photos }) {
   return {
     awb,
@@ -106,7 +121,13 @@ export async function seedReviewsAndDeliveryProofs(prisma) {
   const completedOrders = await prisma.order.findMany({
     where: { status: 'COMPLETED' },
     include: {
-      items: { take: 1, select: { productId: true } },
+      items: {
+        take: 1,
+        select: {
+          productId: true,
+          product: { select: { productMode: true } },
+        },
+      },
       transaction: { select: { id: true } },
       buyer: { select: { fullName: true } },
       seller: { select: { fullName: true } },
@@ -143,7 +164,9 @@ export async function seedReviewsAndDeliveryProofs(prisma) {
     const productId = order.items[0]?.productId;
     if (!productId) continue;
 
-    const template = REVIEW_TEMPLATES[i % REVIEW_TEMPLATES.length];
+    const isOrganic = order.items[0]?.product?.productMode === 'ORGANIC_PRODUCE';
+    const templatePool = isOrganic ? ORGANIC_REVIEW_TEMPLATES : REVIEW_TEMPLATES;
+    const template = templatePool[i % templatePool.length];
     const deliveredAt = new Date(Date.now() - (i + 2) * 86400000);
     const awb = `BISA${String(100000 + i).slice(-6)}POD`;
     const courier = i % 2 === 0 ? 'jne' : 'sicepat';

@@ -711,6 +711,10 @@ model Product {
   availabilityType ProductAvailabilityType @default(READY) @map("availability_type")
   nextHarvestDate DateTime?  @map("next_harvest_date")
   nextHarvestQtyTon Decimal? @db.Decimal(15, 2) @map("next_harvest_qty_ton")
+  /// Ketahanan produk setelah panen/siap kirim (hari). ETA kurir tidak boleh melebihi ini.
+  shelfLifeDays   Int?       @map("shelf_life_days")
+  /// Luas lahan budidaya (hektar) — estimasi kapasitas / kesiapan panen.
+  landAreaHa      Decimal?   @db.Decimal(15, 4) @map("land_area_ha")
 
   province      String?                      @map("province") // Location for GIS matching
   regency       String?                      @map("regency")
@@ -2173,6 +2177,10 @@ model PlatformFeeSetting {
   type         FeeCalculationType @default(PERCENTAGE) @map("type")
   amount       Decimal            @db.Decimal(15, 2) @map("amount") // Nominal konstan (5000) atau persentase (2.5)
   isActive     Boolean            @default(true) @map("is_active")
+  /// AUTO = default per tipe; GENERAL = selalu di checkout (untuk fee checkout); SPECIFIC = hanya scope terpilih
+  applyMode    String             @default("AUTO") @map("apply_mode")
+  /// JSON string[]: CHECKOUT | WITHDRAWAL | BIOMASS | CARBON | SUBSCRIPTION
+  applyScopes  Json?              @map("apply_scopes")
   createdAt    DateTime           @default(now()) @map("created_at")
   updatedAt    DateTime           @updatedAt @map("updated_at")
 

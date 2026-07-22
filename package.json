@@ -15,6 +15,8 @@
     "seed:forum-groups": "tsx prisma/seed/run-forum-groups.js",
     "seed:forum-group-posts": "tsx prisma/seed/run-forum-group-posts.js",
     "seed:reviews": "tsx prisma/seed/run-reviews-delivery.js",
+    "seed:organic-harvest": "tsx prisma/seed/run-organic-harvest.js",
+    "seed:bookings": "tsx prisma/seed/run-bookings.js",
     "seed:partnerships": "tsx prisma/seed/run-partnerships.js",
     "seed:bisa-express": "tsx scripts/seed-bisa-express.ts",
     "test:bisa-express": "cross-env NODE_ENV=test tsx scripts/test-bisa-express-e2e.ts",

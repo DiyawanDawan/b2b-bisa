@@ -169,6 +169,12 @@ export const createForumPost = catchAsync(async (req: AuthRequest, res: Response
   return successResponse(res, post, 'Posting forum berhasil dibuat');
 });
 
+export const createForumComment = catchAsync(async (req: AuthRequest, res: Response) => {
+  const body = req.body as { content: string; parentId?: string };
+  const comment = await extended.createForumCommentAdmin(req.user!.id, req.params.id, body);
+  return successResponse(res, comment, 'Komentar admin berhasil ditambahkan', 201);
+});
+
 export const listPolicies = catchAsync(async (_req: AuthRequest, res: Response) => {
   const policies = await extended.listPoliciesAdmin();
   return successResponse(res, policies, 'Daftar kebijakan berhasil diambil');

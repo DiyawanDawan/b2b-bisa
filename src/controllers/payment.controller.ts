@@ -98,3 +98,16 @@ export const paymentChannels = catchAsync(async (_req: Request, res: Response) =
   const channels = await paymentService.getAvailableChannels();
   successResponse(res, channels, 'Daftar Metode Pembayaran yang tersedia.');
 });
+
+/**
+ * [PUBLIC] Daftar biaya platform aktif (untuk transparansi mobile).
+ */
+export const listPlatformFeesPublic = catchAsync(async (_req: Request, res: Response) => {
+  const { listActivePlatformFees } = await import('#utils/platformFee.util');
+  const fees = await listActivePlatformFees();
+  successResponse(
+    res,
+    fees.filter((f) => f.isActive),
+    'Daftar biaya platform aktif.',
+  );
+});

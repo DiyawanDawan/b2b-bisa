@@ -26,6 +26,7 @@ import { activeApprovedCertificateWhere } from '#utils/certificate.util';
 import { invalidateCategories } from '#utils/cache.util';
 import { decryptField, isEncryptedPayload } from '#utils/encryption.util';
 import { formatPayoutAccountForAdmin } from '#utils/payoutAccount.util';
+import { resolveFeeScopes } from '#utils/platformFee.util';
 import { maskNPWP } from '#utils/sensitiveData.util';
 import { getUserReadiness } from '#utils/readiness.util';
 import {
@@ -1531,9 +1532,15 @@ export const moderateProductStatus = async (
  * List all Platform Fee settings
  */
 export const listPlatformFees = async () => {
-  return prisma.platformFeeSetting.findMany({
+  const rows = await prisma.platformFeeSetting.findMany({
     orderBy: { name: 'asc' },
   });
+  return rows.map((row) => ({
+    ...row,
+    amount: Number(row.amount),
+    applyMode: row.applyMode ?? 'AUTO',
+    applyScopes: resolveFeeScopes(row),
+  }));
 };
 
 /**
@@ -1546,6 +1553,8 @@ export const updatePlatformFee = async (
     type?: FeeCalculationType;
     description?: string | null;
     isActive?: boolean;
+    applyMode?: string;
+    applyScopes?: string[] | null;
   },
 ) => {
   const existing = await prisma.platformFeeSetting.findUnique({ where: { id } });
@@ -1553,7 +1562,14 @@ export const updatePlatformFee = async (
 
   return prisma.platformFeeSetting.update({
     where: { id },
-    data,
+    data: {
+      ...(data.amount !== undefined ? { amount: data.amount } : {}),
+      ...(data.type !== undefined ? { type: data.type } : {}),
+      ...(data.description !== undefined ? { description: data.description } : {}),
+      ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
+      ...(data.applyMode !== undefined ? { applyMode: data.applyMode } : {}),
+      ...(data.applyScopes !== undefined ? { applyScopes: data.applyScopes } : {}),
+    },
   });
 };
 
@@ -1566,9 +1582,19 @@ export const createPlatformFee = async (data: {
   type: FeeCalculationType;
   description?: string;
   isActive?: boolean;
+  applyMode?: string;
+  applyScopes?: string[];
 }) => {
   return prisma.platformFeeSetting.create({
-    data,
+    data: {
+      name: data.name,
+      amount: data.amount,
+      type: data.type,
+      description: data.description,
+      isActive: data.isActive ?? true,
+      applyMode: data.applyMode ?? 'AUTO',
+      applyScopes: data.applyScopes ?? undefined,
+    },
   });
 };
 

@@ -17,5 +17,6 @@ router.post('/session-webhook', webhookLimiter, paymentController.xenditPaymentS
 // [PUBLIC] PAYMENT METHODS CATALOG
 // ==========================================
 router.get('/channels', publicApiLimiter, paymentController.paymentChannels);
+router.get('/fees', publicApiLimiter, paymentController.listPlatformFeesPublic);
 
 export default router;

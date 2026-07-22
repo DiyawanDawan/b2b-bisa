@@ -15,7 +15,11 @@ const PRODUCT_CERT_TYPES = [
 ];
 
 const STORE_CERT_TYPES = [
-  { title: 'Sertifikat Toko Supplier Terverifikasi', type: 'TOKO_TERVERIFIKASI', issuer: 'BISA Agri' },
+  {
+    title: 'Sertifikat Toko Supplier Terverifikasi',
+    type: 'TOKO_TERVERIFIKASI',
+    issuer: 'BISA Agri',
+  },
   { title: 'Izin Usaha Pertanian', type: 'IZIN_USAHA', issuer: 'Dinas Pertanian' },
   { title: 'Sertifikat Good Agricultural Practices', type: 'GAP', issuer: 'Gap Indonesia' },
 ];

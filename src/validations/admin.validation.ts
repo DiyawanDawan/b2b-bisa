@@ -15,6 +15,7 @@ import {
   NegotiationStatus,
   ProductMode,
   BiomassaType,
+  PaymentMethod,
 } from '#prisma';
 
 /**
@@ -189,20 +190,113 @@ export const feeSchema = z.object({
   type: z.nativeEnum(FeeCalculationType, { message: 'Tipe fee tidak valid' }),
   description: z.string().optional(),
   isActive: z.boolean().optional(),
+  applyMode: z.enum(['AUTO', 'GENERAL', 'SPECIFIC']).optional(),
+  applyScopes: z
+    .array(z.enum(['CHECKOUT', 'WITHDRAWAL', 'BIOMASS', 'CARBON', 'SUBSCRIPTION']))
+    .optional(),
 });
 
-export const updateFeeSchema = z.object({
-  amount: z.number().min(0).optional(),
-  type: z.nativeEnum(FeeCalculationType, { message: 'Tipe fee tidak valid' }).optional(),
-  description: z.string().nullable().optional(),
-  isActive: z.boolean().optional(),
-}).refine((data) => Object.keys(data).length > 0, {
-  message: 'Minimal satu field biaya harus diperbarui',
-});
+export const updateFeeSchema = z
+  .object({
+    amount: z.number().min(0).optional(),
+    type: z.nativeEnum(FeeCalculationType, { message: 'Tipe fee tidak valid' }).optional(),
+    description: z.string().nullable().optional(),
+    isActive: z.boolean().optional(),
+    applyMode: z.enum(['AUTO', 'GENERAL', 'SPECIFIC']).optional(),
+    applyScopes: z
+      .array(z.enum(['CHECKOUT', 'WITHDRAWAL', 'BIOMASS', 'CARBON', 'SUBSCRIPTION']))
+      .nullable()
+      .optional(),
+  })
+  .refine((data) => Object.keys(data).length > 0, {
+    message: 'Minimal satu field biaya harus diperbarui',
+  });
 
 export const feeIdParamSchema = z.object({
   id: z.string().uuid('ID biaya tidak valid'),
 });
+
+export const financeChannelIdParamSchema = z.object({
+  id: z.string().uuid('ID tidak valid'),
+});
+
+export const listPayoutBanksAdminSchema = z.object({
+  search: z.string().optional(),
+  isActive: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === 'true')),
+});
+
+export const createPayoutBankSchema = z.object({
+  name: z.string().trim().min(2, 'Nama bank minimal 2 karakter').max(120),
+  code: z.string().trim().min(2, 'Kode bank minimal 2 karakter').max(40),
+  channelType: z.string().trim().max(40).optional(),
+  country: z.string().trim().max(5).optional(),
+  currency: z.string().trim().max(5).optional(),
+  minAmount: z.number().min(0).optional(),
+  maxAmount: z.number().min(0).optional(),
+  flightTime: z.string().trim().max(80).optional(),
+  logoUrl: z.string().max(2000).optional(),
+  isActive: z.boolean().optional(),
+});
+
+export const updatePayoutBankSchema = z
+  .object({
+    name: z.string().trim().min(2).max(120).optional(),
+    code: z.string().trim().min(2).max(40).optional(),
+    channelType: z.string().trim().max(40).nullable().optional(),
+    country: z.string().trim().max(5).nullable().optional(),
+    currency: z.string().trim().max(5).nullable().optional(),
+    minAmount: z.number().min(0).nullable().optional(),
+    maxAmount: z.number().min(0).nullable().optional(),
+    flightTime: z.string().trim().max(80).nullable().optional(),
+    logoUrl: z.string().max(2000).nullable().optional(),
+    isActive: z.boolean().optional(),
+  })
+  .refine((data) => Object.keys(data).length > 0, {
+    message: 'Minimal satu field harus diperbarui',
+  });
+
+export const listPaymentChannelsAdminSchema = z.object({
+  search: z.string().optional(),
+  isActive: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === 'true')),
+});
+
+export const createPaymentChannelSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  code: z.string().trim().min(2).max(40),
+  group: z.nativeEnum(PaymentMethod).optional(),
+  country: z.string().trim().max(5).optional(),
+  currency: z.string().trim().max(5).optional(),
+  minAmount: z.number().min(0).optional(),
+  maxAmount: z.number().min(0).optional(),
+  settlementTime: z.string().trim().max(80).optional(),
+  xenditType: z.string().trim().max(80).optional(),
+  logoUrl: z.string().max(2000).optional(),
+  isActive: z.boolean().optional(),
+});
+
+export const updatePaymentChannelSchema = z
+  .object({
+    name: z.string().trim().min(2).max(120).optional(),
+    code: z.string().trim().min(2).max(40).optional(),
+    group: z.nativeEnum(PaymentMethod).nullable().optional(),
+    country: z.string().trim().max(5).nullable().optional(),
+    currency: z.string().trim().max(5).nullable().optional(),
+    minAmount: z.number().min(0).nullable().optional(),
+    maxAmount: z.number().min(0).nullable().optional(),
+    settlementTime: z.string().trim().max(80).nullable().optional(),
+    xenditType: z.string().trim().max(80).nullable().optional(),
+    logoUrl: z.string().max(2000).nullable().optional(),
+    isActive: z.boolean().optional(),
+  })
+  .refine((data) => Object.keys(data).length > 0, {
+    message: 'Minimal satu field harus diperbarui',
+  });
 
 /**
  * Order & Dispute Schemas
@@ -295,6 +389,11 @@ export const adminForumUpdatePostSchema = z.object({
   status: z.enum(['PUBLISHED', 'DRAFT', 'ARCHIVED']).optional(),
   categoryId: z.string().uuid().nullable().optional(),
   tags: z.array(z.string().min(1).max(40)).max(10).optional(),
+});
+
+export const adminForumCreateCommentSchema = z.object({
+  content: z.string().trim().min(1, 'Komentar wajib diisi').max(1000, 'Komentar terlalu panjang'),
+  parentId: z.string().uuid('Parent ID tidak valid').optional(),
 });
 
 export const updatePolicySchema = z.object({

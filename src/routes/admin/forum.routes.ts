@@ -2,6 +2,7 @@ import { Router } from 'express';
 import * as extendedController from '#controllers/admin-extended.controller';
 import validate from '#middlewares/validate';
 import {
+  adminForumCreateCommentSchema,
   adminForumCreatePostSchema,
   adminForumUpdatePostSchema,
   listForumAdminSchema,
@@ -23,6 +24,12 @@ router.patch(
   '/posts/:id',
   validate(adminForumUpdatePostSchema),
   extendedController.moderateForumPost,
+);
+
+router.post(
+  '/posts/:id/comments',
+  validate(adminForumCreateCommentSchema),
+  extendedController.createForumComment,
 );
 
 export default router;

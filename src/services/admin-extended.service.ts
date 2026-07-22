@@ -502,12 +502,10 @@ const mapAdminForumPost = <
 ) => {
   const withMedia = attachForumMediaUrls({
     ...post,
-    mediaUrls: Array.isArray(post.mediaUrls) ? post.mediaUrls : post.mediaUrls ?? null,
+    mediaUrls: Array.isArray(post.mediaUrls) ? post.mediaUrls : (post.mediaUrls ?? null),
   } as T & { mediaUrls?: unknown[] | null });
 
-  const user = withMedia.user
-    ? attachUserMediaUrls({ ...withMedia.user })
-    : withMedia.user;
+  const user = withMedia.user ? attachUserMediaUrls({ ...withMedia.user }) : withMedia.user;
 
   const group = withMedia.group
     ? {
@@ -595,6 +593,25 @@ export const listForumGroupsAdmin = async (params: {
   };
 };
 
+const adminForumCommentSelect = {
+  id: true,
+  content: true,
+  mediaUrls: true,
+  upvotes: true,
+  downvotes: true,
+  parentId: true,
+  createdAt: true,
+  user: {
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+      role: true,
+      avatarUrl: true,
+    },
+  },
+} as const;
+
 export const getForumPostAdmin = async (postId: string) => {
   const post = await prisma.forumPost.findUnique({
     where: { id: postId },
@@ -634,11 +651,34 @@ export const getForumPostAdmin = async (postId: string) => {
           memberCount: true,
         },
       },
+      comments: {
+        where: { parentId: null },
+        select: {
+          ...adminForumCommentSelect,
+          replies: {
+            select: adminForumCommentSelect,
+            orderBy: { createdAt: 'asc' as const },
+          },
+        },
+        orderBy: { createdAt: 'asc' },
+      },
       _count: { select: { comments: true } },
     },
   });
   if (!post) throw new AppError('Posting forum tidak ditemukan', 404);
   return mapAdminForumPost(post);
+};
+
+export const createForumCommentAdmin = async (
+  adminId: string,
+  postId: string,
+  data: { content: string; parentId?: string },
+) => {
+  const comment = await forumService.createComment(adminId, postId, data.content, data.parentId);
+  return {
+    ...comment,
+    user: comment.user ? attachUserMediaUrls({ ...comment.user }) : comment.user,
+  };
 };
 
 export const createForumPostAdmin = async (

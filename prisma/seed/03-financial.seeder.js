@@ -19,51 +19,81 @@ export async function seedFinancial(prisma) {
       description: 'Platform fee per sales transaction',
       type: 'PERCENTAGE',
       amount: 3.0,
+      applyMode: 'GENERAL',
+      applyScopes: ['CHECKOUT'],
     },
     {
       name: 'WITHDRAWAL_FEE',
       description: 'Biaya admin transfer antar bank',
       type: 'FIXED',
       amount: 4500,
+      applyMode: 'SPECIFIC',
+      applyScopes: ['WITHDRAWAL'],
     },
-    { name: 'ADMIN_FEE', description: 'Biaya administrasi sistem', type: 'FIXED', amount: 10000 },
+    {
+      name: 'ADMIN_FEE',
+      description: 'Biaya administrasi sistem',
+      type: 'FIXED',
+      amount: 10000,
+      applyMode: 'AUTO',
+      applyScopes: null,
+    },
     {
       name: 'LOGISTICS_FEE',
       description: 'Biaya kurir dan penanganan logistik',
       type: 'PERCENTAGE',
       amount: 5.0,
+      applyMode: 'GENERAL',
+      applyScopes: ['CHECKOUT'],
     },
     {
       name: 'CARBON_FEE',
       description: 'Biaya verifikasi kredit karbon',
       type: 'FIXED',
       amount: 25000,
+      applyMode: 'SPECIFIC',
+      applyScopes: ['CARBON'],
     },
     {
       name: 'BIOMASS_FEE',
       description: 'Biaya pengolahan limbah biomassa',
       type: 'PERCENTAGE',
       amount: 2.0,
+      applyMode: 'SPECIFIC',
+      applyScopes: ['BIOMASS'],
     },
     {
       name: 'SUBSCRIPTION',
       description: 'Langganan BISA PRO (Bulanan)',
       type: 'FIXED',
       amount: 250000,
+      applyMode: 'SPECIFIC',
+      applyScopes: ['SUBSCRIPTION'],
     },
     {
       name: 'VAT',
       description: 'PPN (Pajak Pertambahan Nilai)',
       type: 'PERCENTAGE',
       amount: 11.0,
+      applyMode: 'GENERAL',
+      applyScopes: ['CHECKOUT'],
     },
   ];
 
   for (const fee of fees) {
+    const { applyMode, applyScopes, ...rest } = fee;
     await prisma.platformFeeSetting.upsert({
       where: { name: fee.name },
-      update: { amount: fee.amount, type: fee.type, description: fee.description },
-      create: fee,
+      update: {
+        ...rest,
+        applyMode,
+        applyScopes,
+      },
+      create: {
+        ...rest,
+        applyMode,
+        applyScopes,
+      },
     });
   }
 

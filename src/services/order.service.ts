@@ -15,8 +15,6 @@ import {
   DisputeStatus,
   TransactionStatus,
   PaymentStatus,
-  PlatformFeeType,
-  FeeCalculationType,
   NegotiationStatus,
   TransactionType,
   PaymentMethod,
@@ -24,6 +22,7 @@ import {
   NotificationType,
   NotificationPriority,
   UnitStatus,
+  ProductMode,
 } from '#prisma';
 import { createNotification } from '#services/notification.service';
 import * as rajaOngkirService from '#services/rajaongkir.service';
@@ -68,6 +67,8 @@ import { buildBisaTrackingNumber } from '#utils/order-tracking.util';
 import * as storageService from '#services/storage.service';
 import { roundIdrAmount, roundIdrDecimal } from '#utils/currency.util';
 import { resolveProviderActions, sealProviderActions } from '#utils/encryption.util';
+import { calculateCheckoutFinancials, type FeeLine } from '#utils/platformFee.util';
+import { assertShippingWithinShelfLife } from '#utils/shelfLife.util';
 import {
   BATCH_PAYMENT_EXTERNAL_PREFIX,
   BISA_MULTI_CHECKOUT_ORDER_PREFIX,
@@ -130,6 +131,7 @@ type DirectCheckoutPreviewOrder = {
   vatAmount: Prisma.Decimal;
   logisticsFee: Prisma.Decimal;
   totalAmount: Prisma.Decimal;
+  feeLines: FeeLine[];
   shippingAddressSnapshot: ShippingAddressSnapshot & { logistics?: LogisticsSnapshotMeta };
 };
 
@@ -493,65 +495,41 @@ type ContractFinancials = {
   logisticsFee: Prisma.Decimal;
   vatAmount: Prisma.Decimal;
   totalAmount: Prisma.Decimal;
+  feeLines: FeeLine[];
+  feeBreakdownSnapshot: FeeLine[];
+};
+
+type FeeContextOpts = {
+  productModes?: ProductMode[];
+  hasCarbonProduct?: boolean;
 };
 
 const calculateContractFinancials = async (
   subtotalInput: Prisma.Decimal,
   logisticsFeeInput: Prisma.Decimal = new Prisma.Decimal(0),
+  opts?: FeeContextOpts,
 ): Promise<ContractFinancials> => {
-  const [feeSetting, vatSetting] = await Promise.all([
-    prisma.platformFeeSetting.findUnique({
-      where: { name: PlatformFeeType.TRANSACTION_FEE },
-    }),
-    prisma.platformFeeSetting.findUnique({
-      where: { name: PlatformFeeType.VAT },
-    }),
-  ]);
+  return calculateCheckoutFinancials({
+    subtotal: subtotalInput,
+    courierFee: logisticsFeeInput,
+    productModes: opts?.productModes,
+    hasCarbonProduct: opts?.hasCarbonProduct,
+  });
+};
 
-  if (!feeSetting || !feeSetting.isActive) {
-    throw new AppError(
-      'Konfigurasi biaya layanan (Platform Fee) tidak ditemukan atau tidak aktif. Harap hubungi administrator.',
-      500,
-    );
-  }
-
-  if (!vatSetting || !vatSetting.isActive) {
-    throw new AppError(
-      'Konfigurasi PPN (VAT) tidak ditemukan atau tidak aktif. Harap hubungi administrator.',
-      500,
-    );
-  }
-
-  const subtotal = subtotalInput;
-  let platformFee: Prisma.Decimal;
-
-  if (feeSetting.type === FeeCalculationType.PERCENTAGE) {
-    const percentage = new Prisma.Decimal(feeSetting.amount.toString()).div(100);
-    platformFee = subtotal.mul(percentage);
-  } else {
-    platformFee = new Prisma.Decimal(feeSetting.amount.toString());
-  }
-
-  let vatAmount: Prisma.Decimal;
-  if (vatSetting.type === FeeCalculationType.PERCENTAGE) {
-    const vatPercentage = new Prisma.Decimal(vatSetting.amount.toString()).div(100);
-    vatAmount = subtotal.mul(vatPercentage);
-  } else {
-    vatAmount = new Prisma.Decimal(vatSetting.amount.toString());
-  }
-
-  platformFee = roundIdrDecimal(platformFee);
-  vatAmount = roundIdrDecimal(vatAmount);
-  const logisticsFee = roundIdrDecimal(logisticsFeeInput);
-  const totalAmount = roundIdrDecimal(subtotal.add(platformFee).add(vatAmount).add(logisticsFee));
-
-  return {
-    subtotal: roundIdrDecimal(subtotal),
-    platformFee,
-    logisticsFee,
-    vatAmount,
-    totalAmount,
-  };
+const feeContextFromProducts = (
+  products: Array<{
+    productMode?: ProductMode | null;
+    technicalSpec?: { carbonPurity: Prisma.Decimal | null } | null;
+  }>,
+): FeeContextOpts => {
+  const productModes = products
+    .map((p) => p.productMode)
+    .filter((m): m is ProductMode => Boolean(m));
+  const hasCarbonProduct = products.some(
+    (p) => p.technicalSpec?.carbonPurity != null && Number(p.technicalSpec.carbonPurity) > 0,
+  );
+  return { productModes, hasCarbonProduct };
 };
 
 /** Ringkasan harga katalog vs nego, diskon %, stok, estimasi bersih supplier (tanpa ongkir). */
@@ -922,6 +900,7 @@ export const createContract = async (
           id: true,
           userId: true,
           name: true,
+          productMode: true,
           technicalSpec: {
             select: {
               carbonPurity: true,
@@ -985,7 +964,12 @@ export const createContract = async (
       buyerId: negotiation.buyerId,
     },
   );
-  const financials = await calculateContractFinancials(contractSubtotal, logisticsFee);
+  const financials = await calculateContractFinancials(contractSubtotal, logisticsFee, {
+    productModes: negotiation.product.productMode ? [negotiation.product.productMode] : undefined,
+    hasCarbonProduct:
+      negotiation.product.technicalSpec?.carbonPurity != null &&
+      Number(negotiation.product.technicalSpec.carbonPurity) > 0,
+  });
   const {
     subtotal,
     platformFee,
@@ -1071,6 +1055,7 @@ export const createContract = async (
         checkoutBatchNumber: orderNumber,
         subtotal,
         platformFee,
+        feeBreakdownSnapshot: financials.feeBreakdownSnapshot,
         logisticsFee: logisticsFeeFinal,
         vatAmount,
         totalAmount,
@@ -1238,6 +1223,21 @@ export const createDirectOrderFromCart = async (
     grouped.set(p.userId, arr);
   }
 
+  for (const [sellerId, sellerItems] of grouped.entries()) {
+    const etd =
+      logisticsBySeller.get(sellerId)?.logisticsMeta?.etd ??
+      data.shippingSelections?.find((s) => s.sellerId === sellerId)?.etd;
+    for (const it of sellerItems) {
+      const p = productMap.get(it.productId)!;
+      assertShippingWithinShelfLife({
+        productMode: p.productMode,
+        shelfLifeDays: p.shelfLifeDays,
+        etd,
+        productName: p.name,
+      });
+    }
+  }
+
   await assertDirectCheckoutShippingReady(
     [...grouped.keys()],
     mergedShippingSnapshot,
@@ -1332,9 +1332,11 @@ export const createDirectOrderFromCart = async (
             )
           : new Prisma.Decimal(0);
         const adjustedSubtotal = subtotal.sub(sellerDiscount);
+        const sellerProducts = sellerItems.map((it) => productMap.get(it.productId)!);
         const financials = await calculateContractFinancials(
           adjustedSubtotal,
           sellerLogistics?.logisticsFee ?? new Prisma.Decimal(0),
+          feeContextFromProducts(sellerProducts),
         );
         const shippingSnapshot = attachLogisticsToSnapshot(
           mergedShippingSnapshot,
@@ -1373,6 +1375,7 @@ export const createDirectOrderFromCart = async (
             orderType,
             subtotal: financials.subtotal,
             platformFee: financials.platformFee,
+            feeBreakdownSnapshot: financials.feeBreakdownSnapshot,
             logisticsFee: financials.logisticsFee,
             vatAmount: financials.vatAmount,
             totalAmount: financials.totalAmount,
@@ -1539,6 +1542,21 @@ export const previewDirectOrderFromCart = async (
     grouped.set(p.userId, arr);
   }
 
+  for (const [sellerId, sellerItems] of grouped.entries()) {
+    const etd =
+      logisticsBySeller.get(sellerId)?.logisticsMeta?.etd ??
+      data.shippingSelections?.find((s) => s.sellerId === sellerId)?.etd;
+    for (const it of sellerItems) {
+      const p = productMap.get(it.productId)!;
+      assertShippingWithinShelfLife({
+        productMode: p.productMode,
+        shelfLifeDays: p.shelfLifeDays,
+        etd,
+        productName: p.name,
+      });
+    }
+  }
+
   await assertDirectCheckoutShippingReady(
     [...grouped.keys()],
     mergedShippingSnapshot,
@@ -1552,6 +1570,7 @@ export const previewDirectOrderFromCart = async (
   let logisticsFee = new Prisma.Decimal(0);
   let totalAmount = new Prisma.Decimal(0);
   let voucherDiscount = new Prisma.Decimal(0);
+  const feeLineAgg = new Map<string, FeeLine>();
 
   const { subtotals: sellerSubtotals, grandSubtotal } = computeGroupedSubtotals(
     grouped,
@@ -1591,15 +1610,27 @@ export const previewDirectOrderFromCart = async (
         )
       : new Prisma.Decimal(0);
     const adjustedSubtotal = sellerSubtotal.sub(sellerDiscount);
+    const sellerProducts = sellerItems.map((it) => productMap.get(it.productId)!);
+    const feeCtx = feeContextFromProducts(sellerProducts);
     const financials = await calculateContractFinancials(
       adjustedSubtotal,
       sellerLogistics?.logisticsFee ?? new Prisma.Decimal(0),
+      feeCtx,
     );
     subtotal = subtotal.add(financials.subtotal);
     platformFee = platformFee.add(financials.platformFee);
     vatAmount = vatAmount.add(financials.vatAmount);
     logisticsFee = logisticsFee.add(financials.logisticsFee);
     totalAmount = totalAmount.add(financials.totalAmount);
+
+    for (const line of financials.feeLines) {
+      const prev = feeLineAgg.get(line.code);
+      if (prev) {
+        feeLineAgg.set(line.code, { ...prev, amount: prev.amount + line.amount });
+      } else {
+        feeLineAgg.set(line.code, { ...line });
+      }
+    }
 
     orders.push({
       sellerId,
@@ -1610,6 +1641,7 @@ export const previewDirectOrderFromCart = async (
       vatAmount: financials.vatAmount,
       logisticsFee: financials.logisticsFee,
       totalAmount: financials.totalAmount,
+      feeLines: financials.feeLines,
       shippingAddressSnapshot: attachLogisticsToSnapshot(
         mergedShippingSnapshot,
         sellerLogistics?.logisticsMeta,
@@ -1626,6 +1658,7 @@ export const previewDirectOrderFromCart = async (
     voucherDiscount,
     voucherCode: voucherCtx?.code ?? null,
     totalOrders: orders.length,
+    feeLines: [...feeLineAgg.values()],
     orders,
   };
 };

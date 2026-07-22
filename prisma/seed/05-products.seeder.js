@@ -7,7 +7,36 @@ import {
 } from './utils/seedProductMedia.util.ts';
 import { hasStockPhotoApiKey } from './utils/stockPhotoApi.util.ts';
 
-function buildOrganicSpecs(cropType, fertilizerType, isChemicalFree) {
+function shelfLifeForCrop(cropType) {
+  const c = (cropType ?? '').toLowerCase();
+  if (c.includes('beras') || c.includes('biji')) {
+    return faker.number.int({ min: 180, max: 365 });
+  }
+  if (c.includes('sayur') || c.includes('kentang')) {
+    return faker.number.int({ min: 3, max: 14 });
+  }
+  if (c.includes('buah') || c.includes('jagung')) {
+    return faker.number.int({ min: 7, max: 30 });
+  }
+  return faker.number.int({ min: 5, max: 30 });
+}
+
+function pickAvailabilityType() {
+  const roll = faker.number.int({ min: 1, max: 100 });
+  if (roll <= 25) return 'PRE_HARVEST';
+  if (roll <= 45) return 'MIXED';
+  return 'READY';
+}
+
+function organicStockForAvailability(availabilityType) {
+  if (availabilityType === 'PRE_HARVEST') return 0;
+  if (availabilityType === 'MIXED') {
+    return faker.number.float({ min: 20, max: 500, fractionDigits: 2 });
+  }
+  return faker.number.float({ min: 50, max: 2000, fractionDigits: 2 });
+}
+
+function buildOrganicSpecs(cropType, fertilizerType, isChemicalFree, shelfLifeDays, landAreaHa) {
   return [
     { label: 'Jenis Hasil Tani', value: cropType, sortOrder: 0 },
     { label: 'Pupuk / Nutrisi', value: fertilizerType, sortOrder: 1 },
@@ -16,13 +45,15 @@ function buildOrganicSpecs(cropType, fertilizerType, isChemicalFree) {
       value: isChemicalFree ? 'Ya (100% Organik)' : 'Tidak',
       sortOrder: 2,
     },
-    { label: 'Metode Irigasi', value: 'Tetes / Saluran', sortOrder: 3 },
+    { label: 'Ketahanan (hari)', value: String(shelfLifeDays), sortOrder: 3 },
+    { label: 'Luas Lahan (ha)', value: String(landAreaHa), sortOrder: 4 },
+    { label: 'Metode Irigasi', value: 'Tetes / Saluran', sortOrder: 5 },
     {
       label: 'Musim Tanam',
       value: faker.helpers.arrayElement(['Musim Hujan', 'Musim Kemarau', 'Sepanjang Tahun']),
-      sortOrder: 4,
+      sortOrder: 6,
     },
-    { label: 'Sertifikasi', value: 'Organik Lokal / Pertanian Regeneratif', sortOrder: 5 },
+    { label: 'Sertifikasi', value: 'Organik Lokal / Pertanian Regeneratif', sortOrder: 7 },
   ];
 }
 function buildBiomassSpecs(technicalSpec) {
@@ -45,6 +76,69 @@ function buildBiomassSpecs(technicalSpec) {
   return rows;
 }
 
+async function createOrganicProduct(
+  prisma,
+  {
+    supplier,
+    firstProvince,
+    firstRegency,
+    selectedProduce,
+    productName,
+    fertilizerType,
+    organicMedia,
+    availabilityType,
+    stock,
+    shelfLifeDays,
+    landAreaHa,
+    nextHarvestDate,
+    nextHarvestQtyTon,
+  },
+) {
+  return prisma.product.create({
+    data: {
+      userId: supplier.id,
+      categoryId: selectedProduce.categoryId,
+      name: productName,
+      biomassaType: 'OTHER',
+      productMode: 'ORGANIC_PRODUCE',
+      cropType: selectedProduce.cropType,
+      fertilizerType,
+      isChemicalFree: true,
+      shelfLifeDays,
+      landAreaHa,
+      availabilityType,
+      nextHarvestDate: nextHarvestDate ?? null,
+      nextHarvestQtyTon: nextHarvestQtyTon ?? null,
+      description: `Produk pertanian pangan pilihan dibudidayakan secara alami menggunakan 100% pupuk organik dan arang hayati (biochar) sebagai pembenah tanah. Bebas pestisida kimia sintetis, sehat untuk dikonsumsi, serta ramah lingkungan.`,
+      pricePerUnit: faker.number.float({ min: 15000, max: 75000, fractionDigits: 2 }),
+      originalPrice: faker.datatype.boolean()
+        ? faker.number.float({ min: 80000, max: 95000, fractionDigits: 2 })
+        : null,
+      stock,
+      unit: 'KG',
+      minOrder: faker.number.float({ min: 5, max: 20, fractionDigits: 2 }),
+      province: supplier.province || firstProvince?.name,
+      regency: supplier.regency || firstRegency?.name,
+      thumbnailUrl: organicMedia.thumbnailUrl,
+      ...(organicMedia.videoUrl && {
+        video: { create: { url: organicMedia.videoUrl } },
+      }),
+      isCertified: false,
+      isIotMonitored: faker.datatype.boolean(),
+      images: { create: organicMedia.images },
+      specs: {
+        create: buildOrganicSpecs(
+          selectedProduce.cropType,
+          fertilizerType,
+          true,
+          shelfLifeDays,
+          landAreaHa,
+        ),
+      },
+    },
+  });
+}
+
 export async function seedProducts(prisma, users) {
   logger.info('🌱 [05] Seeding Products (Hardened Geography)...');
   if (hasStockPhotoApiKey()) {
@@ -54,6 +148,11 @@ export async function seedProducts(prisma, users) {
   }
 
   // CLEANUP - Delete in correct order (respect FK constraints)
+  await prisma.booking.deleteMany({});
+  await prisma.productHarvestLot.deleteMany({});
+  await prisma.cartItem.deleteMany({});
+  await prisma.productQuestion.deleteMany({});
+  await prisma.productLike.deleteMany({});
   await prisma.orderItem.deleteMany({});
   await prisma.negotiation.deleteMany({});
   await prisma.review.deleteMany({});
@@ -152,42 +251,33 @@ export async function seedProducts(prisma, users) {
           true,
         );
 
-        await prisma.product.create({
-          data: {
-            userId: supplier.id,
-            categoryId: selectedProduce.categoryId,
-            name: productName,
-            biomassaType: 'OTHER',
-            productMode: 'ORGANIC_PRODUCE',
-            cropType: selectedProduce.cropType,
-            fertilizerType,
-            isChemicalFree: true,
-            description: `Produk pertanian pangan pilihan dibudidayakan secara alami menggunakan 100% pupuk organik dan arang hayati (biochar) sebagai pembenah tanah. Bebas pestisida kimia sintetis, sehat untuk dikonsumsi, serta ramah lingkungan.`,
-            pricePerUnit: faker.number.float({ min: 15000, max: 75000, fractionDigits: 2 }),
-            originalPrice: faker.datatype.boolean()
-              ? faker.number.float({ min: 80000, max: 95000, fractionDigits: 2 })
-              : null,
-            stock: faker.number.float({ min: 50, max: 2000, fractionDigits: 2 }),
-            unit: 'KG',
-            minOrder: faker.number.float({ min: 5, max: 20, fractionDigits: 2 }),
+        const shelfLifeDays = shelfLifeForCrop(selectedProduce.cropType);
+        const landAreaHa = faker.number.float({ min: 0.5, max: 25, fractionDigits: 2 });
+        const availabilityType = pickAvailabilityType();
+        const stock = organicStockForAvailability(availabilityType);
+        const nextHarvestDate =
+          availabilityType === 'PRE_HARVEST' || availabilityType === 'MIXED'
+            ? faker.date.soon({ days: faker.number.int({ min: 14, max: 60 }) })
+            : null;
+        const nextHarvestQtyTon =
+          nextHarvestDate != null
+            ? faker.number.float({ min: 2, max: 20, fractionDigits: 2 })
+            : null;
 
-            // Geographic Relations
-            province: supplier.province || firstProvince?.name,
-            regency: supplier.regency || firstRegency?.name,
-
-            thumbnailUrl: organicMedia.thumbnailUrl,
-            ...(organicMedia.videoUrl && {
-              video: { create: { url: organicMedia.videoUrl } },
-            }),
-            isCertified: false,
-            isIotMonitored: faker.datatype.boolean(),
-            images: {
-              create: organicMedia.images,
-            },
-            specs: {
-              create: buildOrganicSpecs(selectedProduce.cropType, fertilizerType, true),
-            },
-          },
+        await createOrganicProduct(prisma, {
+          supplier,
+          firstProvince,
+          firstRegency,
+          selectedProduce,
+          productName,
+          fertilizerType,
+          organicMedia,
+          availabilityType,
+          stock,
+          shelfLifeDays,
+          landAreaHa,
+          nextHarvestDate,
+          nextHarvestQtyTon,
         });
       } else {
         // Industrial Biomass Product
@@ -275,6 +365,73 @@ export async function seedProducts(prisma, users) {
               create: buildBiomassSpecs(technicalSpecData),
             },
           },
+        });
+      }
+    }
+
+    // Deterministic demo flagship organics for QA (demo supplier accounts)
+    const isDemoSupplier =
+      supplier.email === 'siti.aminah@agritech.com' || supplier.email === 'hello@greenearth.co';
+    if (isDemoSupplier) {
+      const demoFlagships = [
+        {
+          name: 'Beras Organik Mentik Wangi — Demo Pre-Harvest',
+          cropType: 'Beras Organik',
+          categoryId: catBeras?.id,
+          availabilityType: 'PRE_HARVEST',
+          stock: 0,
+          shelfLifeDays: 180,
+          landAreaHa: 12.5,
+          nextHarvestDate: faker.date.soon({ days: 21 }),
+          nextHarvestQtyTon: 8,
+        },
+        {
+          name: 'Bayam Merah Organik Pacet — Demo Siap Kirim',
+          cropType: 'Sayur Hijau',
+          categoryId: catSayur?.id,
+          availabilityType: 'READY',
+          stock: 350,
+          shelfLifeDays: 5,
+          landAreaHa: 2.25,
+          nextHarvestDate: null,
+          nextHarvestQtyTon: null,
+        },
+        {
+          name: 'Jagung Premium Manis — Demo Campuran',
+          cropType: 'Jagung Premium',
+          categoryId: catBiji?.id,
+          availabilityType: 'MIXED',
+          stock: 120,
+          shelfLifeDays: 14,
+          landAreaHa: 6,
+          nextHarvestDate: faker.date.soon({ days: 35 }),
+          nextHarvestQtyTon: 5,
+        },
+      ];
+
+      for (const demo of demoFlagships) {
+        const organicMedia = await getOrResolveOrganicMedia(
+          mediaCache,
+          faker,
+          demo.cropType,
+          demo.name,
+          true,
+        );
+        const fertilizerType = 'Biochar Sekam + Pupuk Kompos';
+        await createOrganicProduct(prisma, {
+          supplier,
+          firstProvince,
+          firstRegency,
+          selectedProduce: demo,
+          productName: demo.name,
+          fertilizerType,
+          organicMedia,
+          availabilityType: demo.availabilityType,
+          stock: demo.stock,
+          shelfLifeDays: demo.shelfLifeDays,
+          landAreaHa: demo.landAreaHa,
+          nextHarvestDate: demo.nextHarvestDate,
+          nextHarvestQtyTon: demo.nextHarvestQtyTon,
         });
       }
     }

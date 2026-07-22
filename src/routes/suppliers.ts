@@ -22,8 +22,18 @@ router.get('/', optionalAuth, userController.listSuppliers);
 /**
  * @route   GET /api/v1/suppliers/:id/products
  */
-router.get('/:id/trade-stats', optionalAuth, validate(certificateValidation.supplierIdParamSchema, 'params'), supplierTradeController.getTradeStats);
-router.get('/:id/products', optionalAuth, validate(certificateValidation.supplierIdParamSchema, 'params'), userController.getSupplierProducts);
+router.get(
+  '/:id/trade-stats',
+  optionalAuth,
+  validate(certificateValidation.supplierIdParamSchema, 'params'),
+  supplierTradeController.getTradeStats,
+);
+router.get(
+  '/:id/products',
+  optionalAuth,
+  validate(certificateValidation.supplierIdParamSchema, 'params'),
+  userController.getSupplierProducts,
+);
 router.get(
   '/:id/certificates',
   optionalAuth,

@@ -77,4 +77,51 @@ router.patch(
  */
 router.get('/reports/export', adminController.exportTransactionsCsv);
 
+/**
+ * Payout banks & payment channels (aktif/nonaktif + statistik pemakaian)
+ */
+router.get(
+  '/payout-banks',
+  validate(adminValidation.listPayoutBanksAdminSchema, 'query'),
+  adminController.listPayoutBanks,
+);
+router.post(
+  '/payout-banks',
+  validate(adminValidation.createPayoutBankSchema),
+  adminController.createPayoutBank,
+);
+router.patch(
+  '/payout-banks/:id',
+  validate(adminValidation.financeChannelIdParamSchema, 'params'),
+  validate(adminValidation.updatePayoutBankSchema),
+  adminController.updatePayoutBank,
+);
+router.delete(
+  '/payout-banks/:id',
+  validate(adminValidation.financeChannelIdParamSchema, 'params'),
+  adminController.deletePayoutBank,
+);
+
+router.get(
+  '/payment-channels',
+  validate(adminValidation.listPaymentChannelsAdminSchema, 'query'),
+  adminController.listPaymentChannelsAdmin,
+);
+router.post(
+  '/payment-channels',
+  validate(adminValidation.createPaymentChannelSchema),
+  adminController.createPaymentChannelAdmin,
+);
+router.patch(
+  '/payment-channels/:id',
+  validate(adminValidation.financeChannelIdParamSchema, 'params'),
+  validate(adminValidation.updatePaymentChannelSchema),
+  adminController.updatePaymentChannelAdmin,
+);
+router.delete(
+  '/payment-channels/:id',
+  validate(adminValidation.financeChannelIdParamSchema, 'params'),
+  adminController.deletePaymentChannelAdmin,
+);
+
 export default router;

@@ -1,4 +1,4 @@
-import { Prisma } from '#prisma';
+import { Prisma, ProductMode } from '#prisma';
 import prisma from '#config/prisma';
 import AppError from '#utils/appError';
 
@@ -13,6 +13,10 @@ export type DirectCheckoutProductRow = {
   sampleMaxQty: Prisma.Decimal;
   allowsSample: boolean;
   status: string;
+  productMode?: ProductMode | null;
+  availabilityType?: string | null;
+  shelfLifeDays?: number | null;
+  technicalSpec?: { carbonPurity: Prisma.Decimal | null } | null;
 };
 
 export const directCheckoutProductSelect = {
@@ -26,6 +30,10 @@ export const directCheckoutProductSelect = {
   sampleMaxQty: true,
   allowsSample: true,
   status: true,
+  productMode: true,
+  availabilityType: true,
+  shelfLifeDays: true,
+  technicalSpec: { select: { carbonPurity: true } },
 } as const;
 
 export function resolveCheckoutUnitPrice(
@@ -50,6 +58,18 @@ export function assertDirectCheckoutItem(
   if (product.status !== 'ACTIVE') {
     throw new AppError(`Produk ${product.name} tidak aktif.`, 400);
   }
+
+  // Hasil tani yang belum panen / stok 0 → harus booking pre-harvest, bukan checkout langsung.
+  if (
+    product.productMode === ProductMode.ORGANIC_PRODUCE &&
+    (product.availabilityType === 'PRE_HARVEST' || product.stock.lte(0))
+  ) {
+    throw new AppError(
+      `Produk ${product.name} belum siap kirim (pre-harvest / stok kosong). Gunakan booking panen untuk memesan sesuai jadwal panen.`,
+      400,
+    );
+  }
+
   if (product.stock.lt(item.quantity)) {
     throw new AppError(
       `Stok ${product.name} tidak mencukupi. Tersisa ${product.stock.toString()}.`,

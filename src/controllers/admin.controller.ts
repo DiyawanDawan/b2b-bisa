@@ -5,6 +5,7 @@ import { successResponse, paginatedResponse } from '#utils/response.util';
 import { toCsv } from '#utils/csv.util';
 import AppError from '#utils/appError';
 import * as adminService from '#services/admin.service';
+import * as bankService from '#services/bank.service';
 import * as disputeMediationService from '#services/dispute-mediation.service';
 import { CACHE_TTL } from '#constants/cache.constants';
 import { cacheAside, cacheKeys, invalidateAdminAnalytics } from '#utils/cache.util';
@@ -435,6 +436,8 @@ export const createFee = catchAsync(async (req: AuthRequest, res: Response) => {
       type: FeeCalculationType;
       description?: string;
       isActive?: boolean;
+      applyMode?: string;
+      applyScopes?: string[];
     },
   );
 
@@ -676,4 +679,76 @@ export const exportTransactionsCsv = catchAsync(async (req: AuthRequest, res: Re
   res.setHeader('Content-Type', 'text/csv');
   res.attachment(`Laporan_Transaksi_${startDate}_ke_${endDate}.csv`);
   res.status(200).send(csvContent);
+});
+
+/**
+ * GET /api/v1/admin/finance/payout-banks
+ */
+export const listPayoutBanks = catchAsync(async (req: AuthRequest, res: Response) => {
+  const { search, isActive } = req.query as {
+    search?: string;
+    isActive?: boolean;
+  };
+  const items = await bankService.listPayoutBanksAdmin({ search, isActive });
+  return successResponse(res, items, 'Daftar bank payout berhasil diambil');
+});
+
+/**
+ * POST /api/v1/admin/finance/payout-banks
+ */
+export const createPayoutBank = catchAsync(async (req: AuthRequest, res: Response) => {
+  const bank = await bankService.createBank(req.body);
+  return successResponse(res, bank, 'Bank payout berhasil ditambahkan', 201);
+});
+
+/**
+ * PATCH /api/v1/admin/finance/payout-banks/:id
+ */
+export const updatePayoutBank = catchAsync(async (req: AuthRequest, res: Response) => {
+  const bank = await bankService.updateBank(req.params.id, req.body);
+  return successResponse(res, bank, 'Bank payout berhasil diperbarui');
+});
+
+/**
+ * DELETE /api/v1/admin/finance/payout-banks/:id
+ */
+export const deletePayoutBank = catchAsync(async (req: AuthRequest, res: Response) => {
+  const bank = await bankService.deleteBank(req.params.id);
+  return successResponse(res, bank, 'Bank payout berhasil dihapus');
+});
+
+/**
+ * GET /api/v1/admin/finance/payment-channels
+ */
+export const listPaymentChannelsAdmin = catchAsync(async (req: AuthRequest, res: Response) => {
+  const { search, isActive } = req.query as {
+    search?: string;
+    isActive?: boolean;
+  };
+  const items = await bankService.listPaymentChannelsAdmin({ search, isActive });
+  return successResponse(res, items, 'Daftar channel pembayaran berhasil diambil');
+});
+
+/**
+ * POST /api/v1/admin/finance/payment-channels
+ */
+export const createPaymentChannelAdmin = catchAsync(async (req: AuthRequest, res: Response) => {
+  const channel = await bankService.createPaymentChannel(req.body);
+  return successResponse(res, channel, 'Channel pembayaran berhasil ditambahkan', 201);
+});
+
+/**
+ * PATCH /api/v1/admin/finance/payment-channels/:id
+ */
+export const updatePaymentChannelAdmin = catchAsync(async (req: AuthRequest, res: Response) => {
+  const channel = await bankService.updatePaymentChannel(req.params.id, req.body);
+  return successResponse(res, channel, 'Channel pembayaran berhasil diperbarui');
+});
+
+/**
+ * DELETE /api/v1/admin/finance/payment-channels/:id
+ */
+export const deletePaymentChannelAdmin = catchAsync(async (req: AuthRequest, res: Response) => {
+  const channel = await bankService.deletePaymentChannel(req.params.id);
+  return successResponse(res, channel, 'Channel pembayaran berhasil dihapus');
 });

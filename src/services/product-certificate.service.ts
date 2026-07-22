@@ -123,25 +123,17 @@ export const submitCertificate = async (
   }
 };
 
-export const listOwnerCertificates = async (
-  productId: string,
-  userId: string,
-  isAdmin = false,
-  baseUrl?: string,
-) => {
+export const listOwnerCertificates = async (productId: string, userId: string, isAdmin = false) => {
   await loadOwnedProduct(productId, userId, isAdmin);
   const rows = await prisma.productCertificate.findMany({
     where: { productId },
     orderBy: { createdAt: 'desc' },
   });
-  return rows.map((row) => {
-    const serialized = serializeCertificateRow(row);
-    const documentUrl =
-      row.status === ProductCertificateStatus.APPROVED && baseUrl
-        ? `${baseUrl}/api/v1/products/${productId}/certificates/${row.id}/document`
-        : null;
-    return { ...serialized, documentUrl };
-  });
+  return rows.map((row) => ({
+    ...serializeCertificateRow(row),
+    // Owner may preview pending/rejected docs via short-lived signed URL.
+    documentUrl: storageService.getSignedProxyUrl(row.storageKey, 900),
+  }));
 };
 
 export const deleteOwnerCertificate = async (

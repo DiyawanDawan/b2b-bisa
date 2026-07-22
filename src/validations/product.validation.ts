@@ -47,6 +47,11 @@ export const createProductSchema = z.object({
   fertilizerType: z.string().optional(),
   isChemicalFree: z.preprocess((val) => val === 'true' || val === true, z.boolean()).default(false),
   cropType: z.string().optional(),
+  availabilityType: z.enum(['READY', 'PRE_HARVEST', 'MIXED']).optional(),
+  nextHarvestDate: z.coerce.date().optional(),
+  nextHarvestQtyTon: z.coerce.number().nonnegative().optional(),
+  shelfLifeDays: z.coerce.number().int().min(1).max(3650).optional(),
+  landAreaHa: z.coerce.number().positive().max(1_000_000).optional(),
   specs: specsSchema,
 
   // Technical Specs (B2B Standard)

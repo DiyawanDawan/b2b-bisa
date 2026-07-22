@@ -7,6 +7,7 @@ import { resolveXenditPayoutSecretKey } from '#utils/env.util';
 import { notifyOrderStatusChange } from '#services/orderNotification.service';
 import { scheduleSupplyDemandRefresh } from '#services/marketSupplyDemand.service';
 import { revealAccountNumber } from '#utils/payoutAccount.util';
+import { calculateWithdrawalFee } from '#utils/platformFee.util';
 
 /**
  * 1. Release Escrow (Buyer Mengonfirmasi Penerimaan Barang)
@@ -198,18 +199,27 @@ export const withdrawFunds = async (supplierId: string, data: { amount: number }
     );
   }
 
+  const { fee: withdrawalFee, feeLine } = await calculateWithdrawalFee(amountToWithdraw);
+  const totalDebit = amountToWithdraw.add(withdrawalFee);
+  const transferAmount = amountToWithdraw; // nominal ke rekening = permintaan user; fee dipotong dari saldo
+
   const payoutTrx = await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT * FROM wallets WHERE user_id = ${supplierId} FOR UPDATE`;
 
     const wallet = await tx.wallet.findUnique({ where: { userId: supplierId } });
-    if (!wallet || wallet.balance.lt(amountToWithdraw)) {
-      throw new AppError('Saldo di Dompet BISA tidak mencukupi atau Wallet tidak ditemukan.', 400);
+    if (!wallet || wallet.balance.lt(totalDebit)) {
+      throw new AppError(
+        withdrawalFee.gt(0)
+          ? `Saldo tidak cukup. Penarikan ${Number(amountToWithdraw)} + biaya ${Number(withdrawalFee)} = ${Number(totalDebit)}.`
+          : 'Saldo di Dompet BISA tidak mencukupi atau Wallet tidak ditemukan.',
+        400,
+      );
     }
 
     await tx.wallet.update({
       where: { userId: supplierId },
       data: {
-        balance: { decrement: amountToWithdraw },
+        balance: { decrement: totalDebit },
         totalWithdrawn: { increment: amountToWithdraw },
       },
     });
@@ -217,7 +227,9 @@ export const withdrawFunds = async (supplierId: string, data: { amount: number }
     return tx.transaction.create({
       data: {
         userId: supplierId,
-        amount: amountToWithdraw,
+        amount: transferAmount,
+        platformFee: withdrawalFee,
+        feeBreakdownSnapshot: feeLine ? [feeLine] : undefined,
         status: TransactionStatus.PENDING,
         paymentStatus: PaymentStatus.PENDING,
         type: TransactionType.PAYOUT,
@@ -244,7 +256,7 @@ export const withdrawFunds = async (supplierId: string, data: { amount: number }
         idempotencyKey: `payout-${payoutTrx.id}`,
         data: {
           referenceId: payoutTrx.externalId!,
-          amount: Number(amountToWithdraw.toString()),
+          amount: Number(transferAmount.toString()),
           currency: 'IDR',
           channelCode: bankCode,
           channelProperties: {
@@ -265,7 +277,7 @@ export const withdrawFunds = async (supplierId: string, data: { amount: number }
       await tx.wallet.update({
         where: { userId: supplierId },
         data: {
-          balance: { increment: amountToWithdraw },
+          balance: { increment: totalDebit },
           totalWithdrawn: { decrement: amountToWithdraw },
         },
       });

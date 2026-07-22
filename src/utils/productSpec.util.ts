@@ -56,6 +56,18 @@ export function applyKnownFieldsFromSpecs(
         case 'Bebas Bahan Kimia':
           out.isChemicalFree = value.toLowerCase().includes('ya') || value.includes('100%');
           break;
+        case 'Ketahanan (hari)':
+        case 'Ketahanan': {
+          const n = parseSpecNumber(value);
+          if (n != null) out.shelfLifeDays = Math.round(n);
+          break;
+        }
+        case 'Luas Lahan (ha)':
+        case 'Luas Lahan': {
+          const n = parseSpecNumber(value);
+          if (n != null) out.landAreaHa = n;
+          break;
+        }
         default:
           break;
       }
@@ -113,6 +125,8 @@ export function organicSpecsFromProduct(product: {
   cropType?: string | null;
   fertilizerType?: string | null;
   isChemicalFree?: boolean;
+  shelfLifeDays?: number | null;
+  landAreaHa?: number | string | null;
 }): ProductSpecInput[] {
   const rows: ProductSpecInput[] = [];
   if (product.cropType) {
@@ -125,6 +139,12 @@ export function organicSpecsFromProduct(product: {
     label: 'Bebas Bahan Kimia',
     value: product.isChemicalFree ? 'Ya (100% Organik)' : 'Tidak',
   });
+  if (product.shelfLifeDays != null && Number(product.shelfLifeDays) > 0) {
+    rows.push({ label: 'Ketahanan (hari)', value: String(product.shelfLifeDays) });
+  }
+  if (product.landAreaHa != null && Number(product.landAreaHa) > 0) {
+    rows.push({ label: 'Luas Lahan (ha)', value: String(product.landAreaHa) });
+  }
   return rows;
 }
 

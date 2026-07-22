@@ -16,12 +16,10 @@ export const submit = catchAsync(async (req: AuthRequest, res: Response) => {
 });
 
 export const listMine = catchAsync(async (req: AuthRequest, res: Response) => {
-  const baseUrl = `${req.protocol}://${req.get('host')}`;
   const result = await certificateService.listOwnerCertificates(
     req.params.productId,
     req.user!.id,
     req.user!.role === UserRole.ADMIN,
-    baseUrl,
   );
   successResponse(res, result, 'Daftar sertifikat produk berhasil diambil.');
 });

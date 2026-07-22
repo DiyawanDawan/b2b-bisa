@@ -149,7 +149,10 @@ export const deleteOwnerStoreCertificate = async (
   });
   if (!certificate) throw new AppError('Sertifikat toko tidak ditemukan.', 404);
   if (certificate.status === ProductCertificateStatus.APPROVED) {
-    throw new AppError('Sertifikat toko yang sudah disetujui tidak dapat dihapus oleh supplier.', 409);
+    throw new AppError(
+      'Sertifikat toko yang sudah disetujui tidak dapat dihapus oleh supplier.',
+      409,
+    );
   }
   await prisma.supplierStoreCertificate.delete({ where: { id: certificateId } });
   void storageService.deleteFile(certificate.storageKey);
@@ -257,7 +260,9 @@ export const reviewStoreCertificate = async (
     const current = await tx.supplierStoreCertificate.findUnique({
       where: { id: certificateId },
       include: {
-        supplier: { select: { id: true, fullName: true, profile: { select: { companyName: true } } } },
+        supplier: {
+          select: { id: true, fullName: true, profile: { select: { companyName: true } } },
+        },
       },
     });
     if (!current) throw new AppError('Sertifikat toko tidak ditemukan.', 404);
