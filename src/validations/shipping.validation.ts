@@ -68,6 +68,25 @@ export const setActiveCouriersSchema = z.object({
     .max(50, 'Maksimal 50 ekspedisi'),
 });
 
+export const updateShippingCourierParamsSchema = z.object({
+  code: z
+    .string()
+    .min(2)
+    .max(40)
+    .transform((v) => v.trim().toLowerCase()),
+});
+
+export const updateShippingCourierSchema = z
+  .object({
+    isActive: z.boolean().optional(),
+    label: z.string().min(1).max(120).optional().nullable(),
+    sortOrder: z.coerce.number().int().min(0).max(9999).optional(),
+  })
+  .refine(
+    (v) => v.isActive !== undefined || v.label !== undefined || v.sortOrder !== undefined,
+    { message: 'Minimal satu field (isActive, label, atau sortOrder) wajib diisi' },
+  );
+
 /** Dipakai saat checkout — disimpan di snapshot order */
 export const shippingSelectionSchema = z.object({
   originId: z.coerce.number().int().positive(),

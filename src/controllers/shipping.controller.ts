@@ -37,14 +37,20 @@ export const calculateDomestic = catchAsync(async (req: AuthRequest, res: Respon
     String(weightUnit || 'KG').toUpperCase() === 'TON' ? UnitStatus.TON : UnitStatus.KG;
   const qty = Number(weight);
 
-  const options = await rajaOngkirService.calculateDomesticCost({
-    originId,
-    destinationId,
-    weight: qty,
-    weightUnit: unit,
-    courier,
-    price,
-  });
+  // RajaOngkir: graceful degrade (API key hilang / down → [] , bukan gagalkan seluruh step)
+  let options: Awaited<ReturnType<typeof rajaOngkirService.calculateDomesticCost>> = [];
+  try {
+    options = await rajaOngkirService.calculateDomesticCost({
+      originId,
+      destinationId,
+      weight: qty,
+      weightUnit: unit,
+      courier,
+      price,
+    });
+  } catch {
+    options = [];
+  }
 
   try {
     const resolvedBuyerId = (buyerId as string | undefined) ?? req.user?.id;
@@ -125,13 +131,26 @@ export const setPickupVehicles = catchAsync(async (req: AuthRequest, res: Respon
   return successResponse(res, data, 'Konfigurasi kendaraan pickup berhasil disimpan');
 });
 
-/** GET /api/v1/shipping/couriers */
+/** GET /api/v1/shipping/couriers — kode kurir aktif (untuk client/checkout) */
 export const getActiveCouriers = catchAsync(async (_req: AuthRequest, res: Response) => {
   const data = await rajaOngkirService.getActiveCouriers();
   return successResponse(res, data, 'Daftar ekspedisi aktif berhasil diambil');
 });
 
-/** PUT /api/v1/shipping/couriers */
+/** GET /api/v1/shipping/couriers/manage — katalog penuh untuk admin */
+export const listShippingCouriers = catchAsync(async (_req: AuthRequest, res: Response) => {
+  const data = await rajaOngkirService.listShippingCouriers();
+  return successResponse(res, data, 'Katalog ekspedisi berhasil diambil');
+});
+
+/** PATCH /api/v1/shipping/couriers/:code — toggle/aktifkan atau ubah label */
+export const updateShippingCourier = catchAsync(async (req: AuthRequest, res: Response) => {
+  const { code } = req.params;
+  const data = await rajaOngkirService.updateShippingCourier(code, req.body);
+  return successResponse(res, data, 'Konfigurasi ekspedisi berhasil diperbarui');
+});
+
+/** PUT /api/v1/shipping/couriers — set daftar aktif sekaligus (bulk) */
 export const setActiveCouriers = catchAsync(async (req: AuthRequest, res: Response) => {
   const { couriers } = req.body;
   const data = await rajaOngkirService.setActiveCouriers(couriers);

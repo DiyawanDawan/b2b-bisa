@@ -68,8 +68,10 @@ export async function seedPickupVehicles(prisma) {
     .map((it) => it.trim().toLowerCase())
     .filter((it) => it.length >= 2);
 
+  // Jangan nonaktifkan kurir lokal (BISA Express) saat sync daftar RajaOngkir
+  const protectedLocalCodes = ['bisa_express'];
   await prisma.shippingCourier.updateMany({
-    where: { code: { notIn: courierCodes } },
+    where: { code: { notIn: [...courierCodes, ...protectedLocalCodes] } },
     data: { isActive: false },
   });
   for (let i = 0; i < courierCodes.length; i += 1) {
@@ -79,13 +81,13 @@ export async function seedPickupVehicles(prisma) {
       update: {
         label: code.toUpperCase(),
         isActive: true,
-        sortOrder: i,
+        sortOrder: i + 1, // 0 reserved for BISA Express
       },
       create: {
         code,
         label: code.toUpperCase(),
         isActive: true,
-        sortOrder: i,
+        sortOrder: i + 1,
       },
     });
   }

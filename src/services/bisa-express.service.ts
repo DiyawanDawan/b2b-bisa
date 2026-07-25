@@ -37,6 +37,17 @@ import { invalidateAuthUser } from '#utils/cache.util';
 
 type Tx = Prisma.TransactionClient;
 
+/** Hormati toggle admin di tabel shipping_couriers. */
+const isBisaExpressCourierActive = async (): Promise<boolean> => {
+  const row = await prisma.shippingCourier.findUnique({
+    where: { code: BISA_EXPRESS_COURIER_CODE },
+    select: { isActive: true },
+  });
+  // Belum ada baris → anggap aktif (seed akan membuatnya); nonaktif hanya jika eksplisit false
+  if (!row) return true;
+  return Boolean(row.isActive);
+};
+
 const assertShipmentParticipant = async (
   shipment: {
     order: { buyerId: string; sellerId: string };
@@ -417,6 +428,10 @@ export const calculateRates = async (params: {
   sellerId?: string;
   buyerId?: string;
 }) => {
+  if (!(await isBisaExpressCourierActive())) {
+    return [];
+  }
+
   let distanceKm: number | null = null;
   let originAddr: ProfileShippingAddress | null = null;
   let destAddr: ProfileShippingAddress | null = null;
@@ -596,6 +611,13 @@ export const verifyBisaExpressSelection = async (params: {
   sellerId: string;
   buyerId: string;
 }) => {
+  if (!(await isBisaExpressCourierActive())) {
+    throw new AppError(
+      'BISA Express dinonaktifkan admin. Pilih ekspedisi lain atau hitung ulang ongkir.',
+      400,
+    );
+  }
+
   const serviceType = (params.serviceCode || params.serviceName || 'REGULER').toUpperCase();
   const { weight, weightUnit } = params;
 

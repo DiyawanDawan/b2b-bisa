@@ -7,6 +7,7 @@ import {
   RAJAONGKIR_DEFAULT_COURIERS,
   SHIPPING_COST_API_KEY,
 } from '#config/rajaongkir';
+import { BISA_EXPRESS_COURIER_CODE } from '#constants/bisa-express.constants';
 import type {
   RajaOngkirApiResponse,
   KomshipPickupRequestBody,
@@ -23,6 +24,7 @@ import { UnitStatus } from '#prisma';
 import { toGrams } from '#utils/unit.util';
 import { CACHE_TTL } from '#constants/cache.constants';
 import { cacheAside, cacheKeys, invalidateShippingConfig } from '#utils/cache.util';
+import logger from '#config/logger';
 
 type RequestOpts = {
   method: 'GET' | 'POST';
@@ -33,6 +35,44 @@ type RequestOpts = {
 // TODO: remove cast after running `prisma generate` for new Shipping* models.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = prisma as any;
+
+/** Kurir lokal (tarif DB) — tidak dikirim ke RajaOngkir. */
+const LOCAL_COURIER_CODES = new Set([BISA_EXPRESS_COURIER_CODE]);
+
+export type ShippingCourierProvider = 'rajaongkir' | 'local';
+
+export type ShippingCourierRow = {
+  id: string;
+  code: string;
+  label: string | null;
+  isActive: boolean;
+  sortOrder: number;
+  provider: ShippingCourierProvider;
+  updatedAt: Date;
+};
+
+const isLocalCourierCode = (code: string): boolean =>
+  LOCAL_COURIER_CODES.has(code.trim().toLowerCase());
+
+const courierProvider = (code: string): ShippingCourierProvider =>
+  isLocalCourierCode(code) ? 'local' : 'rajaongkir';
+
+const mapCourierRow = (row: {
+  id: string;
+  code: string;
+  label: string | null;
+  isActive: boolean;
+  sortOrder: number;
+  updatedAt: Date;
+}): ShippingCourierRow => ({
+  id: row.id,
+  code: row.code,
+  label: row.label,
+  isActive: row.isActive,
+  sortOrder: row.sortOrder,
+  provider: courierProvider(row.code),
+  updatedAt: row.updatedAt,
+});
 
 const normalizeCourierCodes = (raw: unknown): string[] => {
   if (Array.isArray(raw)) {
@@ -57,6 +97,10 @@ const normalizeCourierCodes = (raw: unknown): string[] => {
   return [];
 };
 
+/**
+ * Kode kurir aktif dari DB. Fallback env hanya jika tabel masih kosong (belum di-seed).
+ * Jika admin menonaktifkan semua kurir → kembalikan [] (jangan paksa default env).
+ */
 const loadActiveCouriersFromDb = async (): Promise<string[]> => {
   const rows = await db.shippingCourier.findMany({
     where: { isActive: true },
@@ -65,7 +109,34 @@ const loadActiveCouriersFromDb = async (): Promise<string[]> => {
   });
   const fromDb = normalizeCourierCodes(rows.map((r: { code: string }) => r.code));
   if (fromDb.length) return fromDb;
-  return normalizeCourierCodes(RAJAONGKIR_DEFAULT_COURIERS);
+
+  const total = await db.shippingCourier.count();
+  if (total === 0) {
+    return normalizeCourierCodes(RAJAONGKIR_DEFAULT_COURIERS);
+  }
+  return [];
+};
+
+/** Kurir aktif yang boleh dihitung via RajaOngkir (exclude BISA Express dll.). */
+const loadActiveRajaOngkirCourierCodes = async (): Promise<string[]> => {
+  const active = await loadActiveCouriersFromDb();
+  return active.filter((code) => !isLocalCourierCode(code));
+};
+
+export const isShippingCourierActive = async (code: string): Promise<boolean> => {
+  const normalized = code.trim().toLowerCase();
+  if (!normalized) return false;
+  const row = await db.shippingCourier.findUnique({
+    where: { code: normalized },
+    select: { isActive: true },
+  });
+  if (row) return Boolean(row.isActive);
+  // Tabel kosong / belum di-seed: izinkan default RajaOngkir saja
+  const total = await db.shippingCourier.count();
+  if (total === 0 && !isLocalCourierCode(normalized)) {
+    return normalizeCourierCodes(RAJAONGKIR_DEFAULT_COURIERS).includes(normalized);
+  }
+  return false;
 };
 
 const normalizePickupVehicleOptions = (raw: unknown): KomshipPickupVehicleOption[] | null => {
@@ -249,6 +320,9 @@ export const searchDomesticDestinations = async (params: {
 
 /**
  * POST calculate/domestic-cost — [Calculate Domestic Cost](https://www.rajaongkir.com/docs/shipping-cost/endpoint-rajaongkir-for-search-base/calculate-domestic-cost)
+ *
+ * Hanya kurir aktif non-lokal. Jika RajaOngkir tidak dikonfigurasi / gagal → []
+ * (graceful degrade; caller bisa tetap merge BISA Express dari DB).
  */
 export const calculateDomesticCost = async (params: {
   originId: number;
@@ -263,30 +337,52 @@ export const calculateDomesticCost = async (params: {
   if (weightGrams < 1) {
     throw new AppError('Berat paket tidak valid.', 400);
   }
-  const activeCouriers = await loadActiveCouriersFromDb();
-  if (!activeCouriers.length) {
-    throw new AppError(
-      'Ekspedisi aktif belum dikonfigurasi admin. Set terlebih dahulu di pengaturan shipping.',
-      503,
+
+  const activeRaja = await loadActiveRajaOngkirCourierCodes();
+  const requestedRaw = params.courier?.trim()
+    ? normalizeCourierCodes(params.courier)
+    : activeRaja;
+  const courierCodes = requestedRaw.filter(
+    (code) => activeRaja.includes(code) && !isLocalCourierCode(code),
+  );
+
+  if (!courierCodes.length) {
+    return [];
+  }
+
+  if (!isRajaOngkirConfigured()) {
+    logger.warn(
+      'calculateDomesticCost: SHIPPING_COST_API_KEY belum di-set — skip RajaOngkir, lanjut opsi lokal jika ada.',
     );
+    return [];
   }
 
   const body = new URLSearchParams();
   body.set('origin', String(params.originId));
   body.set('destination', String(params.destinationId));
   body.set('weight', String(weightGrams));
-  body.set('courier', params.courier?.trim() || activeCouriers.join(':'));
+  body.set('courier', courierCodes.join(':'));
   if (params.price) {
     body.set('price', params.price);
   }
 
-  const data = await rajaRequest<RajaOngkirShippingOption[] | null>({
-    method: 'POST',
-    path: 'calculate/domestic-cost',
-    body,
-  });
+  try {
+    const data = await rajaRequest<RajaOngkirShippingOption[] | null>({
+      method: 'POST',
+      path: 'calculate/domestic-cost',
+      body,
+    });
 
-  return Array.isArray(data) ? data : [];
+    const options = Array.isArray(data) ? data : [];
+    return options.filter((o) => courierCodes.includes(o.code?.toLowerCase?.() ?? ''));
+  } catch (error) {
+    logger.warn(
+      `calculateDomesticCost: RajaOngkir gagal — graceful degrade ke opsi lokal (${
+        error instanceof Error ? error.message : String(error)
+      })`,
+    );
+    return [];
+  }
 };
 
 /**
@@ -302,12 +398,23 @@ export const verifyShippingSelection = async (params: {
   serviceName?: string;
   expectedCost: number;
 }): Promise<RajaOngkirShippingOption> => {
+  const courierCode = params.courierCode.trim().toLowerCase();
+  if (isLocalCourierCode(courierCode)) {
+    throw new AppError('Kurir lokal harus diverifikasi lewat layanan lokal.', 400);
+  }
+  if (!(await isShippingCourierActive(courierCode))) {
+    throw new AppError(
+      'Kurir ini dinonaktifkan admin. Pilih ekspedisi lain atau hitung ulang ongkir.',
+      400,
+    );
+  }
+
   const options = await calculateDomesticCost({
     originId: params.originId,
     destinationId: params.destinationId,
     weight: params.weight,
     weightUnit: params.weightUnit,
-    courier: params.courierCode,
+    courier: courierCode,
   });
 
   if (options.length === 0) {
@@ -319,7 +426,7 @@ export const verifyShippingSelection = async (params: {
 
   const normalizedService = params.serviceCode?.trim() || params.serviceName?.trim();
   const match = options.find((o) => {
-    const sameCourier = o.code.toLowerCase() === params.courierCode.toLowerCase();
+    const sameCourier = o.code.toLowerCase() === courierCode;
     const sameService = normalizedService
       ? o.service === normalizedService || o.description === normalizedService
       : true;
@@ -427,6 +534,83 @@ export const setPickupVehicleOptions = async (
 export const getActiveCouriers = async (): Promise<string[]> =>
   cacheAside(cacheKeys.shipCouriers(), CACHE_TTL.SHIP_COURIERS, loadActiveCouriersFromDb);
 
+/** Katalog lengkap (aktif + nonaktif) untuk admin — tanpa cache agar toggle langsung terlihat. */
+export const listShippingCouriers = async (): Promise<ShippingCourierRow[]> => {
+  // Pastikan BISA Express selalu ada di daftar manajemen
+  await db.shippingCourier.upsert({
+    where: { code: BISA_EXPRESS_COURIER_CODE },
+    update: {},
+    create: {
+      code: BISA_EXPRESS_COURIER_CODE,
+      label: 'BISA Express',
+      isActive: true,
+      sortOrder: 0,
+    },
+  });
+
+  const rows = await db.shippingCourier.findMany({
+    orderBy: [{ sortOrder: 'asc' }, { code: 'asc' }],
+    select: {
+      id: true,
+      code: true,
+      label: true,
+      isActive: true,
+      sortOrder: true,
+      updatedAt: true,
+    },
+  });
+
+  return rows.map(mapCourierRow);
+};
+
+export const updateShippingCourier = async (
+  code: string,
+  data: { isActive?: boolean; label?: string | null; sortOrder?: number },
+): Promise<ShippingCourierRow> => {
+  const normalized = code.trim().toLowerCase();
+  if (!normalized || normalized.length < 2) {
+    throw new AppError('Kode kurir tidak valid.', 400);
+  }
+
+  const existing = await db.shippingCourier.findUnique({
+    where: { code: normalized },
+    select: { id: true },
+  });
+  if (!existing) {
+    throw new AppError(`Kurir "${normalized}" tidak ditemukan.`, 404);
+  }
+
+  if (
+    data.isActive === undefined &&
+    data.label === undefined &&
+    data.sortOrder === undefined
+  ) {
+    throw new AppError('Tidak ada field yang diubah.', 400);
+  }
+
+  const updated = await db.shippingCourier.update({
+    where: { code: normalized },
+    data: {
+      ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
+      ...(data.label !== undefined
+        ? { label: data.label?.trim() || (isLocalCourierCode(normalized) ? 'BISA Express' : normalized.toUpperCase()) }
+        : {}),
+      ...(data.sortOrder !== undefined ? { sortOrder: data.sortOrder } : {}),
+    },
+    select: {
+      id: true,
+      code: true,
+      label: true,
+      isActive: true,
+      sortOrder: true,
+      updatedAt: true,
+    },
+  });
+
+  void invalidateShippingConfig();
+  return mapCourierRow(updated);
+};
+
 export const setActiveCouriers = async (couriers: string[]): Promise<string[]> => {
   const normalized = normalizeCourierCodes(couriers);
   if (!normalized.length) {
@@ -443,16 +627,17 @@ export const setActiveCouriers = async (couriers: string[]): Promise<string[]> =
 
     for (let i = 0; i < normalized.length; i += 1) {
       const code = normalized[i];
+      const label = isLocalCourierCode(code) ? 'BISA Express' : code.toUpperCase();
       await txAny.shippingCourier.upsert({
         where: { code },
         update: {
-          label: code.toUpperCase(),
+          label,
           isActive: true,
           sortOrder: i,
         },
         create: {
           code,
-          label: code.toUpperCase(),
+          label,
           isActive: true,
           sortOrder: i,
         },

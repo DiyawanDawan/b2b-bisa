@@ -60,6 +60,22 @@ router.post(
 
 router.get('/couriers', requireAuth, shippingController.getActiveCouriers);
 
+router.get(
+  '/couriers/manage',
+  requireAuth,
+  requireRole(UserRole.ADMIN),
+  shippingController.listShippingCouriers,
+);
+
+router.patch(
+  '/couriers/:code',
+  requireAuth,
+  requireRole(UserRole.ADMIN),
+  validate(v.updateShippingCourierParamsSchema, 'params'),
+  validate(v.updateShippingCourierSchema),
+  shippingController.updateShippingCourier,
+);
+
 router.put(
   '/couriers',
   requireAuth,
