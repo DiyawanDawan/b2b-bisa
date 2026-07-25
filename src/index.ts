@@ -162,6 +162,7 @@ app.get('/health', async (req: Request, res: Response) => {
       redis: REDIS_ENABLED ? (redisOk ? 'connected' : 'degraded') : 'disabled',
       smtp: {
         configured: smtp.configured,
+        provider: smtp.provider,
         host: smtp.host,
         from: smtp.from,
       },

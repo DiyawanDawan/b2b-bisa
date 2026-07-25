@@ -49,13 +49,24 @@ export const JWT_SECRET = required('JWT_SECRET');
 export const JWT_EXPIRES_IN = optional('JWT_EXPIRES_IN', '7d');
 export const JWT_REFRESH_EXPIRES_IN = optional('JWT_REFRESH_EXPIRES_IN', '30d');
 
-// Email SMTP
+// Email — ZeptoMail HTTP API (primary). SMTP is legacy fallback only.
+export const ZEPTOMAIL_TOKEN = optional('ZEPTOMAIL_TOKEN');
+export const ZEPTOMAIL_URL = optional(
+  'ZEPTOMAIL_URL',
+  'https://api.zeptomail.com/v1.1/email',
+);
+export const ZEPTOMAIL_FROM_ADDRESS = optional(
+  'ZEPTOMAIL_FROM_ADDRESS',
+  'noreply@bisaagri.com',
+);
+
+// Legacy SMTP (optional fallback when ZEPTOMAIL_TOKEN is empty)
 export const EMAIL_SMTP_HOST = optional('EMAIL_SMTP_HOST', 'smtp.gmail.com');
 export const EMAIL_SMTP_PORT = parseInt(optional('EMAIL_SMTP_PORT', '587'), 10);
 export const EMAIL_SMTP_SECURE = optional('EMAIL_SMTP_SECURE', 'false') === 'true';
 export const EMAIL_SMTP_USER = optional('EMAIL_SMTP_USER');
 export const EMAIL_SMTP_PASS = optional('EMAIL_SMTP_PASS');
-export const EMAIL_FROM = optional('EMAIL_FROM', 'noreply@bisa.id');
+export const EMAIL_FROM = optional('EMAIL_FROM', 'noreply@bisaagri.com');
 export const EMAIL_SENDER_NAME = optional('EMAIL_SENDER_NAME', 'BISA Platform');
 
 // Cloudflare R2

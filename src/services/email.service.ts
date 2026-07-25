@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import { SendMailClient } from 'zeptomail';
 import logger from '#utils/logger.util';
 import ejs from 'ejs';
 import path from 'path';
@@ -8,7 +9,6 @@ import AppError from '#utils/appError';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Import config
 import {
   EMAIL_SMTP_HOST,
   EMAIL_SMTP_PASS,
@@ -17,27 +17,36 @@ import {
   EMAIL_SMTP_USER,
   EMAIL_FROM,
   EMAIL_SENDER_NAME,
+  ZEPTOMAIL_TOKEN,
+  ZEPTOMAIL_URL,
+  ZEPTOMAIL_FROM_ADDRESS,
   CLIENT_HOST,
   NODE_ENV,
 } from '#utils/env.util';
 
+const HAS_ZEPTO = !!ZEPTOMAIL_TOKEN.trim();
 const HAS_SMTP = !!(EMAIL_SMTP_HOST && EMAIL_SMTP_USER && EMAIL_SMTP_PASS);
 
-/** Gmail (and most SMTP providers) reject From that doesn't match the authenticated user. */
 const resolvedFromAddress = (): string => {
+  if (HAS_ZEPTO) {
+    const from = (ZEPTOMAIL_FROM_ADDRESS || EMAIL_FROM || '').trim();
+    return from || 'noreply@bisaagri.com';
+  }
   const from = (EMAIL_FROM || '').trim();
   const smtpUser = (EMAIL_SMTP_USER || '').trim();
   if (from && from !== 'noreply@bisa.id') return from;
   if (smtpUser) return smtpUser;
-  return from || 'noreply@bisa.id';
+  return from || 'noreply@bisaagri.com';
 };
 
-if (!HAS_SMTP) {
-  logger.error(
-    'SMTP not configured: set EMAIL_SMTP_HOST, EMAIL_SMTP_USER, EMAIL_SMTP_PASS (and preferably EMAIL_FROM). OTP emails will fail.',
-  );
-} else {
-  logger.info('SMTP configured', {
+if (HAS_ZEPTO) {
+  logger.info('Email provider: ZeptoMail', {
+    url: ZEPTOMAIL_URL,
+    from: resolvedFromAddress(),
+    env: NODE_ENV,
+  });
+} else if (HAS_SMTP) {
+  logger.info('Email provider: SMTP (legacy)', {
     host: EMAIL_SMTP_HOST,
     port: EMAIL_SMTP_PORT,
     secure: EMAIL_SMTP_SECURE,
@@ -45,36 +54,75 @@ if (!HAS_SMTP) {
     from: resolvedFromAddress(),
     env: NODE_ENV,
   });
+} else {
+  logger.error(
+    'No email provider configured: set ZEPTOMAIL_TOKEN (preferred) or EMAIL_SMTP_*. OTP emails will fail.',
+  );
 }
 
-const transporter = nodemailer.createTransport({
-  host: EMAIL_SMTP_HOST,
-  port: EMAIL_SMTP_PORT,
-  secure: EMAIL_SMTP_SECURE,
-  auth: {
-    user: EMAIL_SMTP_USER,
-    pass: EMAIL_SMTP_PASS,
-  },
-  // STARTTLS (587): requireTLS helps. Implicit TLS (465): secure=true is enough;
-  // requireTLS can confuse some providers, so only enable it for non-secure ports.
-  ...(EMAIL_SMTP_SECURE ? {} : { requireTLS: true }),
-  // Nodemailer defaults (connect 2m / socket 10m) outlast the mobile client's
-  // 30s HTTP timeout, turning a slow SMTP hop into "permintaan waktu habis".
-  connectionTimeout: 10_000,
-  greetingTimeout: 10_000,
-  socketTimeout: 15_000,
-});
+const zeptoClient = HAS_ZEPTO
+  ? new SendMailClient({ url: ZEPTOMAIL_URL, token: ZEPTOMAIL_TOKEN.trim() })
+  : null;
+
+const transporter = HAS_SMTP
+  ? nodemailer.createTransport({
+      host: EMAIL_SMTP_HOST,
+      port: EMAIL_SMTP_PORT,
+      secure: EMAIL_SMTP_SECURE,
+      auth: {
+        user: EMAIL_SMTP_USER,
+        pass: EMAIL_SMTP_PASS,
+      },
+      ...(EMAIL_SMTP_SECURE ? {} : { requireTLS: true }),
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 15_000,
+    })
+  : null;
 
 /** Public status for /health — never includes secrets. */
-export const getSmtpStatus = () => ({
-  configured: HAS_SMTP,
-  host: HAS_SMTP ? EMAIL_SMTP_HOST : null,
-  port: HAS_SMTP ? EMAIL_SMTP_PORT : null,
-  secure: EMAIL_SMTP_SECURE,
-  from: HAS_SMTP ? resolvedFromAddress() : null,
-});
+export const getSmtpStatus = () => {
+  const configured = HAS_ZEPTO || HAS_SMTP;
+  return {
+    configured,
+    provider: HAS_ZEPTO ? 'zeptomail' : HAS_SMTP ? 'smtp' : 'none',
+    host: HAS_ZEPTO ? 'api.zeptomail.com' : HAS_SMTP ? EMAIL_SMTP_HOST : null,
+    port: HAS_ZEPTO ? null : HAS_SMTP ? EMAIL_SMTP_PORT : null,
+    secure: HAS_ZEPTO ? true : EMAIL_SMTP_SECURE,
+    from: configured ? resolvedFromAddress() : null,
+  };
+};
+
+async function sendZeptoMail(to: string, toName: string, subject: string, html: string) {
+  if (!zeptoClient) throw new Error('ZeptoMail client not configured');
+
+  const result = await zeptoClient.sendMail({
+    from: {
+      address: resolvedFromAddress(),
+      name: EMAIL_SENDER_NAME || 'BISA Platform',
+    },
+    to: [
+      {
+        email_address: {
+          address: to,
+          name: toName || to,
+        },
+      },
+    ],
+    subject,
+    htmlbody: html,
+  });
+
+  return {
+    success: true,
+    method: 'zeptomail',
+    data: result,
+  };
+}
 
 async function sendSMTP(from: string, to: string, subject: string, html: string) {
+  if (!transporter) throw new Error('SMTP transporter not configured');
+
   try {
     const result = await transporter.sendMail({
       from,
@@ -100,23 +148,29 @@ export const sendMail = async (
   subject: string,
   html: string,
   from: string | null = null,
+  toName = '',
 ) => {
   const fromAddress = from || `"${EMAIL_SENDER_NAME}" <${resolvedFromAddress()}>`;
   try {
+    if (HAS_ZEPTO) {
+      return await sendZeptoMail(to, toName, subject, html);
+    }
     if (HAS_SMTP) {
       return await sendSMTP(fromAddress, to, subject, html);
-    } else {
-      throw new Error(
-        'No email service configured (EMAIL_SMTP_HOST / EMAIL_SMTP_USER / EMAIL_SMTP_PASS)',
-      );
     }
+    throw new Error('No email service configured (ZEPTOMAIL_TOKEN or EMAIL_SMTP_*)');
   } catch (_err: any) {
+    const zeptoDetail =
+      _err?.error?.message ||
+      _err?.response?.data?.message ||
+      _err?.message ||
+      String(_err);
     logger.error('Failed to send email:', {
-      error: _err.message,
+      error: zeptoDetail,
       to,
       subject,
       from: fromAddress,
-      smtpConfigured: HAS_SMTP,
+      provider: HAS_ZEPTO ? 'zeptomail' : HAS_SMTP ? 'smtp' : 'none',
     });
     throw new AppError('Gagal mengirim email OTP. Silakan coba lagi.', 502);
   }
@@ -134,11 +188,10 @@ export const renderMailHtml = async (template: string, data: any) => {
   }
 };
 
-// Compatibility wrappers for existing calls
 export const sendWelcomeEmail = async (user: { email: string; fullName: string }) => {
   try {
     const html = await renderMailHtml('welcome', { user, clientHost: CLIENT_HOST });
-    return sendMail(user.email, 'Selamat Datang di BISA Platform! 🛡️', html);
+    return sendMail(user.email, 'Selamat Datang di BISA Platform! 🛡️', html, null, user.fullName);
   } catch (error) {
     logger.error('sendWelcomeEmail failed:', error);
   }
@@ -156,7 +209,7 @@ export const sendBookingConfirmation = async (email: string, booking: any) => {
 export const sendPasswordResetEmail = async (email: string, fullName: string, code: string) => {
   try {
     const html = await renderMailHtml('reset_password', { fullName, code });
-    return await sendMail(email, 'Permintaan Reset Password 🔑', html);
+    return await sendMail(email, 'Permintaan Reset Password 🔑', html, null, fullName);
   } catch (error) {
     logger.error('sendPasswordResetEmail failed:', error);
     throw error;
@@ -166,7 +219,7 @@ export const sendPasswordResetEmail = async (email: string, fullName: string, co
 export const sendOtpEmail = async (email: string, fullName: string, code: string) => {
   try {
     const html = await renderMailHtml('otp', { code, fullName });
-    return await sendMail(email, 'Kode Verifikasi Akun 🛡️', html);
+    return await sendMail(email, 'Kode Verifikasi Akun 🛡️', html, null, fullName);
   } catch (error) {
     logger.error('sendOtpEmail failed:', error);
     throw error;
@@ -176,7 +229,6 @@ export const sendOtpEmail = async (email: string, fullName: string, code: string
 /**
  * Send OTP / reset mail and surface failures to the HTTP layer.
  * Prefer this over fire-and-forget: mobile was showing "OTP terkirim" while SMTP failed.
- * Timeouts on the transporter keep this under ~15s (below typical gateway/client limits).
  * OTP should already be persisted before calling so a failed send can still be recovered from DB / resend.
  */
 export const deliverOtpEmail = async (email: string, fullName: string, code: string) => {
@@ -189,7 +241,6 @@ export const deliverPasswordResetEmail = async (email: string, fullName: string,
 
 /**
  * @deprecated Prefer deliverOtpEmail — kept for non-auth callers that must not block.
- * Failures are logged only; HTTP already returned success.
  */
 export const queueOtpEmail = (email: string, fullName: string, code: string) => {
   void sendOtpEmail(email, fullName, code).catch((error: unknown) => {
