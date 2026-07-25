@@ -1,6 +1,6 @@
 import prisma from '#config/prisma';
 import { CACHE_TTL } from '#constants/cache.constants';
-import { cacheAside, cacheKeys } from '#utils/cache.util';
+import { cacheAside, cacheKeys, invalidateAuthUser } from '#utils/cache.util';
 import AppError from '#utils/appError';
 import { idrAmountsEqual } from '#utils/currency.util';
 import crypto from 'crypto';
@@ -235,6 +235,8 @@ export const handleXenditWebhook = async (
             where: { id: transaction.userId },
             data: { tier: UserTier.PRO, subscriptionExpiresAt: limitDate },
           });
+
+          void invalidateAuthUser(transaction.userId);
 
           return updatedTrx;
         } else {
@@ -621,6 +623,10 @@ export const getAvailableChannels = async () =>
         minAmount: true,
         maxAmount: true,
         settlementTime: true,
+        refundCapability: true,
+        supportsSave: true,
+        reusablePaymentCode: true,
+        merchantInitiatedTransaction: true,
         logoUrl: true,
       },
       orderBy: { name: 'asc' },

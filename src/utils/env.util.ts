@@ -113,6 +113,11 @@ export const CHROMA_DATABASE = optional('CHROMA_DATABASE', 'bisa');
 export const CHROMA_COLLECTION = optional('CHROMA_COLLECTION', 'bisa_knowledge');
 export const RAG_ENABLED = optional('RAG_ENABLED', 'true') === 'true';
 
+/** Soft retention for AuditLog rows (days). 0 disables purge cron. Default 365. */
+/** Soft retention for AuditLog rows (days). 0 disables purge cron. Default 365.
+ * Set in .env as AUDIT_RETENTION_DAYS. Cron: src/crons/auditRetention.ts (daily). */
+export const AUDIT_RETENTION_DAYS = parseInt(optional('AUDIT_RETENTION_DAYS', '365'), 10);
+
 // Xendit — payment vs payout may use separate API keys in Xendit Dashboard
 export const XENDIT_PAYMENT_SECRET_KEY = optional('XENDIT_PAYMENT_SECRET_KEY');
 export const XENDIT_PAYOUT_SECRET_KEY = optional('XENDIT_PAYOUT_SECRET_KEY');
@@ -184,6 +189,9 @@ export const getEncryptionKeyBuffer = (): Buffer => resolveKeyForVersion('1');
 
 export const getEncryptionKeyBufferForVersion = (version: string): Buffer =>
   resolveKeyForVersion(version);
+
+/** Newest write version: `2` when ENCRYPTION_KEY_V2 is set, otherwise `1`. */
+export const getActiveEncryptionVersion = (): string => (ENCRYPTION_KEY_V2 ? '2' : '1');
 
 // Chunked media upload (R2 multipart)
 export const MEDIA_CHUNK_SIZE_BYTES = parseInt(optional('MEDIA_CHUNK_SIZE_BYTES', '5242880'), 10);

@@ -1,5 +1,7 @@
 import {
+  decryptField,
   decryptFieldDeterministic,
+  encryptField,
   encryptFieldDeterministic,
   isEncryptedPayload,
 } from '#utils/encryption.util';
@@ -19,7 +21,23 @@ export const revealAccountNumber = (stored: string, ctx: PayoutAccountContext): 
   return decryptFieldDeterministic(stored, payoutAccountContextKey(ctx));
 };
 
-export const formatPayoutAccountForList = <T extends { accountNumber: string }>(
+/** UserPayoutAccount.accountName — random IV (not unique). */
+export const sealAccountName = (
+  accountName: string | null | undefined,
+): string | null | undefined => {
+  if (accountName == null || accountName === '') return accountName;
+  return encryptField(accountName.trim());
+};
+
+export const revealAccountName = (stored: string | null | undefined): string | null | undefined => {
+  if (stored == null || stored === '') return stored;
+  if (!isEncryptedPayload(stored)) return stored;
+  return decryptField(stored);
+};
+
+export const formatPayoutAccountForList = <
+  T extends { accountNumber: string; accountName?: string },
+>(
   account: T,
   ctx: PayoutAccountContext,
 ): T & { accountNumber: string; maskedAccountNumber: string } => {
@@ -29,10 +47,15 @@ export const formatPayoutAccountForList = <T extends { accountNumber: string }>(
     ...account,
     accountNumber: masked,
     maskedAccountNumber: masked,
+    ...(account.accountName != null && {
+      accountName: revealAccountName(account.accountName) as string,
+    }),
   };
 };
 
-export const formatPayoutAccountForOwnerDetail = <T extends { accountNumber: string }>(
+export const formatPayoutAccountForOwnerDetail = <
+  T extends { accountNumber: string; accountName?: string },
+>(
   account: T,
   ctx: PayoutAccountContext,
 ): T & { maskedAccountNumber: string } => {
@@ -41,10 +64,15 @@ export const formatPayoutAccountForOwnerDetail = <T extends { accountNumber: str
     ...account,
     accountNumber: plain,
     maskedAccountNumber: maskAccountNumber(plain),
+    ...(account.accountName != null && {
+      accountName: revealAccountName(account.accountName) as string,
+    }),
   };
 };
 
-export const formatPayoutAccountForAdmin = <T extends { accountNumber: string }>(
+export const formatPayoutAccountForAdmin = <
+  T extends { accountNumber: string; accountName?: string },
+>(
   account: T,
   ctx: PayoutAccountContext,
   unmask = false,
@@ -54,5 +82,8 @@ export const formatPayoutAccountForAdmin = <T extends { accountNumber: string }>
     ...account,
     accountNumber: unmask ? plain : maskAccountNumber(plain),
     maskedAccountNumber: maskAccountNumber(plain),
+    ...(account.accountName != null && {
+      accountName: revealAccountName(account.accountName) as string,
+    }),
   };
 };

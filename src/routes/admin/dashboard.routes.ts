@@ -1,7 +1,14 @@
 import { Router } from 'express';
 import * as adminController from '#controllers/admin.controller';
+import * as governanceController from '#controllers/admin-governance.controller';
 
 const router = Router();
+
+/**
+ * GET /api/v1/admin/dashboard/operations-kpis
+ * KPI operasional lintas domain (RFQ, booking, review, referral, live, voucher, Express).
+ */
+router.get('/operations-kpis', governanceController.getOperationsKpis);
 
 /**
  * GET /api/v1/admin/dashboard/stats

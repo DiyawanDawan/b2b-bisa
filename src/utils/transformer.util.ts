@@ -1,4 +1,5 @@
 import { Prisma } from '#prisma';
+import { revealAddress, revealAddressPhone } from '#utils/piiField.util';
 
 /**
  * Type definition for CustomerAddress from Prisma with Includes
@@ -38,9 +39,9 @@ export const transformAddress = (ca: CustomerAddressWithAddress) => {
   return {
     id: ca.id,
     label: ca.label,
-    fullAddress: ca.address.fullAddress,
+    fullAddress: revealAddress(ca.address.fullAddress) as string,
     zipCode: ca.address.zipCode,
-    phone: ca.address.phoneNumber || null,
+    phone: revealAddressPhone(ca.address.phoneNumber) || null,
     country: ca.address.country?.name || null,
     province: ca.address.province?.name || null,
     regency: ca.address.regency?.name || null,

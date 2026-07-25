@@ -3,10 +3,14 @@ import catchAsync from '#utils/catchAsync';
 import { successResponse } from '#utils/response.util';
 import * as paymentService from '#services/payment.service';
 import AppError from '#utils/appError';
-import { normalizeXenditWebhookPayload } from '#constants/xendit.constants';
+import {
+  normalizeXenditWebhookPayload,
+  type XenditWebhookPayload,
+} from '#constants/xendit.constants';
 
 const dispatchXenditWebhook = async (body: unknown, token: string): Promise<void> => {
   const normalized = normalizeXenditWebhookPayload(body);
+  const payload = body as XenditWebhookPayload;
 
   if (normalized.kind === 'ignored') {
     console.log(
@@ -17,17 +21,17 @@ const dispatchXenditWebhook = async (body: unknown, token: string): Promise<void
   }
 
   if (normalized.kind === 'payment_v3') {
-    await paymentService.handleXenditPaymentRequestWebhook(body, token);
+    await paymentService.handleXenditPaymentRequestWebhook(payload, token);
     return;
   }
 
   if (normalized.kind === 'payout') {
-    await paymentService.handleXenditPayoutWebhook(body, token);
+    await paymentService.handleXenditPayoutWebhook(payload, token);
     return;
   }
 
   if (normalized.kind === 'invoice') {
-    await paymentService.handleXenditWebhook(body, token);
+    await paymentService.handleXenditWebhook(payload, token);
     return;
   }
 

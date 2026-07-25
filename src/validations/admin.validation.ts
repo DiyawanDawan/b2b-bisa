@@ -17,32 +17,20 @@ import {
   BiomassaType,
   PaymentMethod,
 } from '#prisma';
+import {
+  paginationQuerySchema,
+  queryBoolean,
+  queryLimit,
+  queryPage,
+} from '#validations/admin-query.validation';
 
-/**
- * Coerce query number without turning missing/empty into NaN
- * (Number(undefined) === NaN breaks .default()).
- */
-const queryPage = z.preprocess((val) => {
-  if (val === undefined || val === null || val === '') return undefined;
-  const n = Number(val);
-  return Number.isFinite(n) ? n : undefined;
-}, z.number().int().min(1).default(1));
-
-const queryLimit = (max: number, fallback: number) =>
-  z.preprocess((val) => {
-    if (val === undefined || val === null || val === '') return undefined;
-    const n = Number(val);
-    return Number.isFinite(n) ? n : undefined;
-  }, z.number().int().min(1).max(max).default(fallback));
-
-/**
- * Common pagination and search query schema
- */
-export const paginationQuerySchema = z.object({
-  page: queryPage,
-  limit: queryLimit(100, 10),
-  search: z.string().optional(),
-});
+export {
+  idParamSchema,
+  paginationQuerySchema,
+  queryBoolean,
+  queryLimit,
+  queryPage,
+} from '#validations/admin-query.validation';
 
 /**
  * User Governance Schemas
@@ -54,6 +42,7 @@ export const listUsersSchema = paginationQuerySchema.extend({
 
 export const updateUserStatusSchema = z.object({
   status: z.nativeEnum(UserStatus, { message: 'Status tidak valid' }),
+  reason: z.string().trim().min(5).max(500).optional(),
 });
 
 /**
@@ -222,10 +211,7 @@ export const financeChannelIdParamSchema = z.object({
 
 export const listPayoutBanksAdminSchema = z.object({
   search: z.string().optional(),
-  isActive: z
-    .enum(['true', 'false'])
-    .optional()
-    .transform((v) => (v === undefined ? undefined : v === 'true')),
+  isActive: queryBoolean,
 });
 
 export const createPayoutBankSchema = z.object({
@@ -260,10 +246,7 @@ export const updatePayoutBankSchema = z
 
 export const listPaymentChannelsAdminSchema = z.object({
   search: z.string().optional(),
-  isActive: z
-    .enum(['true', 'false'])
-    .optional()
-    .transform((v) => (v === undefined ? undefined : v === 'true')),
+  isActive: queryBoolean,
 });
 
 export const createPaymentChannelSchema = z.object({
@@ -276,6 +259,10 @@ export const createPaymentChannelSchema = z.object({
   maxAmount: z.number().min(0).optional(),
   settlementTime: z.string().trim().max(80).optional(),
   xenditType: z.string().trim().max(80).optional(),
+  refundCapability: z.string().trim().max(120).nullable().optional(),
+  supportsSave: z.boolean().optional(),
+  reusablePaymentCode: z.boolean().optional(),
+  merchantInitiatedTransaction: z.boolean().optional(),
   logoUrl: z.string().max(2000).optional(),
   isActive: z.boolean().optional(),
 });
@@ -291,6 +278,10 @@ export const updatePaymentChannelSchema = z
     maxAmount: z.number().min(0).nullable().optional(),
     settlementTime: z.string().trim().max(80).nullable().optional(),
     xenditType: z.string().trim().max(80).nullable().optional(),
+    refundCapability: z.string().trim().max(120).nullable().optional(),
+    supportsSave: z.boolean().optional(),
+    reusablePaymentCode: z.boolean().optional(),
+    merchantInitiatedTransaction: z.boolean().optional(),
     logoUrl: z.string().max(2000).nullable().optional(),
     isActive: z.boolean().optional(),
   })

@@ -1,5 +1,6 @@
 import logger from '../../src/config/logger.js';
 import { seedBisaExpressDemoData } from './24b-bisa-express-demo.seeder.js';
+import { sealAddress, sealAddressPhone } from '../../src/utils/piiField.util.ts';
 
 /** Zone code dari nama GIS province (bukan keyword hardcode). */
 const zoneFromProvinceName = (name) =>
@@ -306,17 +307,31 @@ export async function seedBisaExpress(prisma) {
       provinces.find((p) => p.name === 'Jawa Timur') ||
       provinces[0];
 
-    let hubAddress = await prisma.address.findFirst({
-      where: { fullAddress: { contains: 'Hub BISA Express' } },
+    let hubAddress = null;
+    const existingHub = await prisma.bisaExpressHub.findUnique({
+      where: { code: 'HUB-MAIN-01' },
+      select: { addressId: true },
     });
-    if (!hubAddress) {
+    if (existingHub?.addressId) {
+      hubAddress = await prisma.address.update({
+        where: { id: existingHub.addressId },
+        data: {
+          provinceId: hubProvince?.id ?? null,
+          fullAddress: sealAddress('Hub BISA Express — Gudang Sortir Utama'),
+          zipCode: '00000',
+          phoneNumber: sealAddressPhone('081234567890'),
+          latitude: -7.25,
+          longitude: 112.75,
+        },
+      });
+    } else {
       hubAddress = await prisma.address.create({
         data: {
           countryId: country.id,
           provinceId: hubProvince?.id ?? null,
-          fullAddress: 'Hub BISA Express — Gudang Sortir Utama',
+          fullAddress: sealAddress('Hub BISA Express — Gudang Sortir Utama'),
           zipCode: '00000',
-          phoneNumber: '081234567890',
+          phoneNumber: sealAddressPhone('081234567890'),
           latitude: -7.25,
           longitude: 112.75,
         },

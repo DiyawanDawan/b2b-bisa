@@ -2,6 +2,8 @@ import prisma from '#config/prisma';
 import AppError from '#utils/appError';
 import { Prisma } from '#prisma';
 import { resolveMediaField } from '#utils/mediaResolver.util';
+import { CACHE_TTL } from '#constants/cache.constants';
+import { cacheAside, cacheKeys, hashQuery, invalidateForumGroups } from '#utils/cache.util';
 
 type ForumGroupRole = 'OWNER' | 'ADMIN' | 'MEMBER';
 const FORUM_GROUP_ROLE = {
@@ -48,7 +50,7 @@ const mapGroup = (
     bannerUrl: string | null;
     isPublic: boolean;
     memberCount: number;
-    createdAt: Date;
+    createdAt: Date | string;
     owner: { id: string; fullName: string; avatarUrl: string | null };
     _count?: { posts: number };
   },
@@ -82,35 +84,16 @@ export const assertGroupMember = async (groupId: string, userId: string) => {
   return member;
 };
 
-export const listGroups = async (params: {
-  keyword?: string;
-  page?: number;
-  limit?: number;
-  userId?: string;
-  mine?: boolean;
-}) => {
-  const { keyword, page = 1, limit = 20, userId, mine = false } = params;
+const fetchPublicGroupsAnon = async (params: { keyword?: string; page: number; limit: number }) => {
+  const { keyword, page, limit } = params;
   const skip = (page - 1) * limit;
 
-  const where: Prisma.ForumGroupWhereInput = mine
-    ? {
-        members: { some: { userId: userId! } },
-        ...(keyword?.trim() && {
-          OR: [
-            { name: { contains: keyword.trim() } },
-            { description: { contains: keyword.trim() } },
-          ],
-        }),
-      }
-    : {
-        isPublic: true,
-        ...(keyword?.trim() && {
-          OR: [
-            { name: { contains: keyword.trim() } },
-            { description: { contains: keyword.trim() } },
-          ],
-        }),
-      };
+  const where: Prisma.ForumGroupWhereInput = {
+    isPublic: true,
+    ...(keyword?.trim() && {
+      OR: [{ name: { contains: keyword.trim() } }, { description: { contains: keyword.trim() } }],
+    }),
+  };
 
   const [groups, total] = await prisma.$transaction([
     prisma.forumGroup.findMany({
@@ -127,13 +110,6 @@ export const listGroups = async (params: {
         createdAt: true,
         owner: { select: groupOwnerSelect },
         _count: { select: { posts: true } },
-        ...(userId && {
-          members: {
-            where: { userId },
-            select: { role: true },
-            take: 1,
-          },
-        }),
       },
       orderBy: { createdAt: 'desc' },
       skip,
@@ -143,15 +119,105 @@ export const listGroups = async (params: {
   ]);
 
   return {
-    groups: groups.map((g) => {
-      const membership = userId && g.members?.[0] ? g.members[0] : null;
-      const { members: _members, ...rest } = g as typeof g & {
-        members?: { role: ForumGroupRole }[];
-      };
-      return mapGroup(rest, membership);
-    }),
+    groups: groups.map((g) => mapGroup(g, null)),
     total,
     totalPages: Math.ceil(total / limit),
+  };
+};
+
+export const listGroups = async (params: {
+  keyword?: string;
+  page?: number;
+  limit?: number;
+  userId?: string;
+  mine?: boolean;
+}) => {
+  const { keyword, page = 1, limit = 20, userId, mine = false } = params;
+
+  // mine = daftar membership user — jangan cache
+  if (mine) {
+    const skip = (page - 1) * limit;
+    const where: Prisma.ForumGroupWhereInput = {
+      members: { some: { userId: userId! } },
+      ...(keyword?.trim() && {
+        OR: [{ name: { contains: keyword.trim() } }, { description: { contains: keyword.trim() } }],
+      }),
+    };
+
+    const [groups, total] = await prisma.$transaction([
+      prisma.forumGroup.findMany({
+        where,
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          description: true,
+          avatarUrl: true,
+          bannerUrl: true,
+          isPublic: true,
+          memberCount: true,
+          createdAt: true,
+          owner: { select: groupOwnerSelect },
+          _count: { select: { posts: true } },
+          ...(userId && {
+            members: {
+              where: { userId },
+              select: { role: true },
+              take: 1,
+            },
+          }),
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.forumGroup.count({ where }),
+    ]);
+
+    return {
+      groups: groups.map((g) => {
+        const membership = userId && g.members?.[0] ? g.members[0] : null;
+        const { members: _members, ...rest } = g as typeof g & {
+          members?: { role: ForumGroupRole }[];
+        };
+        return mapGroup(rest, membership);
+      }),
+      total,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  const anon = await cacheAside(
+    cacheKeys.forumGroupsAnon(hashQuery({ keyword, page, limit })),
+    CACHE_TTL.FORUM_GROUPS,
+    () => fetchPublicGroupsAnon({ keyword, page, limit }),
+  );
+
+  if (!userId || anon.groups.length === 0) {
+    return anon;
+  }
+
+  const memberships = await prisma.forumGroupMember.findMany({
+    where: {
+      userId,
+      groupId: { in: anon.groups.map((g) => g.id) },
+    },
+    select: { groupId: true, role: true },
+  });
+  const membershipByGroup = new Map(
+    memberships.map((m) => [m.groupId, { role: m.role as ForumGroupRole }]),
+  );
+
+  return {
+    ...anon,
+    groups: anon.groups.map((g) => {
+      const membership = membershipByGroup.get(g.id) ?? null;
+      return {
+        ...g,
+        isMember: Boolean(membership),
+        myRole: membership?.role ?? null,
+      };
+    }),
   };
 };
 
@@ -246,6 +312,7 @@ export const createGroup = async (
     return created;
   });
 
+  void invalidateForumGroups();
   return mapGroup(group, { role: FORUM_GROUP_ROLE.OWNER });
 };
 
@@ -294,6 +361,7 @@ export const updateGroup = async (
     },
   });
 
+  void invalidateForumGroups();
   return mapGroup(updated, member);
 };
 
@@ -317,6 +385,7 @@ export const joinGroup = async (groupId: string, userId: string) => {
     }),
   ]);
 
+  void invalidateForumGroups();
   return getGroupById(groupId, userId);
 };
 
@@ -342,5 +411,6 @@ export const leaveGroup = async (groupId: string, userId: string) => {
     }),
   ]);
 
+  void invalidateForumGroups();
   return { left: true };
 };

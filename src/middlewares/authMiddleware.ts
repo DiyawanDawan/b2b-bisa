@@ -4,6 +4,9 @@ import prisma from '#config/prisma';
 import { UserRole, UserStatus, AuthRequest } from '#types/index';
 import { errorResponse } from '#utils/response.util';
 import { JWT_SECRET } from '#utils/env.util';
+import { CACHE_TTL } from '#constants/cache.constants';
+import { cacheAside, cacheKeys } from '#utils/cache.util';
+import type { UserTier } from '#prisma';
 
 interface DecodedToken {
   userId: string;
@@ -11,6 +14,36 @@ interface DecodedToken {
   iat: number;
   exp: number;
 }
+
+const activeUserSelect = {
+  id: true,
+  email: true,
+  role: true,
+  fullName: true,
+  status: true,
+  tier: true,
+  subscriptionExpiresAt: true,
+} as const;
+
+type ActiveUserRow = {
+  id: string;
+  email: string;
+  role: UserRole;
+  fullName: string;
+  status: UserStatus;
+  tier: UserTier;
+  subscriptionExpiresAt: Date | string | null;
+};
+
+/** Load user by id (cacheAside). JWT never used in cache key. */
+const loadActiveUser = (userId: string): Promise<ActiveUserRow | null> =>
+  cacheAside(cacheKeys.authUser(userId), CACHE_TTL.AUTH_USER, async () => {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: activeUserSelect,
+    });
+    return user as ActiveUserRow | null;
+  });
 
 /**
  * Middleware to require authentication via JWT
@@ -38,19 +71,7 @@ export const requireAuth = async (
       return;
     }
 
-    // Fetch user from database to ensure they still exist and are active
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.userId },
-      select: {
-        id: true,
-        email: true,
-        role: true,
-        fullName: true,
-        status: true,
-        tier: true,
-        subscriptionExpiresAt: true,
-      },
-    });
+    const user = await loadActiveUser(decoded.userId);
 
     if (!user) {
       errorResponse(res, 'User no longer exists.', 401);
@@ -69,7 +90,9 @@ export const requireAuth = async (
       fullName: user.fullName,
       email: user.email,
       tier: user.tier,
-      subscriptionExpiresAt: user.subscriptionExpiresAt,
+      subscriptionExpiresAt: user.subscriptionExpiresAt
+        ? new Date(user.subscriptionExpiresAt)
+        : null,
     };
 
     next();
@@ -121,18 +144,7 @@ export const optionalAuth = async (
       return next(); // Invalid token, treat as guest
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.userId },
-      select: {
-        id: true,
-        email: true,
-        role: true,
-        fullName: true,
-        status: true,
-        tier: true,
-        subscriptionExpiresAt: true,
-      },
-    });
+    const user = await loadActiveUser(decoded.userId);
 
     if (user && user.status === UserStatus.ACTIVE) {
       req.user = {
@@ -141,7 +153,9 @@ export const optionalAuth = async (
         fullName: user.fullName,
         email: user.email,
         tier: user.tier,
-        subscriptionExpiresAt: user.subscriptionExpiresAt,
+        subscriptionExpiresAt: user.subscriptionExpiresAt
+          ? new Date(user.subscriptionExpiresAt)
+          : null,
       };
     }
 

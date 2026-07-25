@@ -514,6 +514,9 @@ model User {
   reviewedProductCertificates ProductCertificate[] @relation("ProductCertificateReviewer")
   supplierStoreCertificates SupplierStoreCertificate[] @relation("SupplierStoreCertificates")
   reviewedSupplierStoreCertificates SupplierStoreCertificate[] @relation("SupplierStoreCertificateReviewer")
+  reviewedStoreBanners StoreBanner[] @relation("StoreBannerReviewer")
+  storeBannerModerationActions StoreBannerModerationHistory[] @relation("StoreBannerModerationActor")
+  moderatedProductQuestions ProductQuestion[] @relation("ProductQuestionModerator")
 
   @@index([role])
   @@index([referralCode])
@@ -547,20 +550,53 @@ model UserProfile {
   @@map("user_profiles")
 }
 
-model StoreBanner {
-  id        String   @id @default(uuid())
-  userId    String   @map("user_id")
-  imageUrl  String   @db.Text @map("image_url")
-  title     String?  @map("title")
-  sortOrder Int      @default(0) @map("sort_order")
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+enum StoreBannerModerationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+model StoreBanner {
+  id                String                       @id @default(uuid())
+  userId            String                       @map("user_id")
+  imageUrl          String                       @db.Text @map("image_url")
+  title             String?                      @map("title")
+  sortOrder         Int                          @default(0) @map("sort_order")
+  isActive          Boolean                      @default(true) @map("is_active")
+  moderationStatus  StoreBannerModerationStatus  @default(PENDING) @map("moderation_status")
+  startsAt          DateTime?                    @map("starts_at")
+  endsAt            DateTime?                    @map("ends_at")
+  reviewedById      String?                      @map("reviewed_by_id")
+  reviewedAt        DateTime?                    @map("reviewed_at")
+  rejectionReason   String?                      @db.Text @map("rejection_reason")
+  createdAt         DateTime                     @default(now()) @map("created_at")
+  updatedAt         DateTime                     @updatedAt @map("updated_at")
+
+  user       User                          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reviewedBy User?                         @relation("StoreBannerReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  history    StoreBannerModerationHistory[]
 
   @@index([userId, sortOrder])
+  @@index([moderationStatus, createdAt])
+  @@index([startsAt, endsAt])
   @@map("store_banners")
+}
+
+model StoreBannerModerationHistory {
+  id         String                      @id @default(uuid())
+  bannerId   String                      @map("banner_id")
+  action     String
+  fromStatus StoreBannerModerationStatus? @map("from_status")
+  toStatus   StoreBannerModerationStatus? @map("to_status")
+  note       String?                     @db.Text
+  actorId    String?                     @map("actor_id")
+  createdAt  DateTime                    @default(now()) @map("created_at")
+
+  banner StoreBanner @relation(fields: [bannerId], references: [id], onDelete: Cascade)
+  actor  User?       @relation("StoreBannerModerationActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([bannerId, createdAt])
+  @@map("store_banner_moderation_history")
 }
 
 model Token {
@@ -633,6 +669,7 @@ model Category {
   id          String    @id @default(uuid())
   name        String    @unique    // e.g. "Limbah Biomassa", "Produk Biochar"
   description String?   @db.Text
+  isActive    Boolean   @default(true) @map("is_active")
   createdAt   DateTime  @default(now()) @map("created_at")
   categoryType CATEGORY_TYPE @map("category_type")
   productMode  ProductMode?  @map("product_mode") // Separates Biomass vs Organic categories
@@ -647,6 +684,7 @@ model Category {
   @@index([categoryType])
   @@index([productMode])
   @@index([productMode, biomassaType])
+  @@index([isActive])
   @@map("categories")
 }
 
@@ -845,6 +883,7 @@ model ProductHarvestLot {
   status              HarvestLotStatus @default(SCHEDULED) @map("status")
   notes               String?          @db.Text
   stockedAt           DateTime?        @map("stocked_at")
+  archivedAt          DateTime?        @map("archived_at")
   createdAt           DateTime         @default(now()) @map("created_at")
   updatedAt           DateTime         @updatedAt @map("updated_at")
 
@@ -853,6 +892,7 @@ model ProductHarvestLot {
 
   @@index([productId, expectedHarvestDate])
   @@index([status, expectedHarvestDate])
+  @@index([archivedAt])
   @@map("product_harvest_lots")
 }
 
@@ -1042,22 +1082,29 @@ model Order {
 }
 
 model ProductQuestion {
-  id           String    @id @default(uuid())
-  productId    String    @map("product_id")
-  askerId      String    @map("asker_id")
-  question     String    @db.Text
-  answer       String?   @db.Text
-  answeredAt   DateTime? @map("answered_at")
-  answeredById String?   @map("answered_by_id")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  id             String    @id @default(uuid())
+  productId      String    @map("product_id")
+  askerId        String    @map("asker_id")
+  question       String    @db.Text
+  answer         String?   @db.Text
+  answeredAt     DateTime? @map("answered_at")
+  answeredById   String?   @map("answered_by_id")
+  isHidden       Boolean   @default(false) @map("is_hidden")
+  isFlagged      Boolean   @default(false) @map("is_flagged")
+  moderationNote String?   @db.Text @map("moderation_note")
+  moderatedAt    DateTime? @map("moderated_at")
+  moderatedById  String?   @map("moderated_by_id")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
 
-  product    Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-  asker      User    @relation("ProductQuestionsAsked", fields: [askerId], references: [id], onDelete: Restrict)
-  answeredBy User?   @relation("ProductQuestionsAnswered", fields: [answeredById], references: [id], onDelete: SetNull)
+  product     Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  asker       User    @relation("ProductQuestionsAsked", fields: [askerId], references: [id], onDelete: Restrict)
+  answeredBy  User?   @relation("ProductQuestionsAnswered", fields: [answeredById], references: [id], onDelete: SetNull)
+  moderatedBy User?   @relation("ProductQuestionModerator", fields: [moderatedById], references: [id], onDelete: SetNull)
 
   @@index([productId, createdAt])
   @@index([askerId])
+  @@index([isHidden, isFlagged])
   @@map("product_questions")
 }
 
@@ -1073,6 +1120,12 @@ model Rfq {
   deliveryDate   DateTime?    @map("delivery_date")
   budgetMax      Decimal?     @db.Decimal(15, 2) @map("budget_max")
   status         RfqStatus    @default(OPEN) @map("status")
+  // Admin moderation (Fase 3)
+  isFlagged      Boolean      @default(false) @map("is_flagged")
+  flagReason     String?      @db.Text @map("flag_reason")
+  flaggedAt      DateTime?    @map("flagged_at")
+  cancelReason   String?      @db.Text @map("cancel_reason")
+  cancelledAt    DateTime?    @map("cancelled_at")
   createdAt      DateTime     @default(now()) @map("created_at")
   updatedAt      DateTime     @updatedAt @map("updated_at")
 
@@ -1083,6 +1136,7 @@ model Rfq {
   @@index([buyerId, status])
   @@index([productMode, status])
   @@index([createdAt])
+  @@index([isFlagged])
   @@map("rfqs")
 }
 
@@ -1186,8 +1240,12 @@ model SupplierApiKey {
   name       String    @map("name")
   keyHash    String    @unique @map("key_hash")
   keyPrefix  String    @map("key_prefix")
+  /// Daftar scope integrasi, e.g. ["products:read", "inventory:write"]
+  scopes     Json?     @map("scopes")
   lastUsedAt DateTime? @map("last_used_at")
   isActive   Boolean   @default(true) @map("is_active")
+  revokedAt  DateTime? @map("revoked_at")
+  rotatedAt  DateTime? @map("rotated_at")
   createdAt  DateTime  @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1657,6 +1715,7 @@ model ForumGroup {
   bannerUrl   String?  @map("banner_url")
   ownerId     String   @map("owner_id")
   isPublic    Boolean  @default(true) @map("is_public")
+  isActive    Boolean  @default(true) @map("is_active")
   memberCount Int      @default(1) @map("member_count")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
@@ -1667,6 +1726,7 @@ model ForumGroup {
 
   @@index([ownerId])
   @@index([isPublic])
+  @@index([isActive])
   @@index([createdAt])
   @@map("forum_groups")
 }
@@ -1919,6 +1979,14 @@ model Review {
   comment     String?  @db.Text @map("comment")
   supplierReply String? @db.Text @map("supplier_reply")
   imageUrl    String?  @db.Text @map("image_url")
+  // Admin moderation (Fase 3)
+  isHidden         Boolean   @default(false) @map("is_hidden")
+  moderationReason String?   @db.Text @map("moderation_reason")
+  moderatedAt      DateTime? @map("moderated_at")
+  moderatedById    String?   @map("moderated_by_id")
+  isFlagged        Boolean   @default(false) @map("is_flagged")
+  flagReason       String?   @db.Text @map("flag_reason")
+  flaggedAt        DateTime? @map("flagged_at")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
@@ -1929,6 +1997,8 @@ model Review {
   @@index([productId, rating])
   @@index([orderId])
   @@index([createdAt])
+  @@index([isHidden])
+  @@index([isFlagged])
   @@map("reviews")
 }
 
@@ -1941,7 +2011,28 @@ model Policy {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  revisions PolicyRevision[]
+
   @@map("policies")
+}
+
+/// Immutable revision snapshot — published legal docs are never hard-deleted.
+model PolicyRevision {
+  id          String   @id @default(uuid())
+  policyId    String   @map("policy_id")
+  version     String   @map("version")
+  title       String   @map("title")
+  content     String   @db.Text @map("content")
+  isPublished Boolean  @default(false) @map("is_published")
+  createdById String?  @map("created_by_id")
+  note        String?  @db.Text @map("note")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  policy Policy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+
+  @@index([policyId])
+  @@index([policyId, createdAt])
+  @@map("policy_revisions")
 }
 
 
@@ -1952,8 +2043,17 @@ model MarketTrend {
   trendType       TrendType @map("trend_type")
   category        TrendCategory @map("category")
   historyData     Json?    @map("history_data") // Sparkline data: [10, 12, 11, 14, ...]
+  period          String?  @map("period") // e.g. "2026-Q2", "2026-07"
+  region          String?  @map("region")
+  commodity       String?  @map("commodity")
+  source          String?  @map("source")
+  isPublished     Boolean  @default(true) @map("is_published")
+  createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
+  @@index([category])
+  @@index([isPublished])
+  @@index([region])
   @@map("market_trends")
 }
 
@@ -1978,10 +2078,16 @@ model MarketSupplyDemandSnapshot {
   completedQuantityKg90d Int      @default(0) @map("completed_quantity_kg_90d")
   supplyDemandRatio      Decimal? @db.Decimal(8, 2) @map("supply_demand_ratio")
   balance                String   @default("unknown") @map("balance")
+  period                 String?  @map("period")
+  region                 String?  @map("region")
+  source                 String?  @map("source")
+  isPublished            Boolean  @default(true) @map("is_published")
   computedAt             DateTime @default(now()) @map("computed_at")
   updatedAt              DateTime @updatedAt @map("updated_at")
 
   @@index([computedAt])
+  @@index([isPublished])
+  @@index([region])
   @@map("market_supply_demand_snapshots")
 }
 
@@ -2189,18 +2295,23 @@ model PlatformFeeSetting {
 
 
 model PaymentChannel {
-  id               String            @id @default(uuid())
-  name             String            @unique // e.g. "Mandiri Virtual Account"
-  code             String            @unique // Xendit channel code e.g. "MANDIRI", "OVO", "QRIS"
-  group            PaymentMethod?    @map("group") // e.g. BANK_TRANSFER, E_WALLET, QRIS
-  country          String?           @default("ID") @map("country")
-  currency         String?           @default("IDR") @map("currency")
-  minAmount        Decimal?          @db.Decimal(15, 2) @map("min_amount")
-  maxAmount        Decimal?          @db.Decimal(15, 2) @map("max_amount")
-  settlementTime   String?           @map("settlement_time")
-  xenditType       String?           @map("xendit_type") // Raw type from Xendit CSV
-  logoUrl          String?           @db.Text @map("logo_url")
-  isActive         Boolean           @default(true) @map("is_active")
+  id                            String            @id @default(uuid())
+  name                          String            @unique // e.g. "Mandiri Virtual Account"
+  code                          String            @unique // Xendit channel code e.g. "MANDIRI", "OVO", "QRIS"
+  group                         PaymentMethod?    @map("group") // e.g. BANK_TRANSFER, E_WALLET, QRIS
+  country                       String?           @default("ID") @map("country")
+  currency                      String?           @default("IDR") @map("currency")
+  minAmount                     Decimal?          @db.Decimal(15, 2) @map("min_amount")
+  maxAmount                     Decimal?          @db.Decimal(15, 2) @map("max_amount")
+  settlementTime                String?           @map("settlement_time")
+  xenditType                    String?           @map("xendit_type") // Raw type from Xendit CSV
+  /// Xendit refund capability: "supported" | free-text (e.g. "Coming soon") | null = not supported
+  refundCapability              String?           @map("refund_capability")
+  supportsSave                  Boolean           @default(false) @map("supports_save")
+  reusablePaymentCode           Boolean           @default(false) @map("reusable_payment_code")
+  merchantInitiatedTransaction  Boolean           @default(false) @map("merchant_initiated_transaction")
+  logoUrl                       String?           @db.Text @map("logo_url")
+  isActive                      Boolean           @default(true) @map("is_active")
 
   platformAccounts PlatformBankAccount[]
   transactions     Transaction[]
@@ -2234,6 +2345,7 @@ model PlatformBankAccount {
   accountNumber    String            @map("account_number")
   accountName      String            @map("account_name") // e.g. "PT BISA EKOSISTEM INDONESIA"
   branch           String?           @map("branch")
+  currency         String            @default("IDR") @map("currency")
   isActive         Boolean           @default(true) @map("is_active")
   createdAt        DateTime          @default(now()) @map("created_at")
   updatedAt        DateTime          @updatedAt
@@ -2295,12 +2407,17 @@ model ProductCollection {
   description  String?                 @db.Text
   thumbnailUrl String?                 @db.Text @map("thumbnail_url")
   isActive     Boolean                 @default(true) @map("is_active")
+  sortOrder    Int                     @default(0) @map("sort_order")
+  publishAt    DateTime?               @map("publish_at")
+  unpublishAt  DateTime?               @map("unpublish_at")
   createdAt    DateTime                @default(now()) @map("created_at")
   updatedAt    DateTime                @updatedAt @map("updated_at")
   products     ProductCollectionItem[]
 
   @@index([isActive])
   @@index([name])
+  @@index([sortOrder])
+  @@index([publishAt, unpublishAt])
   @@map("product_collections")
 }
 
@@ -2417,6 +2534,8 @@ model BuyerSupplierPartnership {
   rejectionReason          String? @db.Text @map("rejection_reason")
   terminatedAt             DateTime? @map("terminated_at")
   terminatedBy             String?   @map("terminated_by")
+  /// Catatan internal admin (tidak diekspos ke buyer/supplier)
+  internalNotes            String?   @db.Text @map("internal_notes")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")

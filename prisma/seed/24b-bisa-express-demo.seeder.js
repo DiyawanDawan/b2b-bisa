@@ -1,5 +1,12 @@
 import bcrypt from 'bcrypt';
 import logger from '../../src/config/logger.js';
+import {
+  sealAddress,
+  sealAddressPhone,
+  sealShipmentAddress,
+  sealShipmentContact,
+  sealShipmentPhone,
+} from '../../src/utils/piiField.util.ts';
 
 const DEMO_ORDER_NUMBER = 'DEMO-BEX-001';
 
@@ -34,32 +41,38 @@ async function upsertHub(prisma, spec, gis) {
     return null;
   }
 
-  const marker = `Hub BISA Express — ${spec.code}`;
-  let address = await prisma.address.findFirst({
-    where: { fullAddress: { contains: marker } },
+  const existingHub = await prisma.bisaExpressHub.findUnique({
+    where: { code: spec.code },
+    select: { addressId: true },
   });
 
-  if (!address) {
+  const sealedFullAddress = sealAddress(`Hub BISA Express — ${spec.code}, ${spec.addressLine}`);
+  const sealedPhone = sealAddressPhone(spec.contactPhone);
+
+  let address;
+  if (existingHub?.addressId) {
+    address = await prisma.address.update({
+      where: { id: existingHub.addressId },
+      data: {
+        provinceId: gis.province.id,
+        regencyId: gis.regency?.id ?? null,
+        districtId: gis.district?.id ?? null,
+        fullAddress: sealedFullAddress,
+        phoneNumber: sealedPhone,
+        latitude: spec.lat,
+        longitude: spec.lng,
+      },
+    });
+  } else {
     address = await prisma.address.create({
       data: {
         countryId: gis.country.id,
         provinceId: gis.province.id,
         regencyId: gis.regency?.id ?? null,
         districtId: gis.district?.id ?? null,
-        fullAddress: `${marker}, ${spec.addressLine}`,
+        fullAddress: sealedFullAddress,
         zipCode: spec.zipCode ?? '00000',
-        phoneNumber: spec.contactPhone,
-        latitude: spec.lat,
-        longitude: spec.lng,
-      },
-    });
-  } else {
-    address = await prisma.address.update({
-      where: { id: address.id },
-      data: {
-        provinceId: gis.province.id,
-        regencyId: gis.regency?.id ?? null,
-        districtId: gis.district?.id ?? null,
+        phoneNumber: sealedPhone,
         latitude: spec.lat,
         longitude: spec.lng,
       },
@@ -105,10 +118,10 @@ async function ensureProfileGisAddress(prisma, email, gis, fullAddress, lat, lng
     provinceId: gis.province.id,
     regencyId: gis.regency?.id ?? null,
     districtId: gis.district?.id ?? null,
-    fullAddress,
+    fullAddress: sealAddress(fullAddress),
     latitude: lat,
     longitude: lng,
-    phoneNumber: user.phone ?? undefined,
+    phoneNumber: user.phone ? sealAddressPhone(user.phone) : undefined,
   };
 
   if (user.profile.addressId) {
@@ -136,6 +149,191 @@ function awbSegment(gis) {
   const regency = gis.regency?.code?.replace(/[^A-Z0-9]/gi, '') || null;
   const province = gis.province?.code?.replace(/[^A-Z0-9]/gi, '') || null;
   return district || regency || province || '0000';
+}
+
+/** Titik waktu relatif terhadap sekarang (jam ke belakang). */
+function hoursAgo(hours) {
+  return new Date(Date.now() - hours * 60 * 60 * 1000);
+}
+
+/**
+ * Pastikan shipment demo punya trail tracking lengkap agar UI tidak kosong.
+ * Aman dijalankan berulang: hanya membuat bagian yang belum ada.
+ */
+async function ensureDemoShipmentTrail(prisma, shipment, { driver, hubSmg } = {}) {
+  if (!shipment) return;
+
+  // Timeline status: progres wajar dari menunggu pickup hingga siap antar.
+  const timeline = [
+    {
+      status: 'AWAITING_PICKUP',
+      hours: 30,
+      description: 'Shipment demo seed — menunggu pickup',
+      location: 'Semarang Tengah',
+      lat: -6.9666,
+      lng: 110.4196,
+      actorType: 'SYSTEM',
+    },
+    {
+      status: 'PICKUP_ASSIGNED',
+      hours: 28,
+      description: 'Kurir ditugaskan untuk penjemputan',
+      location: 'Semarang Tengah',
+      lat: -6.9666,
+      lng: 110.4196,
+      actorType: 'SYSTEM',
+    },
+    {
+      status: 'PICKED_UP',
+      hours: 26,
+      description: 'Paket telah dijemput dari seller',
+      location: 'Taman Tekno Industrial Park, Semarang Tengah',
+      lat: -6.9666,
+      lng: 110.4196,
+      actorType: 'DRIVER',
+    },
+    {
+      status: 'IN_TRANSIT_TO_HUB',
+      hours: 24,
+      description: 'Dalam perjalanan menuju hub asal',
+      location: 'Jl. Pandanaran, Semarang',
+      lat: -6.984,
+      lng: 110.4203,
+      actorType: 'DRIVER',
+    },
+    {
+      status: 'AT_ORIGIN_HUB',
+      hours: 20,
+      description: 'Tiba & disortir di Hub Semarang',
+      location: 'Hub Semarang (Main)',
+      lat: -6.9666,
+      lng: 110.4196,
+      actorType: 'HUB',
+    },
+    {
+      status: 'IN_TRANSIT',
+      hours: 12,
+      description: 'Dalam perjalanan menuju tujuan',
+      location: 'Semarang',
+      lat: -6.9721,
+      lng: 110.425,
+      actorType: 'SYSTEM',
+    },
+    {
+      status: 'OUT_FOR_DELIVERY',
+      hours: 4,
+      description: 'Sedang diantar ke alamat penerima',
+      location: 'Semarang Utara',
+      lat: -6.97,
+      lng: 110.43,
+      actorType: 'DRIVER',
+    },
+  ];
+
+  const existingLogs = await prisma.shipmentStatusLog.findMany({
+    where: { shipmentId: shipment.id },
+    select: { status: true },
+  });
+  const existingStatuses = new Set(existingLogs.map((l) => l.status));
+
+  const logsToCreate = timeline
+    .filter((step) => !existingStatuses.has(step.status))
+    .map((step) => ({
+      shipmentId: shipment.id,
+      status: step.status,
+      description: step.description,
+      location: step.location,
+      latitude: step.lat,
+      longitude: step.lng,
+      actorType: step.actorType,
+      actorId: step.actorType === 'DRIVER' ? (driver?.id ?? null) : null,
+      createdAt: hoursAgo(step.hours),
+    }));
+
+  if (logsToCreate.length > 0) {
+    await prisma.shipmentStatusLog.createMany({ data: logsToCreate });
+    logger.info(`[24b] Trail shipment ${shipment.awbNumber}: +${logsToCreate.length} status log`);
+  }
+
+  // Majukan status shipment agar selaras dengan trail (siap diantar).
+  const finalStatus = 'OUT_FOR_DELIVERY';
+  if (shipment.status !== finalStatus || !shipment.pickedUpAt) {
+    await prisma.bisaExpressShipment.update({
+      where: { id: shipment.id },
+      data: {
+        status: finalStatus,
+        originHubId: shipment.originHubId ?? hubSmg?.id ?? null,
+        pickedUpAt: shipment.pickedUpAt ?? hoursAgo(26),
+        pickupDriverId: shipment.pickupDriverId ?? driver?.id ?? null,
+        deliveryDriverId: shipment.deliveryDriverId ?? driver?.id ?? null,
+      },
+    });
+  }
+
+  // Log hub: catat paket diterima & disortir di hub asal (idempotent).
+  if (hubSmg?.id) {
+    const existingHubLog = await prisma.shipmentHubLog.findFirst({
+      where: { shipmentId: shipment.id, hubId: hubSmg.id },
+    });
+    if (!existingHubLog) {
+      await prisma.shipmentHubLog.create({
+        data: {
+          shipmentId: shipment.id,
+          hubId: hubSmg.id,
+          action: 'RECEIVED',
+          note: 'Paket diterima & disortir di Hub Semarang (demo)',
+          scannedBy: 'Ops Semarang',
+          createdAt: hoursAgo(20),
+        },
+      });
+    }
+  }
+
+  if (driver?.id) {
+    // Percobaan pengiriman: pertama gagal (tidak ada orang), sisanya menunggu re-attempt.
+    const existingAttempts = await prisma.deliveryAttempt.count({
+      where: { shipmentId: shipment.id },
+    });
+    if (existingAttempts === 0) {
+      await prisma.deliveryAttempt.create({
+        data: {
+          shipmentId: shipment.id,
+          driverId: driver.id,
+          attemptNumber: 1,
+          result: 'NOBODY_HOME',
+          note: 'Penerima tidak di tempat — akan dijadwalkan ulang',
+          latitude: -6.97,
+          longitude: 110.43,
+          attemptedAt: hoursAgo(3),
+        },
+      });
+      logger.info(`[24b] DeliveryAttempt #1 (NOBODY_HOME) untuk ${shipment.awbNumber}`);
+    }
+
+    // Titik lokasi kurir sepanjang rute Semarang (idempotent per driver).
+    const existingLocations = await prisma.driverLocationLog.count({
+      where: { driverId: driver.id },
+    });
+    if (existingLocations === 0) {
+      const route = [
+        { lat: -6.9666, lng: 110.4196, speed: 0, hours: 26 },
+        { lat: -6.972, lng: 110.421, speed: 32, hours: 24 },
+        { lat: -6.9804, lng: 110.4253, speed: 28, hours: 12 },
+        { lat: -6.97, lng: 110.43, speed: 18, hours: 4 },
+      ];
+      await prisma.driverLocationLog.createMany({
+        data: route.map((p) => ({
+          driverId: driver.id,
+          latitude: p.lat,
+          longitude: p.lng,
+          speed: p.speed,
+          heading: 45,
+          capturedAt: hoursAgo(p.hours),
+        })),
+      });
+      logger.info(`[24b] DriverLocationLog: +${route.length} titik untuk kurir demo`);
+    }
+  }
 }
 
 /**
@@ -396,20 +594,20 @@ export async function seedBisaExpressDemoData(prisma) {
 
       if (order) {
         const awbNumber = buildDemoAwb(awbSegment(smgTengah), awbSegment(smgUtara));
-        await prisma.bisaExpressShipment.create({
+        const createdShipment = await prisma.bisaExpressShipment.create({
           data: {
             orderId: order.id,
             awbNumber,
             status: 'AWAITING_PICKUP',
             originHubId: hubSmg?.id ?? null,
-            pickupAddress: 'Taman Tekno Industrial Park, Semarang Tengah',
-            pickupContact: seller.fullName,
-            pickupPhone: seller.phone ?? '081000000001',
+            pickupAddress: sealShipmentAddress('Taman Tekno Industrial Park, Semarang Tengah'),
+            pickupContact: sealShipmentContact(seller.fullName),
+            pickupPhone: sealShipmentPhone(seller.phone ?? '081000000001'),
             pickupLat: -6.9666,
             pickupLng: 110.4196,
-            deliveryAddress: 'Surabaya Industrial Hub (demo), Semarang Utara',
-            deliveryContact: buyer.fullName,
-            deliveryPhone: buyer.phone ?? '081000000002',
+            deliveryAddress: sealShipmentAddress('Surabaya Industrial Hub (demo), Semarang Utara'),
+            deliveryContact: sealShipmentContact(buyer.fullName),
+            deliveryPhone: sealShipmentPhone(buyer.phone ?? '081000000002'),
             deliveryLat: -6.97,
             deliveryLng: 110.43,
             weight: 25,
@@ -429,9 +627,17 @@ export async function seedBisaExpressDemoData(prisma) {
         });
         demoShipmentCreated = true;
         logger.info(`[24b] Shipment demo: ${awbNumber}`);
+        await ensureDemoShipmentTrail(prisma, createdShipment, {
+          driver: courierDriver,
+          hubSmg,
+        });
       }
     } else {
       logger.info(`[24b] Shipment demo sudah ada: ${existingShipment.awbNumber}`);
+      await ensureDemoShipmentTrail(prisma, existingShipment, {
+        driver: courierDriver,
+        hubSmg,
+      });
     }
   } else {
     logger.warn('[24b] User demo siti/hendra tidak ditemukan — lewati alamat & shipment demo.');

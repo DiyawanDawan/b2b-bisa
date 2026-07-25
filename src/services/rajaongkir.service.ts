@@ -127,7 +127,7 @@ const loadPickupVehicleOptionsFromDb = async (): Promise<KomshipPickupVehicleOpt
   );
 };
 
-const rajaDailyQuotaExceededUntil = 0;
+let rajaDailyQuotaExceededUntil = 0;
 
 const isDailyQuotaError = (message: string): boolean =>
   /daily\s+limit/i.test(message) || /limit\s+exceeded/i.test(message);

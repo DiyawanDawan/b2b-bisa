@@ -16,6 +16,7 @@ import {
   BiocharGrade,
   ProductStatus,
   ProductMode,
+  ProductAvailabilityType,
   OrderStatus,
   DeviceStatus,
 } from '#prisma';
@@ -82,7 +83,7 @@ const resolveAiPredictionForProduct = async (
   };
 };
 import { CACHE_TTL } from '#constants/cache.constants';
-import { cacheAside, cacheKeys } from '#utils/cache.util';
+import { cacheAside, cacheKeys, hashQuery, invalidateProductCatalog } from '#utils/cache.util';
 import { assertSupplierStoreReady } from '#utils/readiness.util';
 
 /** Hapus file R2 produk yang tidak lagi dipakai setelah update/hapus. */
@@ -205,7 +206,7 @@ type CreateProductInput = {
   fertilizerType?: string;
   isChemicalFree?: boolean;
   cropType?: string;
-  availabilityType?: string;
+  availabilityType?: ProductAvailabilityType;
   nextHarvestDate?: Date | string;
   nextHarvestQtyTon?: number;
   shelfLifeDays?: number;
@@ -249,6 +250,7 @@ export const createProduct = async (
     imageOrder: _imageOrder,
     syncImages: _syncImages,
     aiPredictionId,
+    availabilityType,
     ...productData
   } = data as CreateProductInput & {
     imageOrder?: string;
@@ -326,8 +328,8 @@ export const createProduct = async (
       ...(merged.landAreaHa != null && {
         landAreaHa: new Prisma.Decimal(merged.landAreaHa as number),
       }),
-      ...(productData.availabilityType && {
-        availabilityType: productData.availabilityType as never,
+      ...(availabilityType && {
+        availabilityType,
       }),
       ...(productData.nextHarvestDate && {
         nextHarvestDate: new Date(productData.nextHarvestDate),
@@ -454,6 +456,7 @@ export const createProduct = async (
   });
 
   scheduleSupplyDemandRefresh();
+  void invalidateProductCatalog();
   return product;
 };
 
@@ -592,98 +595,139 @@ export const listProducts = async (filters: {
     ? [{ isPromoted: 'desc' as const }, { [sortBy]: sortOrder }]
     : { [sortBy]: sortOrder };
 
-  const [total, products] = await Promise.all([
-    prisma.product.count({ where }),
-    prisma.product.findMany({
-      where,
-      skip: (page - 1) * limit,
-      take: limit,
-      orderBy,
-      select: {
-        id: true,
-        userId: true,
-        categoryId: true,
-        name: true,
-        biomassaType: true,
-        grade: true,
-        description: true,
-        pricePerUnit: true,
-        originalPrice: true,
-        stock: true,
-        reservedStock: true,
-        minOrder: true,
-        unit: true,
-        status: true,
-        productMode: true,
-        fertilizerType: true,
-        isChemicalFree: true,
-        cropType: true,
-        availabilityType: true,
-        nextHarvestDate: true,
-        nextHarvestQtyTon: true,
-        specs: productSpecsSelect,
-        isCertified: true,
-        isIotMonitored: true,
-        isEscrowProtected: true,
-        thumbnailUrl: true,
-        averageRating: true,
-        totalReviews: true,
-        province: true,
-        regency: true,
-        createdAt: true,
-        updatedAt: true,
-        isPromoted: true,
-        promotedUntil: true,
-        video: productVideoSelect,
-        category: {
-          select: {
-            id: true,
-            name: true,
-            categoryType: true,
+  const fetchAndEnrich = async () => {
+    const [total, products] = await Promise.all([
+      prisma.product.count({ where }),
+      prisma.product.findMany({
+        where,
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy,
+        select: {
+          id: true,
+          userId: true,
+          categoryId: true,
+          name: true,
+          biomassaType: true,
+          grade: true,
+          description: true,
+          pricePerUnit: true,
+          originalPrice: true,
+          stock: true,
+          reservedStock: true,
+          minOrder: true,
+          unit: true,
+          status: true,
+          productMode: true,
+          fertilizerType: true,
+          isChemicalFree: true,
+          cropType: true,
+          availabilityType: true,
+          nextHarvestDate: true,
+          nextHarvestQtyTon: true,
+          specs: productSpecsSelect,
+          isCertified: true,
+          isIotMonitored: true,
+          isEscrowProtected: true,
+          thumbnailUrl: true,
+          averageRating: true,
+          totalReviews: true,
+          province: true,
+          regency: true,
+          createdAt: true,
+          updatedAt: true,
+          isPromoted: true,
+          promotedUntil: true,
+          video: productVideoSelect,
+          category: {
+            select: {
+              id: true,
+              name: true,
+              categoryType: true,
+            },
+          },
+          // Hanya ambil 2 "signal spec" untuk ditampilkan di ProductCard grid.
+          // Field lengkap (10+) hanya diambil di getProductById untuk halaman detail.
+          // Ini mengurangi JOIN overhead secara signifikan saat list 20+ produk sekaligus.
+          technicalSpec: {
+            select: {
+              carbonPurity: true, // Ditampilkan di kartu sebagai badge "C: XX%"
+              moistureContent: true, // Ditampilkan di kartu sebagai badge "Moisture: XX%"
+              netWeightPerSak: true,
+              density: true,
+            },
+          },
+          images: productImagesSelect,
+          user: {
+            select: publicProductUserSelect,
           },
         },
-        // Hanya ambil 2 "signal spec" untuk ditampilkan di ProductCard grid.
-        // Field lengkap (10+) hanya diambil di getProductById untuk halaman detail.
-        // Ini mengurangi JOIN overhead secara signifikan saat list 20+ produk sekaligus.
-        technicalSpec: {
-          select: {
-            carbonPurity: true, // Ditampilkan di kartu sebagai badge "C: XX%"
-            moistureContent: true, // Ditampilkan di kartu sebagai badge "Moisture: XX%"
-            netWeightPerSak: true,
-            density: true,
-          },
-        },
-        images: productImagesSelect,
+      }),
+    ]);
+    // averageRating & totalReviews are kept in-sync by the review service cache writer.
+    // No need to re-compute from a join — just map the user verification flags.
+    const mappedProducts = products.map((p) => {
+      const stock = Number(p.stock);
+      const reserved = Number((p as { reservedStock?: Prisma.Decimal }).reservedStock ?? 0);
+      return {
+        ...p,
+        reservedStock: reserved,
+        availableStock: Math.max(0, stock - reserved),
+        canBook:
+          p.status === ProductStatus.ACTIVE &&
+          (stock - reserved > 0 ||
+            p.availabilityType === 'PRE_HARVEST' ||
+            p.availabilityType === 'MIXED'),
         user: {
-          select: publicProductUserSelect,
+          ...p.user,
+          isVerified: p.user?.verification?.isVerified || false,
+          verificationStatus: p.user?.verification?.verificationStatus || 'PENDING',
         },
-      },
-    }),
-  ]);
-  // averageRating & totalReviews are kept in-sync by the review service cache writer.
-  // No need to re-compute from a join — just map the user verification flags.
-  const mappedProducts = products.map((p) => {
-    const stock = Number(p.stock);
-    const reserved = Number((p as { reservedStock?: Prisma.Decimal }).reservedStock ?? 0);
-    return {
-      ...p,
-      reservedStock: reserved,
-      availableStock: Math.max(0, stock - reserved),
-      canBook:
-        p.status === ProductStatus.ACTIVE &&
-        (stock - reserved > 0 ||
-          p.availabilityType === 'PRE_HARVEST' ||
-          p.availabilityType === 'MIXED'),
-      user: {
-        ...p.user,
-        isVerified: p.user?.verification?.isVerified || false,
-        verificationStatus: p.user?.verification?.verificationStatus || 'PENDING',
-      },
-    };
-  });
+      };
+    });
 
-  const enriched = await enrichProductsWithActiveIot(mappedProducts);
-  return { total, page, limit, products: enriched };
+    const enriched = await enrichProductsWithActiveIot(mappedProducts);
+    return { total, page, limit, products: enriched };
+  };
+
+  // Katalog publik saja — TTL pendek (stok tetap di response, ≤ 60s)
+  if (isPublicCatalog) {
+    return cacheAside(
+      cacheKeys.prodList(
+        hashQuery({
+          search,
+          status,
+          biomassaType,
+          grade,
+          province,
+          categoryId,
+          minPrice,
+          maxPrice,
+          minStock,
+          minRating,
+          minCarbonPurity,
+          maxMoistureContent,
+          sortBy,
+          sortOrder,
+          page,
+          limit,
+          productMode,
+          cropType,
+          availabilityType,
+          harvestAfter,
+          harvestBefore,
+          isChemicalFree,
+          canBook,
+          availableNow,
+          preHarvestBookable,
+        }),
+      ),
+      CACHE_TTL.PROD_LIST,
+      fetchAndEnrich,
+    );
+  }
+
+  return fetchAndEnrich();
 };
 
 export const getProductById = async (id: string, requestUserId?: string) => {
@@ -1075,6 +1119,12 @@ export const updateProduct = async (
     specs: specsInput,
     syncImages: _syncImages,
     imageOrder: _imageOrder,
+    categoryId,
+    availabilityType: _availabilityTypeRest,
+    nextHarvestDate: _nextHarvestDateRest,
+    nextHarvestQtyTon: _nextHarvestQtyTonRest,
+    shelfLifeDays: _shelfLifeDaysRest,
+    landAreaHa: _landAreaHaRest,
     ...productUpdateData
   } = data as Partial<CreateProductInput> & {
     syncImages?: boolean;
@@ -1164,6 +1214,11 @@ export const updateProduct = async (
       where: { id },
       data: {
         ...productUpdateData,
+        ...(categoryId !== undefined
+          ? categoryId
+            ? { category: { connect: { id: categoryId } } }
+            : { category: { disconnect: true } }
+          : {}),
         ...(location && {
           province: location.province,
           regency: location.regency,
@@ -1187,7 +1242,7 @@ export const updateProduct = async (
           landAreaHa: new Prisma.Decimal(data.landAreaHa),
         }),
         ...(data.availabilityType !== undefined && {
-          availabilityType: data.availabilityType as never,
+          availabilityType: data.availabilityType,
         }),
         ...(data.nextHarvestDate !== undefined && {
           nextHarvestDate: data.nextHarvestDate ? new Date(data.nextHarvestDate) : null,
@@ -1325,6 +1380,7 @@ export const updateProduct = async (
   }
 
   scheduleSupplyDemandRefresh();
+  void invalidateProductCatalog();
   return updated;
 };
 
@@ -1379,6 +1435,7 @@ export const deleteProduct = async (id: string, userId: string) => {
       [],
     );
     scheduleSupplyDemandRefresh();
+    void invalidateProductCatalog();
     return { message: 'Produk berhasil dihapus secara permanen.' };
   } else {
     await prisma.product.update({
@@ -1386,6 +1443,7 @@ export const deleteProduct = async (id: string, userId: string) => {
       data: { status: ProductStatus.DELETED },
     });
     scheduleSupplyDemandRefresh();
+    void invalidateProductCatalog();
     return { message: 'Produk berhasil dihapus (Riwayat transaksi diarsipkan).' };
   }
 };
@@ -1396,139 +1454,149 @@ export const deleteProduct = async (id: string, userId: string) => {
 /**
  * Rekomendasi produk: same category / productMode top sellers + co-purchase ringan.
  */
-export const getProductRecommendations = async (productId: string, limit = 8) => {
-  const product = await prisma.product.findUnique({
-    where: { id: productId },
-    select: {
-      id: true,
-      categoryId: true,
-      productMode: true,
-      biomassaType: true,
-      userId: true,
-    },
-  });
-  if (!product) throw new AppError('Produk tidak ditemukan.', 404);
-
-  const coPurchase = await prisma.orderItem.findMany({
-    where: {
-      order: { status: { in: ['COMPLETED', 'SHIPPED', 'PROCESSING', 'CONFIRMED'] } },
-      productId,
-    },
-    select: { orderId: true },
-    take: 40,
-    orderBy: { createdAt: 'desc' },
-  });
-  const orderIds = coPurchase.map((r) => r.orderId);
-  let coProductIds: string[] = [];
-  if (orderIds.length > 0) {
-    const siblings = await prisma.orderItem.groupBy({
-      by: ['productId'],
-      where: {
-        orderId: { in: orderIds },
-        productId: { not: productId },
-        product: { status: ProductStatus.ACTIVE },
-      },
-      _count: { productId: true },
-      orderBy: { _count: { productId: 'desc' } },
-      take: limit,
-    });
-    coProductIds = siblings.map((s) => s.productId);
-  }
-
-  const categoryProducts =
-    coProductIds.length >= limit
-      ? []
-      : await prisma.product.findMany({
-          where: {
-            id: { not: productId },
-            status: ProductStatus.ACTIVE,
-            productMode: product.productMode,
-            userId: { not: product.userId },
-            ...(product.categoryId ? { categoryId: product.categoryId } : {}),
-            ...(coProductIds.length ? { id: { notIn: coProductIds } } : {}),
-          },
-          orderBy: [{ totalSold: 'desc' }, { averageRating: 'desc' }],
-          take: limit - coProductIds.length,
-          select: {
-            id: true,
-            name: true,
-            pricePerUnit: true,
-            originalPrice: true,
-            unit: true,
-            thumbnailUrl: true,
-            biomassaType: true,
-            grade: true,
-            productMode: true,
-            averageRating: true,
-            totalReviews: true,
-            totalSold: true,
-            isCertified: true,
-            user: { select: { id: true, fullName: true } },
-          },
-        });
-
-  const coProducts =
-    coProductIds.length === 0
-      ? []
-      : await prisma.product.findMany({
-          where: { id: { in: coProductIds }, status: ProductStatus.ACTIVE },
-          select: {
-            id: true,
-            name: true,
-            pricePerUnit: true,
-            originalPrice: true,
-            unit: true,
-            thumbnailUrl: true,
-            biomassaType: true,
-            grade: true,
-            productMode: true,
-            averageRating: true,
-            totalReviews: true,
-            totalSold: true,
-            isCertified: true,
-            user: { select: { id: true, fullName: true } },
-          },
-        });
-
-  const byId = new Map(coProducts.map((p) => [p.id, p]));
-  const ordered = coProductIds
-    .map((id) => byId.get(id))
-    .filter((p): p is NonNullable<typeof p> => p != null);
-
-  const combined = [...ordered, ...categoryProducts].slice(0, limit);
-  return enrichProductsWithActiveIot(combined);
-};
-
-export const getFeaturedProducts = async (limit: number = 6) => {
-  return prisma.product.findMany({
-    where: {
-      status: ProductStatus.ACTIVE,
-      isCertified: true,
-    },
-    take: limit,
-    orderBy: { createdAt: 'desc' },
-    select: {
-      id: true,
-      name: true,
-      pricePerUnit: true,
-      originalPrice: true,
-      unit: true,
-      thumbnailUrl: true,
-      biomassaType: true,
-      grade: true,
-      province: true,
-      regency: true,
-      averageRating: true,
-      totalReviews: true,
-      isCertified: true,
-      user: {
+export const getProductRecommendations = async (productId: string, limit = 8) =>
+  cacheAside(
+    cacheKeys.prodRecommendations(productId, limit),
+    CACHE_TTL.PROD_RECOMMENDATIONS,
+    async () => {
+      const product = await prisma.product.findUnique({
+        where: { id: productId },
         select: {
-          fullName: true,
+          id: true,
+          categoryId: true,
+          productMode: true,
+          biomassaType: true,
+          userId: true,
+        },
+      });
+      if (!product) throw new AppError('Produk tidak ditemukan.', 404);
+
+      const coPurchase = await prisma.orderItem.findMany({
+        where: {
+          order: { status: { in: ['COMPLETED', 'SHIPPED', 'PROCESSING', 'CONFIRMED'] } },
+          productId,
+        },
+        select: { orderId: true },
+      take: 40,
+      orderBy: { order: { createdAt: 'desc' } },
+    });
+      const orderIds = coPurchase.map((r) => r.orderId);
+      let coProductIds: string[] = [];
+      if (orderIds.length > 0) {
+        const siblings = await prisma.orderItem.groupBy({
+          by: ['productId'],
+          where: {
+            orderId: { in: orderIds },
+            productId: { not: productId },
+            product: { status: ProductStatus.ACTIVE },
+          },
+          _count: { productId: true },
+          orderBy: { _count: { productId: 'desc' } },
+          take: limit,
+        });
+        coProductIds = siblings.map((s) => s.productId);
+      }
+
+      const categoryProducts =
+        coProductIds.length >= limit
+          ? []
+          : await prisma.product.findMany({
+              where: {
+                id: { not: productId },
+                status: ProductStatus.ACTIVE,
+                productMode: product.productMode,
+                userId: { not: product.userId },
+                ...(product.categoryId ? { categoryId: product.categoryId } : {}),
+                ...(coProductIds.length ? { id: { notIn: coProductIds } } : {}),
+              },
+              orderBy: [{ totalSold: 'desc' }, { averageRating: 'desc' }],
+              take: limit - coProductIds.length,
+            select: {
+              id: true,
+              name: true,
+              pricePerUnit: true,
+              originalPrice: true,
+              unit: true,
+              thumbnailUrl: true,
+              biomassaType: true,
+              grade: true,
+              productMode: true,
+              averageRating: true,
+              totalReviews: true,
+              totalSold: true,
+              isCertified: true,
+              userId: true,
+              isIotMonitored: true,
+              user: { select: { id: true, fullName: true } },
+            },
+          });
+
+    const coProducts =
+      coProductIds.length === 0
+        ? []
+        : await prisma.product.findMany({
+            where: { id: { in: coProductIds }, status: ProductStatus.ACTIVE },
+            select: {
+              id: true,
+              name: true,
+              pricePerUnit: true,
+              originalPrice: true,
+              unit: true,
+              thumbnailUrl: true,
+              biomassaType: true,
+              grade: true,
+              productMode: true,
+              averageRating: true,
+              totalReviews: true,
+              totalSold: true,
+              isCertified: true,
+              userId: true,
+              isIotMonitored: true,
+              user: { select: { id: true, fullName: true } },
+            },
+          });
+
+      const byId = new Map(coProducts.map((p) => [p.id, p]));
+      const ordered = coProductIds
+        .map((id) => byId.get(id))
+        .filter((p): p is NonNullable<typeof p> => p != null);
+
+      const combined = [...ordered, ...categoryProducts].slice(0, limit);
+      return enrichProductsWithActiveIot(combined);
+    },
+  );
+
+export const getFeaturedProducts = async (limit: number = 6) =>
+  cacheAside(cacheKeys.prodFeatured(limit), CACHE_TTL.PROD_FEATURED, () =>
+    prisma.product.findMany({
+      where: {
+        status: ProductStatus.ACTIVE,
+        isCertified: true,
+      },
+      take: limit,
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        name: true,
+        pricePerUnit: true,
+        originalPrice: true,
+        unit: true,
+        thumbnailUrl: true,
+        biomassaType: true,
+        grade: true,
+        province: true,
+        regency: true,
+        averageRating: true,
+        totalReviews: true,
+        isCertified: true,
+        user: {
+          select: {
+            fullName: true,
+          },
         },
       },
-    },
-  });
-};
+    }),
+  );
 
 /**
  * Get Products by Collection Slug
@@ -1539,8 +1607,16 @@ export const getProductsByCollection = async (
   limit: number = 10,
 ) => {
   // Step 1: Find the collection
-  const collection = await prisma.productCollection.findUnique({
-    where: { slug, isActive: true },
+  const now = new Date();
+  const collection = await prisma.productCollection.findFirst({
+    where: {
+      slug,
+      isActive: true,
+      AND: [
+        { OR: [{ publishAt: null }, { publishAt: { lte: now } }] },
+        { OR: [{ unpublishAt: null }, { unpublishAt: { gt: now } }] },
+      ],
+    },
     select: { id: true },
   });
 
@@ -1607,12 +1683,19 @@ export const getProductsByCollection = async (
  * List all active collections
  */
 export const listCollections = async () =>
-  cacheAside(cacheKeys.prodCollections(), CACHE_TTL.PROD_COLLECTIONS, () =>
-    prisma.productCollection.findMany({
-      where: { isActive: true },
-      orderBy: { createdAt: 'desc' },
-    }),
-  );
+  cacheAside(cacheKeys.prodCollections(), CACHE_TTL.PROD_COLLECTIONS, async () => {
+    const now = new Date();
+    return prisma.productCollection.findMany({
+      where: {
+        isActive: true,
+        AND: [
+          { OR: [{ publishAt: null }, { publishAt: { lte: now } }] },
+          { OR: [{ unpublishAt: null }, { unpublishAt: { gt: now } }] },
+        ],
+      },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
+    });
+  });
 
 /**
  * Supplier: like & cart engagement across all own products

@@ -21,17 +21,33 @@ const legacyOtpTypeSchema = z
 
 const resendOtpTypeSchema = z.union([otpTokenTypeSchema, legacyOtpTypeSchema]);
 
+/** Kosong/null dari client → undefined agar field opsional tidak gagal regex/min. */
+const emptyToUndefined = (v: unknown) => (v === '' || v === null ? undefined : v);
+
+const optionalPhoneSchema = z.preprocess(
+  emptyToUndefined,
+  z
+    .string()
+    .regex(/^\+?[0-9]{10,15}$/, 'Format nomor telepon tidak valid')
+    .optional(),
+);
+
+const optionalReferralCodeSchema = z.preprocess(
+  emptyToUndefined,
+  z.string().min(4, 'Kode referral minimal 4 karakter').max(32).optional(),
+);
+
+const optionalRegionSchema = (message: string) =>
+  z.preprocess(emptyToUndefined, z.string().min(1, message).optional());
+
 const baseRegisterSchema = z.object({
   fullName: z.string().min(2, 'Nama lengkap minimal 2 karakter'),
   email: z.string().email('Format email tidak valid'),
   password: z.string().min(8, 'Password minimal 8 karakter'),
-  phone: z
-    .string()
-    .regex(/^\+?[0-9]{10,15}$/, 'Format nomor telepon tidak valid')
-    .optional(),
-  province: z.string().min(1, 'Provinsi wajib diisi untuk keperluan logistik').optional(),
-  regency: z.string().min(1, 'Kabupaten/Kota wajib diisi untuk keperluan logistik').optional(),
-  referralCode: z.string().min(4).max(32).optional(),
+  phone: optionalPhoneSchema,
+  province: optionalRegionSchema('Provinsi wajib diisi untuk keperluan logistik'),
+  regency: optionalRegionSchema('Kabupaten/Kota wajib diisi untuk keperluan logistik'),
+  referralCode: optionalReferralCodeSchema,
 });
 
 export const registerSupplierSchema = baseRegisterSchema.extend({
@@ -96,12 +112,9 @@ export const resetPasswordSchema = z.object({
 export const updateProfileSchema = z
   .object({
     fullName: z.string().min(2).optional(),
-    phone: z
-      .string()
-      .regex(/^\+?[0-9]{10,15}$/, 'Format nomor telepon tidak valid')
-      .optional(),
-    province: z.string().optional(),
-    regency: z.string().optional(),
+    phone: optionalPhoneSchema,
+    province: z.preprocess(emptyToUndefined, z.string().optional()),
+    regency: z.preprocess(emptyToUndefined, z.string().optional()),
     bio: z.string().optional(),
     // BUYER specific
     companyName: z.string().optional(),

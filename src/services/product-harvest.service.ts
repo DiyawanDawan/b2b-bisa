@@ -181,7 +181,7 @@ export const confirmHarvestLot = async (
   });
   if (!lot) throw new AppError('Batch panen tidak ditemukan.', 404);
   if (lot.product.userId !== userId) throw new AppError('Anda tidak memiliki akses.', 403);
-  if (![HarvestLotStatus.SCHEDULED, HarvestLotStatus.HARVESTING].includes(lot.status)) {
+  if (lot.status !== HarvestLotStatus.SCHEDULED && lot.status !== HarvestLotStatus.HARVESTING) {
     throw new AppError('Batch tidak dalam status panen aktif.', 400);
   }
 

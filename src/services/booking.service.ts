@@ -250,9 +250,8 @@ export const expireStaleBookings = async () => {
       userId: b.buyerId,
       type: NotificationType.BOOKING,
       title: 'Booking kedaluwarsa',
-      message: `Booking ${b.bookingNumber} untuk ${b.product.name} telah kedaluwarsa. Stok kembali tersedia.`,
+      body: `Booking ${b.bookingNumber} untuk ${b.product.name} telah kedaluwarsa. Stok kembali tersedia.`,
       refId: b.id,
-      data: { bookingId: b.id, bookingNumber: b.bookingNumber },
     }).catch(() => undefined);
   }
 
@@ -325,9 +324,8 @@ export const createBooking = async (
         });
         if (!lot) throw new AppError('Lot panen tidak ditemukan.', 404);
         if (
-          ![HarvestLotStatus.SCHEDULED, HarvestLotStatus.HARVESTING].includes(
-            lot.status as HarvestLotStatus,
-          )
+          lot.status !== HarvestLotStatus.SCHEDULED &&
+          lot.status !== HarvestLotStatus.HARVESTING
         ) {
           throw new AppError('Lot panen tidak bisa dibooking pada status ini.', 400);
         }
@@ -395,9 +393,8 @@ export const createBooking = async (
     userId: product.userId,
     type: NotificationType.BOOKING,
     title: 'Booking baru masuk',
-    message: `Buyer mengajukan booking ${booking.bookingNumber} untuk ${product.name} (${data.quantity} ${product.unit}).`,
+    body: `Buyer mengajukan booking ${booking.bookingNumber} untuk ${product.name} (${data.quantity} ${product.unit}).`,
     refId: booking.id,
-    data: { bookingId: booking.id, bookingNumber: booking.bookingNumber },
   }).catch(() => undefined);
 
   return mapBooking(booking);
@@ -486,7 +483,7 @@ export const cancelBooking = async (id: string, userId: string, reason?: string)
     throw new AppError('Anda tidak memiliki akses ke booking ini.', 403);
   }
 
-  if (![BookingStatus.PENDING_PAYMENT, BookingStatus.CONFIRMED].includes(row.status)) {
+  if (row.status !== BookingStatus.PENDING_PAYMENT && row.status !== BookingStatus.CONFIRMED) {
     throw new AppError('Booking tidak bisa dibatalkan pada status ini.', 400);
   }
   if (row.expiresAt.getTime() < Date.now() && row.status === BookingStatus.PENDING_PAYMENT) {
@@ -514,9 +511,8 @@ export const cancelBooking = async (id: string, userId: string, reason?: string)
     userId: notifyUserId,
     type: NotificationType.BOOKING,
     title: 'Booking dibatalkan',
-    message: `Booking ${row.bookingNumber} telah dibatalkan.`,
+    body: `Booking ${row.bookingNumber} telah dibatalkan.`,
     refId: row.id,
-    data: { bookingId: row.id, bookingNumber: row.bookingNumber },
   }).catch(() => undefined);
 
   return mapBooking(updated);
@@ -545,9 +541,8 @@ export const confirmBooking = async (id: string, supplierId: string) => {
     userId: row.buyerId,
     type: NotificationType.BOOKING,
     title: 'Booking dikonfirmasi',
-    message: `Supplier mengonfirmasi booking ${row.bookingNumber}. Silakan lanjut checkout.`,
+    body: `Supplier mengonfirmasi booking ${row.bookingNumber}. Silakan lanjut checkout.`,
     refId: row.id,
-    data: { bookingId: row.id, bookingNumber: row.bookingNumber },
   }).catch(() => undefined);
 
   return mapBooking(updated);
@@ -574,7 +569,7 @@ export const checkoutBooking = async (
   if (row.buyerId !== buyerId) {
     throw new AppError('Hanya buyer pemilik booking yang bisa checkout.', 403);
   }
-  if (![BookingStatus.PENDING_PAYMENT, BookingStatus.CONFIRMED].includes(row.status)) {
+  if (row.status !== BookingStatus.PENDING_PAYMENT && row.status !== BookingStatus.CONFIRMED) {
     throw new AppError('Booking tidak bisa di-checkout pada status ini.', 400);
   }
   if (row.expiresAt.getTime() < Date.now()) {
@@ -619,7 +614,10 @@ export const checkoutBooking = async (
 
   const fulfilled = await prisma.$transaction(
     async (tx) => {
-      const current = await tx.booking.findUnique({ where: { id: bookingId } });
+      const current = await tx.booking.findUnique({
+        where: { id: bookingId },
+        include: bookingInclude,
+      });
       if (!current || current.status === BookingStatus.FULFILLED) {
         return current;
       }
@@ -643,9 +641,8 @@ export const checkoutBooking = async (
     userId: row.supplierId,
     type: NotificationType.BOOKING,
     title: 'Booking di-checkout',
-    message: `Buyer checkout booking ${row.bookingNumber} menjadi pesanan.`,
+    body: `Buyer checkout booking ${row.bookingNumber} menjadi pesanan.`,
     refId: row.id,
-    data: { bookingId: row.id, orderId: leadOrderId },
   }).catch(() => undefined);
 
   return {

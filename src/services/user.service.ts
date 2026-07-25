@@ -1,6 +1,7 @@
 import prisma from '#config/prisma';
 import AppError from '#utils/appError';
 import { transformAddress } from '#utils/transformer.util';
+import { sealAddress, sealAddressPhone } from '#utils/piiField.util';
 import { UserRole, UserStatus, ProductStatus, ProductMode, BiomassaType, Prisma } from '#prisma';
 import * as storeBannerService from '#services/storeBanner.service';
 import {
@@ -8,6 +9,7 @@ import {
   syncCustomerAddressRajaOngkirDestination,
 } from '#services/order-shipping.service';
 
+/** Full address for owner-only flows (customer address CRUD). */
 const addressSelect: Prisma.AddressSelect = {
   fullAddress: true,
   zipCode: true,
@@ -25,6 +27,12 @@ const addressSelect: Prisma.AddressSelect = {
   district: { select: { name: true } },
   village: { select: { name: true } },
 };
+
+/** Public profile/directory: no street, phone, or precise coordinates. */
+const publicVerificationSelect = {
+  isVerified: true,
+  businessName: true,
+} as const;
 
 const customerAddressSelect = {
   id: true,
@@ -65,9 +73,11 @@ const syncSupplierOriginBestEffort = async (userId: string) => {
 };
 
 /**
- * Get user public profile by ID
+ * Get user public profile by ID.
+ * Contacts, street address, and coordinates are never exposed here — use
+ * owner routes (`/users/me`) or authorized transaction flows instead.
  */
-export const getUserById = async (id: string, isAuthorized: boolean = false) => {
+export const getUserById = async (id: string) => {
   const user = await prisma.user.findUnique({
     where: { id },
     select: {
@@ -78,8 +88,7 @@ export const getUserById = async (id: string, isAuthorized: boolean = false) => 
       province: true,
       regency: true,
       tier: true,
-      ...(isAuthorized && { email: true, phone: true }), // Expose contacts if logged in
-      verification: { select: { isVerified: true, businessName: true, businessAddress: true } },
+      verification: { select: publicVerificationSelect },
       profile: {
         select: {
           bio: true,
@@ -88,7 +97,6 @@ export const getUserById = async (id: string, isAuthorized: boolean = false) => 
           website: true,
         },
       },
-      address: { select: addressSelect },
       createdAt: true,
     },
   });
@@ -165,9 +173,9 @@ export const createAddress = async (
           regency: regencyId ? { connect: { id: regencyId } } : undefined,
           district: districtId ? { connect: { id: districtId } } : undefined,
           village: villageId ? { connect: { id: villageId } } : undefined,
-          fullAddress,
+          fullAddress: sealAddress(fullAddress) as string,
           zipCode,
-          phoneNumber: data.phone || '',
+          phoneNumber: (sealAddressPhone(data.phone || '') as string) || '',
           latitude: latitude || 0,
           longitude: longitude || 0,
         },
@@ -222,9 +230,13 @@ export const updateAddress = async (
       }),
       address: {
         update: {
-          ...(data.fullAddress !== undefined && { fullAddress: data.fullAddress }),
+          ...(data.fullAddress !== undefined && {
+            fullAddress: sealAddress(data.fullAddress) as string,
+          }),
           ...(data.zipCode !== undefined && { zipCode: data.zipCode }),
-          ...(data.phone !== undefined && { phoneNumber: data.phone }),
+          ...(data.phone !== undefined && {
+            phoneNumber: (sealAddressPhone(data.phone) as string) || '',
+          }),
           ...(data.latitude !== undefined && { latitude: data.latitude }),
           ...(data.longitude !== undefined && { longitude: data.longitude }),
           ...(data.countryId && { country: { connect: { id: data.countryId } } }),
@@ -338,19 +350,16 @@ export const updateOperatingHours = async (
  * List suppliers for public directory.
  * Supports search, region, verified-only, and product catalog filters.
  */
-export const listSuppliers = async (
-  filters: {
-    province?: string;
-    regency?: string;
-    search?: string;
-    verified?: boolean | string;
-    productMode?: string;
-    biomassaType?: string;
-    page?: number;
-    limit?: number;
-  },
-  isAuthorized: boolean = false,
-) => {
+export const listSuppliers = async (filters: {
+  province?: string;
+  regency?: string;
+  search?: string;
+  verified?: boolean | string;
+  productMode?: string;
+  biomassaType?: string;
+  page?: number;
+  limit?: number;
+}) => {
   const { province, regency, search, productMode, biomassaType, page = 1, limit = 10 } = filters;
   const skip = (page - 1) * limit;
   const verifiedOnly = filters.verified === true || filters.verified === 'true';
@@ -371,17 +380,17 @@ export const listSuppliers = async (
   const where: Prisma.UserWhereInput = {
     role: UserRole.SUPPLIER,
     status: UserStatus.ACTIVE,
-    ...(province && { province: { contains: province, mode: 'insensitive' } }),
-    ...(regency && { regency: { contains: regency, mode: 'insensitive' } }),
+    ...(province && { province: { contains: province } }),
+    ...(regency && { regency: { contains: regency } }),
     ...(verifiedOnly && { verification: { isVerified: true } }),
     ...(productSome && { products: { some: productSome } }),
     ...(keyword
       ? {
           OR: [
-            { fullName: { contains: keyword, mode: 'insensitive' } },
-            { province: { contains: keyword, mode: 'insensitive' } },
-            { regency: { contains: keyword, mode: 'insensitive' } },
-            { profile: { companyName: { contains: keyword, mode: 'insensitive' } } },
+            { fullName: { contains: keyword } },
+            { province: { contains: keyword } },
+            { regency: { contains: keyword } },
+            { profile: { companyName: { contains: keyword } } },
           ],
         }
       : {}),
@@ -397,7 +406,6 @@ export const listSuppliers = async (
         province: true,
         regency: true,
         tier: true,
-        ...(isAuthorized && { email: true, phone: true }),
         profile: { select: { companyName: true, businessType: true } },
         verification: { select: { isVerified: true } },
         _count: { select: { products: true } },
@@ -419,7 +427,6 @@ export const listSuppliers = async (
       fullName: s.fullName,
       avatar: s.avatarUrl,
       avatarUrl: s.avatarUrl,
-      phone: isAuthorized ? ((s as { phone?: string | null }).phone ?? null) : null,
       province: s.province,
       regency: s.regency,
       tier: s.tier,
@@ -436,9 +443,9 @@ export const listSuppliers = async (
 };
 
 /**
- * Get deep supplier detail including products
+ * Public supplier detail — no email, phone, street address, or coordinates.
  */
-export const getSupplierDetail = async (id: string, isAuthorized: boolean = false) => {
+export const getSupplierDetail = async (id: string) => {
   const supplier = await prisma.user.findFirst({
     where: { id, role: UserRole.SUPPLIER },
     select: {
@@ -448,12 +455,10 @@ export const getSupplierDetail = async (id: string, isAuthorized: boolean = fals
       province: true,
       regency: true,
       tier: true,
-      ...(isAuthorized && { email: true, phone: true }), // Expose contacts if logged in
       profile: { select: { bio: true, companyName: true, businessType: true, website: true } },
       verification: {
-        select: { isVerified: true, businessName: true, businessAddress: true, reviewedAt: true },
+        select: { isVerified: true, businessName: true, reviewedAt: true },
       },
-      address: { select: addressSelect },
       products: {
         where: { status: ProductStatus.ACTIVE },
         select: {

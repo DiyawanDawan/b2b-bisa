@@ -1,4 +1,5 @@
 import logger from '../../src/config/logger.js';
+import { sealAddress } from '../../src/utils/piiField.util.ts';
 
 const BIOMASS_CATEGORIES = [
   // BIOCHAR — sumber bahan baku berbeda
@@ -245,7 +246,7 @@ export async function seedTaxonomies(prisma) {
         regencyId: regency.id,
         districtId: district.id,
         villageId: village.id,
-        fullAddress: 'Jl. Raya Pacet No 123, Kawasan Industri Biomassa',
+        fullAddress: sealAddress('Jl. Raya Pacet No 123, Kawasan Industri Biomassa'),
         zipCode: '61374',
         latitude: -7.6713,
         longitude: 112.5381,

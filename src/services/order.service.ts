@@ -10,6 +10,12 @@ import {
 } from '#utils/productOrderRules';
 import { assertBuyerCommerceReady } from '#utils/readiness.util';
 import {
+  revealAddressFields,
+  revealBusinessAddress,
+  revealShippingAddressSnapshot,
+  sealShippingAddressSnapshot,
+} from '#utils/piiField.util';
+import {
   Prisma,
   OrderStatus,
   DisputeStatus,
@@ -182,19 +188,22 @@ const snapshotFromLinkedAddress = (
     regency?: { name: string } | null;
   },
   meta?: { source?: ShippingAddressSnapshot['source']; customerAddressId?: string },
-): ShippingAddressSnapshot => ({
-  recipient: buyer.fullName,
-  phone: linkedAddress.phoneNumber ?? buyer.phone,
-  email: buyer.email,
-  address: linkedAddress.fullAddress,
-  zipCode: linkedAddress.zipCode,
-  province: linkedAddress.province?.name,
-  regency: linkedAddress.regency?.name ?? buyer.regency,
-  latitude: Number(linkedAddress.latitude),
-  longitude: Number(linkedAddress.longitude),
-  source: meta?.source ?? 'buyer_profile',
-  customerAddressId: meta?.customerAddressId ?? null,
-});
+): ShippingAddressSnapshot => {
+  const revealed = revealAddressFields(linkedAddress)!;
+  return {
+    recipient: buyer.fullName,
+    phone: revealed.phoneNumber ?? buyer.phone,
+    email: buyer.email,
+    address: revealed.fullAddress,
+    zipCode: revealed.zipCode,
+    province: revealed.province?.name,
+    regency: revealed.regency?.name ?? buyer.regency,
+    latitude: Number(revealed.latitude),
+    longitude: Number(revealed.longitude),
+    source: meta?.source ?? 'buyer_profile',
+    customerAddressId: meta?.customerAddressId ?? null,
+  };
+};
 
 const resolveBuyerShippingSnapshot = async (
   buyerId: string,
@@ -238,7 +247,7 @@ const resolveBuyerShippingSnapshot = async (
   }
 
   const primaryCustomer = buyer.customerAddresses[0];
-  const linkedAddress = primaryCustomer?.address ?? buyer.address ?? null;
+  const linkedAddress = revealAddressFields(primaryCustomer?.address ?? buyer.address ?? null);
 
   if (!linkedAddress?.fullAddress) {
     throw new AppError(
@@ -407,8 +416,9 @@ export const resolveSellerShippingSnapshot = async (
     seller.profile?.companyName?.trim() ||
     seller.verification?.businessName?.trim() ||
     seller.fullName;
-  const linked = seller.profile?.address ?? null;
-  const businessAddress = seller.verification?.businessAddress?.trim() ?? '';
+  const linked = revealAddressFields(seller.profile?.address ?? null) ?? null;
+  const businessAddress = (revealBusinessAddress(seller.verification?.businessAddress)?.trim() ??
+    '') as string;
   const regencyName =
     linked?.regency?.name?.trim() ||
     seller.regency?.trim() ||
@@ -1060,7 +1070,7 @@ export const createContract = async (
         vatAmount,
         totalAmount,
         totalQuantity: contractQty,
-        shippingAddressSnapshot: shippingSnapshot,
+        shippingAddressSnapshot: sealShippingAddressSnapshot(shippingSnapshot),
         status: OrderStatus.PENDING,
         isDigitalSigned: false,
         specifications: orderSpecifications,
@@ -1382,7 +1392,7 @@ export const createDirectOrderFromCart = async (
             totalQuantity: totalQty,
             voucherCode: voucherCtx?.code ?? null,
             voucherDiscount: sellerDiscount,
-            shippingAddressSnapshot: shippingSnapshot,
+            shippingAddressSnapshot: sealShippingAddressSnapshot(shippingSnapshot),
             status: OrderStatus.PENDING,
             specifications:
               data.notes?.trim() ||
@@ -1745,7 +1755,9 @@ export const updatePendingInvoice = async (
   const line = order.items[0];
   if (!line) throw new AppError('Item tagihan tidak ditemukan.', 400);
 
-  const currentSnapshot = (order.shippingAddressSnapshot ?? {}) as ShippingAddressSnapshot;
+  const currentSnapshot = (revealShippingAddressSnapshot<ShippingAddressSnapshot>(
+    order.shippingAddressSnapshot,
+  ) ?? {}) as ShippingAddressSnapshot;
   const shippingSnapshot = data.shippingSnapshot
     ? mergeShippingSnapshot(currentSnapshot, data.shippingSnapshot)
     : currentSnapshot;
@@ -1807,7 +1819,7 @@ export const updatePendingInvoice = async (
     const updated = await tx.order.update({
       where: { id: orderId },
       data: {
-        shippingAddressSnapshot: shippingSnapshot,
+        shippingAddressSnapshot: sealShippingAddressSnapshot(shippingSnapshot),
         specifications,
         ...(financials
           ? {
@@ -1860,7 +1872,10 @@ export const updatePendingInvoice = async (
     });
   }
 
-  return updatedOrder;
+  return {
+    ...updatedOrder,
+    shippingAddressSnapshot: revealShippingAddressSnapshot(updatedOrder.shippingAddressSnapshot),
+  };
 };
 
 const paymentChannelSelect = {
@@ -3427,17 +3442,19 @@ export const getOrderDetail = async (id: string, userId: string) => {
   if (order.buyerId !== userId && order.sellerId !== userId)
     throw new AppError('Akses Ditolak', 403);
 
-  let shippingAddressSnapshot = order.shippingAddressSnapshot as Record<string, unknown> | null;
+  let shippingAddressSnapshot =
+    revealShippingAddressSnapshot<Record<string, unknown>>(order.shippingAddressSnapshot) ?? null;
 
   if (!shippingAddressSnapshot && order.shippingAddress) {
+    const linked = revealAddressFields(order.shippingAddress)!;
     shippingAddressSnapshot = {
       recipient: order.buyer.fullName,
-      phone: order.shippingAddress.phoneNumber ?? order.buyer.phone,
+      phone: linked.phoneNumber ?? order.buyer.phone,
       email: order.buyer.email,
-      address: order.shippingAddress.fullAddress,
-      zipCode: order.shippingAddress.zipCode,
-      province: order.shippingAddress.province?.name,
-      regency: order.shippingAddress.regency?.name ?? order.buyer.regency,
+      address: linked.fullAddress,
+      zipCode: linked.zipCode,
+      province: linked.province?.name,
+      regency: linked.regency?.name ?? order.buyer.regency,
     };
   }
 
@@ -3594,7 +3611,12 @@ export const getCheckoutBatchDetail = async (orderId: string, userId: string) =>
     throw new AppError('Pesanan batch tidak ditemukan.', 404);
   }
 
-  const enrichedOrders = orders.map((o) => attachOrderMediaUrls(o));
+  const enrichedOrders = orders.map((o) =>
+    attachOrderMediaUrls({
+      ...o,
+      shippingAddressSnapshot: revealShippingAddressSnapshot(o.shippingAddressSnapshot),
+    }),
+  );
   const batchTotalAmount = enrichedOrders.reduce(
     (sum, o) => sum.add(o.totalAmount),
     new Prisma.Decimal(0),
@@ -3606,7 +3628,9 @@ export const getCheckoutBatchDetail = async (orderId: string, userId: string) =>
   return {
     checkoutBatchId: anchor.checkoutBatchId,
     checkoutBatchNumber: batchNumber,
-    shippingAddressSnapshot: anchor.shippingAddressSnapshot ?? orders[0]?.shippingAddressSnapshot,
+    shippingAddressSnapshot:
+      revealShippingAddressSnapshot(anchor.shippingAddressSnapshot) ??
+      revealShippingAddressSnapshot(orders[0]?.shippingAddressSnapshot),
     createdAt: anchor.createdAt,
     batchTotalAmount: roundIdrAmount(batchTotalAmount),
     supplierCount: enrichedOrders.length,

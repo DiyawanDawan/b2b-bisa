@@ -161,7 +161,7 @@ export const getUserDossier = catchAsync(async (req: AuthRequest, res: Response)
  */
 export const updateUserStatus = catchAsync(async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
-  const { status } = req.body;
+  const { status, reason } = req.body;
   const result = await adminService.updateUserStatus(id, status as UserStatus);
 
   // Audit Log
@@ -170,7 +170,7 @@ export const updateUserStatus = catchAsync(async (req: AuthRequest, res: Respons
     action: 'UPDATE_USER_STATUS',
     entity: 'USER',
     entityId: id,
-    newValue: { status },
+    newValue: { status, ...(reason ? { reason } : {}) },
   });
 
   successResponse(res, result, `Status user berhasil diperbarui menjadi ${status}`);

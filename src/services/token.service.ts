@@ -3,6 +3,7 @@ import { addDays, addMinutes } from 'date-fns';
 import prisma from '#config/prisma';
 import { TokenType } from '#prisma';
 import crypto from 'crypto';
+import logger from '#utils/logger.util';
 
 const JWT_SECRET = process.env.JWT_SECRET as string;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1d';
@@ -45,6 +46,12 @@ export const generateOtp = async (userId: string, type: TokenType): Promise<stri
       expiresAt: addMinutes(new Date(), 15),
     },
   });
+
+  // Dev/hackathon: log OTP agar bisa diuji tanpa SMTP
+  if (process.env.NODE_ENV !== 'production') {
+    logger.info(`[OTP] type=${type} userId=${userId} code=${otp}`);
+  }
+
   return otp;
 };
 

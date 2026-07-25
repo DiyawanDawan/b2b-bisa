@@ -2,9 +2,12 @@ import logger from '../../src/config/logger.js';
 import {
   readSeedCsv,
   parseAmount,
+  parseCsvCheck,
+  parseRefundCapability,
   mapPaymentTypeToGroup,
   mapPayoutChannelType,
 } from './utils/csv-seed.util.js';
+import { encryptField } from '../../src/utils/encryption.util.ts';
 
 const LEGACY_PAYMENT_CODES = ['MANDIRI_VA', 'BCA_VA', 'BNI_VA', 'BRI_VA'];
 const LEGACY_PAYOUT_CODES = ['008', '014', '009', '002', '451', '542'];
@@ -126,6 +129,10 @@ export async function seedFinancial(prisma) {
     const group = mapPaymentTypeToGroup(row.Type);
     const minAmount = parseAmount(row['Min Amount']);
     const maxAmount = parseAmount(row['Max Amount']);
+    const refundCapability = parseRefundCapability(row.Refund);
+    const supportsSave = parseCsvCheck(row.Save);
+    const reusablePaymentCode = parseCsvCheck(row['Reusable Payment Code']);
+    const merchantInitiatedTransaction = parseCsvCheck(row['Merchant Initiated Transaction']);
 
     await prisma.paymentChannel.upsert({
       where: { code },
@@ -138,6 +145,10 @@ export async function seedFinancial(prisma) {
         maxAmount,
         settlementTime: row['Settlement Time'] || null,
         xenditType: row.Type || null,
+        refundCapability,
+        supportsSave,
+        reusablePaymentCode,
+        merchantInitiatedTransaction,
         isActive: true,
       },
       create: {
@@ -150,6 +161,10 @@ export async function seedFinancial(prisma) {
         maxAmount,
         settlementTime: row['Settlement Time'] || null,
         xenditType: row.Type || null,
+        refundCapability,
+        supportsSave,
+        reusablePaymentCode,
+        merchantInitiatedTransaction,
         isActive: true,
       },
     });
@@ -198,14 +213,14 @@ export async function seedFinancial(prisma) {
   // 4. PLATFORM BANK ACCOUNT (Xendit code: MANDIRI)
   const mandiri = await prisma.paymentChannel.findUnique({ where: { code: 'MANDIRI' } });
   if (mandiri) {
+    const sealedPlatformAccount = encryptField('889012345678');
     await prisma.platformBankAccount.upsert({
       where: { id: 'default-platform-bank' },
       update: { paymentChannelId: mandiri.id },
       create: {
         id: 'default-platform-bank',
         paymentChannelId: mandiri.id,
-        // Plaintext di seed; jalankan scripts/migrate-encrypt-sensitive-data.ts setelah seed.
-        accountNumber: '889012345678',
+        accountNumber: sealedPlatformAccount,
         accountName: 'PT BISA EKOSISTEM INDONESIA',
       },
     });

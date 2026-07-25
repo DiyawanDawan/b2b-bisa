@@ -176,7 +176,11 @@ export const presignPart = async (
     PartNumber: partNumber,
   });
 
-  const uploadUrl = await getSignedUrl(r2Client, command, { expiresIn: PRESIGN_TTL_SECONDS });
+  const uploadUrl = await getSignedUrl(
+    r2Client as unknown as Parameters<typeof getSignedUrl>[0],
+    command,
+    { expiresIn: PRESIGN_TTL_SECONDS },
+  );
   return {
     partNumber,
     uploadUrl,

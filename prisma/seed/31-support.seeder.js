@@ -3,8 +3,12 @@ import logger from '../../src/config/logger.js';
 export async function seedSupport(prisma, users) {
   logger.info('🌱 [31] Seeding support tickets...');
 
-  await prisma.supportMessage.deleteMany({});
-  await prisma.supportTicket.deleteMany({ where: { subject: { startsWith: '' } } });
+  await prisma.supportMessage.deleteMany({
+    where: { ticket: { subject: { startsWith: '[SEED]' } } },
+  });
+  await prisma.supportTicket.deleteMany({
+    where: { subject: { startsWith: '[SEED]' } },
+  });
 
   const buyer = users?.hendra ?? users?.allBuyers?.[0];
   const admin = users?.admin;
@@ -15,31 +19,31 @@ export async function seedSupport(prisma, users) {
 
   const tickets = [
     {
-      subject: ' Kendala checkout pre-harvest',
+      subject: '[SEED] Kendala checkout pre-harvest',
       category: 'ORDER',
       status: 'OPEN',
       priority: 'NORMAL',
     },
     {
-      subject: ' Verifikasi payout belum masuk',
+      subject: '[SEED] Verifikasi payout belum masuk',
       category: 'PAYMENT',
       status: 'ASSIGNED',
       priority: 'HIGH',
     },
     {
-      subject: ' Update data KYC supplier',
+      subject: '[SEED] Update data KYC supplier',
       category: 'KYC',
       status: 'WAITING_USER',
       priority: 'NORMAL',
     },
     {
-      subject: ' Pertanyaan fitur booking panen',
+      subject: '[SEED] Pertanyaan fitur booking panen',
       category: 'OTHER',
       status: 'RESOLVED',
       priority: 'LOW',
     },
     {
-      subject: ' Akun tidak bisa login',
+      subject: '[SEED] Akun tidak bisa login',
       category: 'ACCOUNT',
       status: 'CLOSED',
       priority: 'NORMAL',

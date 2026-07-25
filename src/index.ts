@@ -344,5 +344,8 @@ if (process.env.NODE_ENV !== 'test') {
     import('#crons/bookingExpiry').then(({ startBookingExpiryCron }) => {
       startBookingExpiryCron();
     });
+    import('#crons/auditRetention').then(({ startAuditRetentionCron }) => {
+      startAuditRetentionCron();
+    });
   });
 }

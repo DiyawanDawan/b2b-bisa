@@ -47,6 +47,9 @@ const formatBanner = (banner: {
   title: string | null;
   sortOrder: number;
   isActive: boolean;
+  moderationStatus?: string;
+  startsAt?: Date | null;
+  endsAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }) => ({
@@ -56,6 +59,9 @@ const formatBanner = (banner: {
   title: banner.title,
   sortOrder: banner.sortOrder,
   isActive: banner.isActive,
+  moderationStatus: banner.moderationStatus,
+  startsAt: banner.startsAt ?? null,
+  endsAt: banner.endsAt ?? null,
   createdAt: banner.createdAt,
   updatedAt: banner.updatedAt,
 });
@@ -94,11 +100,21 @@ export const listStoreBanners = async (
 ) => {
   const { activeOnly = false, ownerId } = options;
   const isOwner = ownerId === userId;
+  const now = new Date();
 
   const banners = await prisma.storeBanner.findMany({
     where: {
       userId,
-      ...(activeOnly && !isOwner ? { isActive: true } : {}),
+      ...(activeOnly && !isOwner
+        ? {
+            isActive: true,
+            moderationStatus: 'APPROVED',
+            AND: [
+              { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+              { OR: [{ endsAt: null }, { endsAt: { gt: now } }] },
+            ],
+          }
+        : {}),
     },
     orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
   });
@@ -130,6 +146,7 @@ export const createStoreBanner = async (
       imageUrl: normalizeBannerImageRef(storedKey),
       title: data.title?.trim() || null,
       sortOrder: (maxSort._max.sortOrder ?? -1) + 1,
+      moderationStatus: 'PENDING',
     },
   });
 
@@ -146,9 +163,21 @@ export const updateStoreBanner = async (
   });
   if (!existing) throw new AppError('Banner toko tidak ditemukan.', 404);
 
+  const shouldResubmit = existing.moderationStatus === 'REJECTED';
+
   const banner = await prisma.storeBanner.update({
     where: { id: bannerId },
-    data,
+    data: {
+      ...data,
+      ...(shouldResubmit
+        ? {
+            moderationStatus: 'PENDING',
+            rejectionReason: null,
+            reviewedAt: null,
+            reviewedById: null,
+          }
+        : {}),
+    },
   });
 
   return formatBanner(banner);

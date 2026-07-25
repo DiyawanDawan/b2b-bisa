@@ -3,6 +3,7 @@ import type { LogisticsSnapshotMeta } from '#types/order-shipping';
 import { Prisma } from '#prisma';
 import AppError from '#utils/appError';
 import * as rajaOngkirService from '#services/rajaongkir.service';
+import { revealAddressFields, revealBusinessAddress } from '#utils/piiField.util';
 
 type Tx = Prisma.TransactionClient;
 
@@ -178,8 +179,8 @@ export const ensureSupplierShippingOriginFromAddresses = async (userId: string) 
     return stored;
   }
 
-  const profileAddr = user.profile?.address;
-  const primaryAddr = user.customerAddresses[0]?.address;
+  const profileAddr = revealAddressFields(user.profile?.address);
+  const primaryAddr = revealAddressFields(user.customerAddresses[0]?.address);
   const queries = [
     profileAddr?.regency?.name?.trim() && profileAddr?.province?.name?.trim()
       ? `${profileAddr.regency.name.trim()}, ${profileAddr.province.name.trim()}`
@@ -195,7 +196,7 @@ export const ensureSupplierShippingOriginFromAddresses = async (userId: string) 
     user.regency?.trim(),
     profileAddr?.fullAddress?.trim()?.slice(0, 80),
     primaryAddr?.fullAddress?.trim()?.slice(0, 80),
-    user.verification?.businessAddress?.trim()?.slice(0, 80),
+    revealBusinessAddress(user.verification?.businessAddress)?.trim()?.slice(0, 80),
   ].filter((q): q is string => !!q && q.length >= 3);
 
   for (const search of queries) {
@@ -280,7 +281,7 @@ export const syncCustomerAddressRajaOngkirDestination = async (
     };
   }
 
-  const { fullAddress, province, regency } = row.address;
+  const { fullAddress, province, regency } = revealAddressFields(row.address)!;
   const queries = [
     regency?.name?.trim() && province?.name?.trim()
       ? `${regency.name.trim()}, ${province.name.trim()}`

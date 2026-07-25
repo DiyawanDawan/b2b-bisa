@@ -9,6 +9,7 @@ import {
   formatPayoutAccountForList,
   formatPayoutAccountForOwnerDetail,
   revealAccountNumber,
+  sealAccountName,
   sealAccountNumber,
 } from '#utils/payoutAccount.util';
 
@@ -180,7 +181,7 @@ export const createPayoutAccount = catchAsync(async (req: AuthRequest, res: Resp
         userId,
         bankId,
         accountNumber: sealedNumber,
-        accountName,
+        accountName: sealAccountName(accountName) as string,
         isMain: shouldBeMain,
       },
       select: payoutAccountSelect,
@@ -243,7 +244,7 @@ export const updatePayoutAccount = catchAsync(async (req: AuthRequest, res: Resp
             bankId: targetBankId,
           }),
         }),
-        ...(accountName && { accountName }),
+        ...(accountName && { accountName: sealAccountName(accountName) as string }),
         ...(isMain !== undefined && { isMain }),
       },
       select: payoutAccountSelect,

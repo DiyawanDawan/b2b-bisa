@@ -6,7 +6,7 @@ import { withRetry } from '#utils/retry.util';
 import { resolveXenditPayoutSecretKey } from '#utils/env.util';
 import { notifyOrderStatusChange } from '#services/orderNotification.service';
 import { scheduleSupplyDemandRefresh } from '#services/marketSupplyDemand.service';
-import { revealAccountNumber } from '#utils/payoutAccount.util';
+import { revealAccountName, revealAccountNumber } from '#utils/payoutAccount.util';
 import { calculateWithdrawalFee } from '#utils/platformFee.util';
 
 /**
@@ -184,7 +184,7 @@ export const withdrawFunds = async (supplierId: string, data: { amount: number }
     userId: supplierId,
     bankId: mainAccount.bankId,
   });
-  const accountName = mainAccount.accountName;
+  const accountName = revealAccountName(mainAccount.accountName) as string;
 
   if (payoutBank.minAmount && amountToWithdraw.lt(payoutBank.minAmount)) {
     throw new AppError(
@@ -396,7 +396,15 @@ export const getWalletTransactions = async (
   ]);
 
   return {
-    data: transactions,
+    data: transactions.map((trx) => ({
+      ...trx,
+      payoutAccount: trx.payoutAccount
+        ? {
+            ...trx.payoutAccount,
+            accountName: revealAccountName(trx.payoutAccount.accountName) as string,
+          }
+        : null,
+    })),
     meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
   };
 };

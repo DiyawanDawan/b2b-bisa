@@ -5,12 +5,13 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const SEED_DATA_DIR = path.join(__dirname, '..', 'data');
 
-/** RFC 4180-ish CSV parser for seed files (handles quoted commas). */
+/** RFC 4180-ish CSV parser for seed files (handles quoted commas + UTF-8 BOM). */
 export function parseCsv(content) {
-  const lines = content.trim().split(/\r?\n/);
+  const text = String(content ?? '').replace(/^\uFEFF/, '');
+  const lines = text.trim().split(/\r?\n/);
   if (lines.length === 0) return { headers: [], rows: [] };
 
-  const headers = splitCsvLine(lines[0]).map((h) => h.trim());
+  const headers = splitCsvLine(lines[0]).map((h) => h.replace(/^\uFEFF/, '').trim());
   const rows = [];
 
   for (let i = 1; i < lines.length; i++) {
@@ -46,13 +47,36 @@ function splitCsvLine(line) {
   return cols;
 }
 
-/** Parse amount strings like "50,000.00", "1,000.00", or "-" (unlimited). */
+/**
+ * Parse amount strings like "50,000.00", "Rp 1.000", "1,000.00", or "-" (unlimited/null).
+ * Strips currency symbols, spaces, and thousand separators.
+ */
 export function parseAmount(raw) {
   const value = String(raw ?? '').trim();
   if (!value || value === '-') return null;
-  const normalized = value.replace(/,/g, '');
+  const normalized = value.replace(/Rp\.?/gi, '').replace(/\s/g, '').replace(/,/g, '');
   const num = Number(normalized);
   return Number.isFinite(num) ? num : null;
+}
+
+/** Parse Xendit CSV checkmark columns (✓ / - / empty). */
+export function parseCsvCheck(raw) {
+  const value = String(raw ?? '').trim();
+  if (!value || value === '-') return false;
+  if (value === '✓' || value === '✔' || value === '√') return true;
+  const lower = value.toLowerCase();
+  return lower === 'yes' || lower === 'true' || lower === '1';
+}
+
+/**
+ * Parse Refund column: null = not supported, "supported" = ✓,
+ * otherwise keep free-text (e.g. "Coming soon", "Only for Merchant Initiated Transaction").
+ */
+export function parseRefundCapability(raw) {
+  const value = String(raw ?? '').trim();
+  if (!value || value === '-') return null;
+  if (value === '✓' || value === '✔' || value === '√') return 'supported';
+  return value;
 }
 
 export function readSeedCsv(filename) {

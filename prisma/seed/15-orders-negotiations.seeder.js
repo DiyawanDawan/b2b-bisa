@@ -1,4 +1,9 @@
 import logger from '../../src/config/logger.js';
+import {
+  revealAddress,
+  revealAddressPhone,
+  sealShippingAddressSnapshot,
+} from '../../src/utils/piiField.util.ts';
 
 const ORDER_STATUSES = [
   'PENDING',
@@ -66,15 +71,15 @@ async function buildAddressSnapshot(prisma, buyer) {
     },
   });
   if (!addr) return null;
-  return {
+  return sealShippingAddressSnapshot({
     recipient: buyer.fullName,
-    phone: addr.phoneNumber ?? buyer.phone,
+    phone: revealAddressPhone(addr.phoneNumber) ?? buyer.phone,
     email: buyer.email,
-    address: addr.fullAddress,
+    address: revealAddress(addr.fullAddress),
     zipCode: addr.zipCode,
     province: addr.province?.name,
     regency: addr.regency?.name ?? buyer.regency,
-  };
+  });
 }
 
 function negotiationMessages(status, buyerName, sellerName, productName) {

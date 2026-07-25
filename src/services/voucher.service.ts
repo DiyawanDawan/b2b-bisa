@@ -166,6 +166,50 @@ export type CreateVoucherAdminInput = {
   isActive?: boolean;
 };
 
+export type UpdateVoucherAdminInput = {
+  type?: VoucherType;
+  value?: number;
+  minOrderAmount?: number;
+  maxDiscount?: number | null;
+  usageLimit?: number | null;
+  usagePerUser?: number;
+  startsAt?: Date | null;
+  expiresAt?: Date | null;
+  isActive?: boolean;
+};
+
+export type ListVouchersAdminQuery = {
+  page?: number;
+  limit?: number;
+  search?: string;
+  isActive?: boolean;
+  period?: 'active_now' | 'upcoming' | 'expired';
+};
+
+const voucherAdminInclude = {
+  supplier: { select: { id: true, fullName: true, email: true } },
+  _count: { select: { redemptions: true } },
+} as const;
+
+const buildPeriodWhere = (period: ListVouchersAdminQuery['period']): Prisma.VoucherWhereInput => {
+  const now = new Date();
+  if (period === 'active_now') {
+    return {
+      AND: [
+        { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+        { OR: [{ expiresAt: null }, { expiresAt: { gte: now } }] },
+      ],
+    };
+  }
+  if (period === 'upcoming') {
+    return { startsAt: { gt: now } };
+  }
+  if (period === 'expired') {
+    return { expiresAt: { lt: now } };
+  }
+  return {};
+};
+
 export const createVoucherAdmin = async (input: CreateVoucherAdminInput) => {
   const code = input.code.trim().toUpperCase();
   const scope = input.scope ?? VoucherScope.PLATFORM;
@@ -200,39 +244,153 @@ export const createVoucherAdmin = async (input: CreateVoucherAdminInput) => {
       expiresAt: input.expiresAt ?? null,
       isActive: input.isActive ?? true,
     },
-    include: {
-      supplier: { select: { id: true, fullName: true, email: true } },
-    },
+    include: voucherAdminInclude,
   });
 };
 
-export const listVouchersAdmin = async () => {
-  return prisma.voucher.findMany({
-    orderBy: { createdAt: 'desc' },
-    include: {
-      supplier: { select: { id: true, fullName: true, email: true } },
-      _count: { select: { redemptions: true } },
-    },
-  });
+export const listVouchersAdmin = async (query: ListVouchersAdminQuery = {}) => {
+  const page = query.page ?? 1;
+  const limit = query.limit ?? 10;
+  const skip = (page - 1) * limit;
+  const search = query.search?.trim();
+
+  const where: Prisma.VoucherWhereInput = {
+    ...(query.isActive !== undefined ? { isActive: query.isActive } : {}),
+    ...buildPeriodWhere(query.period),
+    ...(search
+      ? {
+          OR: [
+            { code: { contains: search } },
+            { supplier: { fullName: { contains: search } } },
+            { supplier: { email: { contains: search } } },
+          ],
+        }
+      : {}),
+  };
+
+  const [items, total] = await Promise.all([
+    prisma.voucher.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: limit,
+      include: voucherAdminInclude,
+    }),
+    prisma.voucher.count({ where }),
+  ]);
+
+  return { items, total, page, limit };
 };
 
-export const updateVoucherAdmin = async (
-  id: string,
-  data: { isActive?: boolean; usageLimit?: number | null; expiresAt?: Date | null },
-) => {
+export const updateVoucherAdmin = async (id: string, data: UpdateVoucherAdminInput) => {
   const row = await prisma.voucher.findUnique({ where: { id } });
   if (!row) throw new AppError('Voucher tidak ditemukan.', 404);
+
+  const nextType = data.type ?? row.type;
+  if (nextType === VoucherType.PERCENT && data.value != null && data.value > 100) {
+    throw new AppError('Persentase diskon maksimal 100.', 400);
+  }
+
+  const startsAt = data.startsAt !== undefined ? data.startsAt : row.startsAt;
+  const expiresAt = data.expiresAt !== undefined ? data.expiresAt : row.expiresAt;
+  if (startsAt && expiresAt && startsAt > expiresAt) {
+    throw new AppError('Tanggal mulai tidak boleh setelah tanggal berakhir.', 400);
+  }
 
   return prisma.voucher.update({
     where: { id },
     data: {
-      ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
+      ...(data.type !== undefined ? { type: data.type } : {}),
+      ...(data.value !== undefined ? { value: new Prisma.Decimal(data.value) } : {}),
+      ...(data.minOrderAmount !== undefined
+        ? { minOrderAmount: new Prisma.Decimal(data.minOrderAmount) }
+        : {}),
+      ...(data.maxDiscount !== undefined
+        ? {
+            maxDiscount: data.maxDiscount != null ? new Prisma.Decimal(data.maxDiscount) : null,
+          }
+        : {}),
       ...(data.usageLimit !== undefined ? { usageLimit: data.usageLimit } : {}),
+      ...(data.usagePerUser !== undefined ? { usagePerUser: data.usagePerUser } : {}),
+      ...(data.startsAt !== undefined ? { startsAt: data.startsAt } : {}),
       ...(data.expiresAt !== undefined ? { expiresAt: data.expiresAt } : {}),
+      ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
     },
-    include: {
-      supplier: { select: { id: true, fullName: true, email: true } },
-      _count: { select: { redemptions: true } },
-    },
+    include: voucherAdminInclude,
   });
+};
+
+export const getVoucherUsageAdmin = async (id: string) => {
+  const voucher = await prisma.voucher.findUnique({
+    where: { id },
+    include: voucherAdminInclude,
+  });
+  if (!voucher) throw new AppError('Voucher tidak ditemukan.', 404);
+
+  const [aggregate, uniqueUsers, recentRedemptions] = await Promise.all([
+    prisma.voucherRedemption.aggregate({
+      where: { voucherId: id },
+      _sum: { discountAmount: true },
+      _count: { _all: true },
+    }),
+    prisma.voucherRedemption.groupBy({
+      by: ['userId'],
+      where: { voucherId: id },
+    }),
+    prisma.voucherRedemption.findMany({
+      where: { voucherId: id },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+      include: {
+        user: { select: { id: true, fullName: true, email: true } },
+        order: { select: { id: true, orderNumber: true, status: true } },
+      },
+    }),
+  ]);
+
+  return {
+    voucher,
+    stats: {
+      redemptionCount: aggregate._count._all,
+      uniqueUsers: uniqueUsers.length,
+      totalDiscountAmount: Number(aggregate._sum.discountAmount ?? 0),
+      usageCount: voucher.usageCount,
+      usageLimit: voucher.usageLimit,
+      remainingQuota:
+        voucher.usageLimit == null ? null : Math.max(0, voucher.usageLimit - voucher.usageCount),
+    },
+    recentRedemptions,
+  };
+};
+
+/**
+ * Safe lifecycle: hard-delete unused vouchers; otherwise soft-disable.
+ */
+export const deleteOrDisableVoucherAdmin = async (id: string) => {
+  const voucher = await prisma.voucher.findUnique({
+    where: { id },
+    include: { _count: { select: { redemptions: true } } },
+  });
+  if (!voucher) throw new AppError('Voucher tidak ditemukan.', 404);
+
+  if (voucher._count.redemptions > 0 || voucher.usageCount > 0) {
+    const item = await prisma.voucher.update({
+      where: { id },
+      data: { isActive: false },
+      include: voucherAdminInclude,
+    });
+    return {
+      action: 'disabled' as const,
+      message:
+        'Voucher sudah pernah dipakai; dinonaktifkan (soft-disable) agar histori tetap utuh.',
+      item,
+    };
+  }
+
+  await prisma.voucher.delete({ where: { id } });
+  return {
+    action: 'deleted' as const,
+    message: 'Voucher tanpa pemakaian berhasil dihapus.',
+    item: null,
+  };
 };

@@ -1,4 +1,3 @@
-import { ChromaUnauthorizedError, CloudClient } from 'chromadb';
 import {
   CHROMA_API_KEY,
   CHROMA_COLLECTION,
@@ -25,6 +24,12 @@ type ChromaCollectionLike = {
   delete: (args: { where: Record<string, unknown> }) => Promise<void>;
 };
 
+type CloudClientCtor = new (args: {
+  apiKey: string;
+  tenant: string;
+  database: string;
+}) => ChromaClientLike;
+
 let clientPromise: Promise<ChromaClientLike | null> | null = null;
 
 export const getChromaConfigIssue = (): string | null => {
@@ -40,15 +45,20 @@ export const getChromaConfigIssue = (): string | null => {
 
 export const isChromaConfigured = (): boolean => getChromaConfigIssue() === null;
 
+/** Runtime import — avoids chromadb package typings that pull missing @hey-api/client-fetch. */
+const loadCloudClient = async (): Promise<CloudClientCtor> => {
+  const mod = (await import('chromadb')) as { CloudClient: CloudClientCtor };
+  return mod.CloudClient;
+};
+
 const toChromaUserError = (error: unknown): Error => {
-  if (error instanceof ChromaUnauthorizedError) {
+  const name = error instanceof Error ? error.name : '';
+  if (
+    name === 'ChromaUnauthorizedError' ||
+    (error instanceof Error && /unauthorized/i.test(error.message))
+  ) {
     return new Error(
       'Chroma Unauthorized: API key tidak valid. Buat key baru di dashboard Chroma → database "bisa" → API keys. Jangan pakai Tenant ID sebagai CHROMA_API_KEY.',
-    );
-  }
-  if (error instanceof Error && /unauthorized/i.test(error.message)) {
-    return new Error(
-      'Chroma Unauthorized: periksa CHROMA_API_KEY di Backend/.env (bukan Tenant ID).',
     );
   }
   return error instanceof Error ? error : new Error('Gagal menghubungi Chroma Cloud.');
@@ -57,13 +67,14 @@ const toChromaUserError = (error: unknown): Error => {
 const getClient = async (): Promise<ChromaClientLike | null> => {
   if (!isChromaConfigured()) return null;
   if (!clientPromise) {
-    clientPromise = Promise.resolve(
-      new CloudClient({
+    clientPromise = (async () => {
+      const CloudClient = await loadCloudClient();
+      return new CloudClient({
         apiKey: CHROMA_API_KEY,
         tenant: CHROMA_TENANT_ID,
         database: CHROMA_DATABASE,
-      }) as unknown as ChromaClientLike,
-    );
+      }) as unknown as ChromaClientLike;
+    })();
   }
   return clientPromise;
 };
@@ -153,7 +164,7 @@ export const queryKnowledge = async (
   const distances = result.distances?.[0] ?? [];
 
   return docs
-    .map((content, i) => {
+    .map((content, i): RagHit | null => {
       if (!content) return null;
       const meta = (metas[i] ?? {}) as Record<string, unknown>;
       return {
@@ -163,5 +174,5 @@ export const queryKnowledge = async (
         distance: typeof distances[i] === 'number' ? distances[i] : undefined,
       };
     })
-    .filter((item): item is RagHit => item != null);
+    .filter((item): item is RagHit => item !== null);
 };

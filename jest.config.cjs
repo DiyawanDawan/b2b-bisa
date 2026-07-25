@@ -11,6 +11,12 @@ module.exports = {
     '^#config/(.*)$': '<rootDir>/src/config/$1',
     '^#constants/(.*)\\.js$': '<rootDir>/src/constants/$1.ts',
     '^#constants/(.*)$': '<rootDir>/src/constants/$1',
+    '^#middlewares/(.*)\\.js$': '<rootDir>/src/middlewares/$1.ts',
+    '^#middlewares/(.*)$': '<rootDir>/src/middlewares/$1',
+    '^#types/(.*)\\.js$': '<rootDir>/src/types/$1.ts',
+    '^#types/(.*)$': '<rootDir>/src/types/$1',
+    '^#validations/(.*)\\.js$': '<rootDir>/src/validations/$1.ts',
+    '^#validations/(.*)$': '<rootDir>/src/validations/$1',
   },
   transform: {
     '^.+\\.tsx?$': [

@@ -8,6 +8,9 @@ import {
   UnitStatus,
 } from '#prisma';
 import { BISA_EXPRESS_SERVICE_TYPES } from '#constants/bisa-express.constants';
+import { idParamSchema, queryLimit, queryPage } from '#validations/admin-query.validation';
+
+export { idParamSchema };
 
 export const checkCoverageSchema = z.object({
   sellerId: z.string().uuid().optional(),
@@ -122,20 +125,49 @@ export const adminUpdateDriverSchema = z.object({
   status: z.nativeEnum(DriverStatus).optional(),
 });
 
-export const adminCreateHubSchema = z.object({
-  code: z.string().min(3).max(40),
-  name: z.string().min(3).max(120),
-  type: z.nativeEnum(HubType).optional(),
-  addressId: z.string().uuid(),
-  coverageProvinces: z.array(z.string()).optional(),
-  coverageRegencies: z.array(z.string()).optional(),
-  contactPhone: z.string().max(30).optional(),
-  contactName: z.string().max(120).optional(),
-  operatingHours: z.string().max(60).optional(),
-  maxDailyCapacity: z.coerce.number().int().positive().optional(),
+const hubAddressInputSchema = z.object({
+  fullAddress: z.string().min(10).max(500),
+  zipCode: z.string().min(3).max(12).optional(),
+  phoneNumber: z.string().max(30).optional(),
+  latitude: z.coerce.number().min(-90).max(90),
+  longitude: z.coerce.number().min(-180).max(180),
+  provinceId: z.string().uuid().optional(),
+  regencyId: z.string().uuid().optional().nullable(),
+  districtId: z.string().uuid().optional().nullable(),
 });
 
-export const adminUpdateHubSchema = adminCreateHubSchema.partial().omit({ code: true });
+export const adminCreateHubSchema = z
+  .object({
+    code: z.string().min(3).max(40),
+    name: z.string().min(3).max(120),
+    type: z.nativeEnum(HubType).optional(),
+    addressId: z.string().uuid().optional(),
+    address: hubAddressInputSchema.optional(),
+    coverageProvinces: z.array(z.string()).optional(),
+    coverageRegencies: z.array(z.string()).optional(),
+    contactPhone: z.string().max(30).optional(),
+    contactName: z.string().max(120).optional(),
+    operatingHours: z.string().max(60).optional(),
+    maxDailyCapacity: z.coerce.number().int().positive().optional(),
+  })
+  .refine((data) => Boolean(data.addressId || data.address), {
+    message: 'addressId atau address wajib diisi',
+    path: ['addressId'],
+  });
+
+export const adminUpdateHubSchema = z.object({
+  name: z.string().min(3).max(120).optional(),
+  type: z.nativeEnum(HubType).optional(),
+  addressId: z.string().uuid().optional(),
+  address: hubAddressInputSchema.optional(),
+  coverageProvinces: z.array(z.string()).optional(),
+  coverageRegencies: z.array(z.string()).optional(),
+  contactPhone: z.string().max(30).optional().nullable(),
+  contactName: z.string().max(120).optional().nullable(),
+  operatingHours: z.string().max(60).optional().nullable(),
+  maxDailyCapacity: z.coerce.number().int().positive().optional().nullable(),
+  isActive: z.boolean().optional(),
+});
 
 export const adminCreateRateSchema = z.object({
   originZone: z.string().min(2).max(60),
@@ -166,11 +198,21 @@ export const adminUpsertServiceRuleSchema = z.object({
 export const adminUpdateServiceRuleSchema = adminUpsertServiceRuleSchema.partial();
 
 export const adminCreateCoverageSchema = z.object({
-  provinceId: z.string().min(2).max(80),
-  regencyId: z.string().min(2).max(80).optional().nullable(),
+  provinceId: z.string().uuid(),
+  regencyId: z.string().uuid().optional().nullable(),
   zone: z.string().min(2).max(60),
   isPickup: z.boolean().optional(),
   isDelivery: z.boolean().optional(),
+  isActive: z.boolean().optional(),
+});
+
+export const adminUpdateCoverageSchema = z.object({
+  provinceId: z.string().uuid().optional(),
+  regencyId: z.string().uuid().optional().nullable(),
+  zone: z.string().min(2).max(60).optional(),
+  isPickup: z.boolean().optional(),
+  isDelivery: z.boolean().optional(),
+  isActive: z.boolean().optional(),
 });
 
 export const adminAssignSchema = z.object({
@@ -184,8 +226,19 @@ export const adminOverrideStatusSchema = z.object({
 });
 
 export const listShipmentsQuerySchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
+  page: queryPage,
+  limit: queryLimit(100, 20),
   status: z.nativeEnum(BisaExpressStatus).optional(),
   search: z.string().max(100).optional(),
+});
+
+export const adminReportsQuerySchema = z.object({
+  startDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Gunakan YYYY-MM-DD')
+    .optional(),
+  endDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Gunakan YYYY-MM-DD')
+    .optional(),
 });

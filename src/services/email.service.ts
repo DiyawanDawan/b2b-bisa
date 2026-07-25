@@ -31,6 +31,11 @@ const transporter = nodemailer.createTransport({
     pass: EMAIL_SMTP_PASS,
   },
   requireTLS: true,
+  // Nodemailer defaults (connect 2m / socket 10m) outlast the mobile client's
+  // 30s HTTP timeout, turning a slow SMTP hop into "permintaan waktu habis".
+  connectionTimeout: 10_000,
+  greetingTimeout: 10_000,
+  socketTimeout: 15_000,
 });
 
 async function sendSMTP(from: string, to: string, subject: string, html: string) {
@@ -107,17 +112,38 @@ export const sendBookingConfirmation = async (email: string, booking: any) => {
 export const sendPasswordResetEmail = async (email: string, fullName: string, code: string) => {
   try {
     const html = await renderMailHtml('reset_password', { fullName, code });
-    return sendMail(email, 'Permintaan Reset Password 🔑', html);
+    return await sendMail(email, 'Permintaan Reset Password 🔑', html);
   } catch (error) {
     logger.error('sendPasswordResetEmail failed:', error);
+    throw error;
   }
 };
 
 export const sendOtpEmail = async (email: string, fullName: string, code: string) => {
   try {
     const html = await renderMailHtml('otp', { code, fullName });
-    return sendMail(email, 'Kode Verifikasi Akun 🛡️', html);
+    return await sendMail(email, 'Kode Verifikasi Akun 🛡️', html);
   } catch (error) {
     logger.error('sendOtpEmail failed:', error);
+    throw error;
   }
+};
+
+/**
+ * Fire-and-forget OTP / reset mail so auth HTTP handlers never wait on SMTP.
+ * OTP must already be persisted; failures are logged only.
+ */
+const queueMail = (label: string, task: () => Promise<unknown>) => {
+  void task().catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(`${label} failed (OTP already persisted):`, { error: message });
+  });
+};
+
+export const queueOtpEmail = (email: string, fullName: string, code: string) => {
+  queueMail('queueOtpEmail', () => sendOtpEmail(email, fullName, code));
+};
+
+export const queuePasswordResetEmail = (email: string, fullName: string, code: string) => {
+  queueMail('queuePasswordResetEmail', () => sendPasswordResetEmail(email, fullName, code));
 };

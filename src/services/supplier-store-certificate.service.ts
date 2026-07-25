@@ -46,7 +46,13 @@ const loadSupplier = async (supplierId: string, userId: string, isAdmin = false)
     where: { id: supplierId },
     select: { id: true, role: true, fullName: true },
   });
-  if (!supplier || supplier.role !== UserRole.SUPPLIER) {
+  if (!supplier) {
+    throw new AppError('Supplier tidak ditemukan.', 404);
+  }
+  // ADMIN boleh mengelola sertifikat toko meski akunnya sendiri bukan SUPPLIER
+  // (route mengizinkan requireRole(SUPPLIER, ADMIN)). Untuk non-admin, hanya
+  // akun SUPPLIER yang valid.
+  if (!isAdmin && supplier.role !== UserRole.SUPPLIER) {
     throw new AppError('Supplier tidak ditemukan.', 404);
   }
   if (!isAdmin && supplier.id !== userId) {

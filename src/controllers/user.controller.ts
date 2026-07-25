@@ -18,8 +18,7 @@ import { getUserReadiness } from '#utils/readiness.util';
  * Get public profile
  */
 export const getUserById = catchAsync(async (req: AuthRequest, res: Response) => {
-  const isAuthorized = !!req.user;
-  const data = await userService.getUserById(req.params.id, isAuthorized);
+  const data = await userService.getUserById(req.params.id);
   return successResponse(res, attachUserMediaUrls(data), 'Profil user berhasil diambil');
 });
 
@@ -170,7 +169,6 @@ export const updateOperatingHours = catchAsync(async (req: AuthRequest, res: Res
 export const listSuppliers = catchAsync(async (req: AuthRequest, res: Response) => {
   const page = Math.max(1, parseInt(req.query.page as string) || 1);
   const limit = Math.max(1, Math.min(100, parseInt(req.query.limit as string) || 10));
-  const isAuthorized = !!req.user;
 
   const filters = {
     ...req.query,
@@ -180,7 +178,6 @@ export const listSuppliers = catchAsync(async (req: AuthRequest, res: Response) 
 
   const { suppliers, total } = await userService.listSuppliers(
     filters as Parameters<typeof userService.listSuppliers>[0],
-    isAuthorized,
   );
   return paginatedResponse(
     res,
@@ -196,8 +193,7 @@ export const listSuppliers = catchAsync(async (req: AuthRequest, res: Response) 
  * GET /api/v1/suppliers/:id
  */
 export const getSupplierDetail = catchAsync(async (req: AuthRequest, res: Response) => {
-  const isAuthorized = !!req.user;
-  const data = await userService.getSupplierDetail(req.params.id, isAuthorized);
+  const data = await userService.getSupplierDetail(req.params.id);
   return successResponse(res, attachUserMediaUrls(data), 'Detail supplier berhasil diambil');
 });
 /**

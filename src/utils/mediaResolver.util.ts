@@ -79,10 +79,11 @@ const attachForumComment = (c: ForumCommentLike): ForumCommentLike => {
   return comment;
 };
 
-export const attachForumCommentMedia = attachForumComment;
+export const attachForumCommentMedia = <T extends object>(c: T): T =>
+  attachForumComment(c as ForumCommentLike) as T;
 
-export const attachForumMediaUrls = <T extends ForumPostLike>(post: T): T => {
-  const next: ForumPostLike = { ...post };
+export const attachForumMediaUrls = <T extends object>(post: T): T => {
+  const next: ForumPostLike = { ...(post as ForumPostLike) };
   const author = next.author ?? next.user;
   if (author) {
     const mapped = mapUser({ ...author });

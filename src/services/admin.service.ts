@@ -23,7 +23,7 @@ import {
 import { createNotification } from '#services/notification.service';
 import { notifyOrderStatusChange } from '#services/orderNotification.service';
 import { activeApprovedCertificateWhere } from '#utils/certificate.util';
-import { invalidateCategories } from '#utils/cache.util';
+import { invalidateCategories, invalidateAuthUser } from '#utils/cache.util';
 import { decryptField, isEncryptedPayload } from '#utils/encryption.util';
 import { formatPayoutAccountForAdmin } from '#utils/payoutAccount.util';
 import { resolveFeeScopes } from '#utils/platformFee.util';
@@ -713,8 +713,12 @@ export const getUserDossier = async (
     verification: user.verification
       ? {
           ...user.verification,
-          ktpUrl: resolveMediaField(user.verification.ktpUrl),
-          selfieUrl: resolveMediaField(user.verification.selfieUrl),
+          ktpUrl: user.verification.ktpUrl
+            ? storageService.getSignedProxyUrl(user.verification.ktpUrl, 900)
+            : null,
+          selfieUrl: user.verification.selfieUrl
+            ? storageService.getSignedProxyUrl(user.verification.selfieUrl, 900)
+            : null,
         }
       : null,
     payoutAccounts: user.payoutAccounts.map((account) =>
@@ -765,11 +769,13 @@ export const updateUserStatus = async (userId: string, status: UserStatus) => {
     throw new AppError('Data member tidak ditemukan.', 404);
   }
 
-  return prisma.user.update({
+  const updated = await prisma.user.update({
     where: { id: userId },
     data: { status },
     select: { id: true, email: true, status: true },
   });
+  void invalidateAuthUser(userId);
+  return updated;
 };
 
 /**
@@ -802,10 +808,10 @@ export const listKYCQueue = async (params: {
 
   const mappedQueue = queue.map((row) => ({
     ...row,
-    ktpUrl: resolveMediaField(row.ktpUrl),
-    selfieUrl: resolveMediaField(row.selfieUrl),
-    nibUrl: resolveMediaField(row.nibUrl),
-    siupUrl: resolveMediaField(row.siupUrl),
+    ktpUrl: row.ktpUrl ? storageService.getSignedProxyUrl(row.ktpUrl, 900) : null,
+    selfieUrl: row.selfieUrl ? storageService.getSignedProxyUrl(row.selfieUrl, 900) : null,
+    nibUrl: row.nibUrl ? storageService.getSignedProxyUrl(row.nibUrl, 900) : null,
+    siupUrl: row.siupUrl ? storageService.getSignedProxyUrl(row.siupUrl, 900) : null,
   }));
 
   return {
@@ -1568,7 +1574,11 @@ export const updatePlatformFee = async (
       ...(data.description !== undefined ? { description: data.description } : {}),
       ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
       ...(data.applyMode !== undefined ? { applyMode: data.applyMode } : {}),
-      ...(data.applyScopes !== undefined ? { applyScopes: data.applyScopes } : {}),
+      ...(data.applyScopes !== undefined
+        ? {
+            applyScopes: data.applyScopes === null ? Prisma.JsonNull : data.applyScopes,
+          }
+        : {}),
     },
   });
 };
@@ -1659,6 +1669,7 @@ export const listCategories = async (params?: {
       categoryType: true,
       productMode: true,
       biomassaType: true,
+      isActive: true,
       createdAt: true,
       _count: { select: { products: true, articles: true, forumPosts: true } },
     },
@@ -1672,6 +1683,7 @@ const categorySelect = {
   categoryType: true,
   productMode: true,
   biomassaType: true,
+  isActive: true,
   createdAt: true,
   _count: { select: { products: true, articles: true, forumPosts: true } },
 } as const;

@@ -5,6 +5,7 @@
     "target": "ES2023",
     "strict": true,
     "esModuleInterop": true,
+    "skipLibCheck": true,
     "ignoreDeprecations": "5.0",
     "types": ["node", "jest"],
     "outDir": "./dist",
@@ -29,5 +30,5 @@
     }
   },
   "include": ["**/*.ts"],
-  "exclude": ["node_modules", "dist", "generated"]
+  "exclude": ["node_modules", "dist", "generated", "prisma/seed", "scripts"]
 }

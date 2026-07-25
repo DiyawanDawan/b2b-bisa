@@ -181,7 +181,7 @@ export const listPolicies = catchAsync(async (_req: AuthRequest, res: Response) 
 });
 
 export const updatePolicy = catchAsync(async (req: AuthRequest, res: Response) => {
-  const policy = await extended.updatePolicyAdmin(req.params.id, req.body);
+  const policy = await extended.updatePolicyAdmin(req.params.id, req.body, req.user!.id);
   return successResponse(res, policy, 'Kebijakan berhasil diperbarui');
 });
 
@@ -255,7 +255,7 @@ export const listChatInbox = catchAsync(async (req: AuthRequest, res: Response) 
 });
 
 export const getChatThread = catchAsync(async (req: AuthRequest, res: Response) => {
-  const { page, limit } = req.query as { page: number; limit: number };
+  const { page, limit } = req.query as unknown as { page: number; limit: number };
   const data = await extended.getChatThread(
     req.params.negotiationId,
     req.user!.id,

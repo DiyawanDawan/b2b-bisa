@@ -2,6 +2,9 @@ import logger from '../../src/config/logger.js';
 import bcrypt from 'bcrypt';
 import { faker } from '@faker-js/faker/locale/id_ID';
 import { avatarSeedPath } from '../../src/utils/loremFlickrMedia.util.ts';
+import { encryptField } from '../../src/utils/encryption.util.ts';
+import { sealAccountName, sealAccountNumber } from '../../src/utils/payoutAccount.util.ts';
+import { sealAddress, sealAddressPhone } from '../../src/utils/piiField.util.ts';
 
 export async function seedUsers(prisma) {
   logger.info('🌱 [04] Seeding BISA Elite Users (PRO Tiers)...');
@@ -16,13 +19,14 @@ export async function seedUsers(prisma) {
   const proExpiresAt = new Date();
   proExpiresAt.setFullYear(proExpiresAt.getFullYear() + 1);
   const proSubscription = { tier: 'PRO', subscriptionExpiresAt: proExpiresAt };
-  const createEliteAddress = async (fullAddress) => {
+  const createEliteAddress = async (fullAddress, phoneNumber) => {
     const addr = await prisma.address.create({
       data: {
         countryId: country.id,
         provinceId: province?.id,
-        fullAddress,
+        fullAddress: sealAddress(fullAddress),
         zipCode: '60111',
+        phoneNumber: phoneNumber ? sealAddressPhone(phoneNumber) : null,
         latitude: -7.2575,
         longitude: 112.7521,
       },
@@ -69,7 +73,7 @@ export async function seedUsers(prisma) {
           companyName: 'Surabaya Industrial Hub',
           businessType: 'B2B Procurement',
           addressId: HendraAddr.id,
-          npwp: '01.234.567.8-901.000',
+          npwp: encryptField('01.234.567.8-901.000'),
         },
       },
     },
@@ -176,13 +180,18 @@ export async function seedUsers(prisma) {
       }
     }
 
-    // 6b. Payout Accounts
+    // 6b. Payout Accounts (accountNumber sealed — matches production write-path)
     if (selectedBank) {
+      const plainAccountNumber = faker.finance.accountNumber();
+      const sealedAccountNumber = sealAccountNumber(plainAccountNumber, {
+        userId: user.id,
+        bankId: selectedBank.id,
+      });
       await prisma.userPayoutAccount.upsert({
         where: {
           userId_accountNumber_bankId: {
             userId: user.id,
-            accountNumber: faker.finance.accountNumber(),
+            accountNumber: sealedAccountNumber,
             bankId: selectedBank.id,
           },
         },
@@ -190,8 +199,8 @@ export async function seedUsers(prisma) {
         create: {
           userId: user.id,
           bankId: selectedBank.id,
-          accountNumber: faker.finance.accountNumber(),
-          accountName: user.fullName,
+          accountNumber: sealedAccountNumber,
+          accountName: sealAccountName(user.fullName),
           isMain: true,
         },
       });
@@ -292,6 +301,10 @@ export async function seedUsers(prisma) {
     });
 
     if (bcaPayout) {
+      const sealedAccountNo = sealAccountNumber(accountNo, {
+        userId: user.id,
+        bankId: bcaPayout.id,
+      });
       await prisma.userPayoutAccount.updateMany({
         where: { userId: user.id },
         data: { isMain: false },
@@ -300,16 +313,16 @@ export async function seedUsers(prisma) {
         where: {
           userId_accountNumber_bankId: {
             userId: user.id,
-            accountNumber: accountNo,
+            accountNumber: sealedAccountNo,
             bankId: bcaPayout.id,
           },
         },
-        update: { accountName, isMain: true },
+        update: { accountName: sealAccountName(accountName), isMain: true },
         create: {
           userId: user.id,
           bankId: bcaPayout.id,
-          accountNumber: accountNo,
-          accountName,
+          accountNumber: sealedAccountNo,
+          accountName: sealAccountName(accountName),
           isMain: true,
         },
       });

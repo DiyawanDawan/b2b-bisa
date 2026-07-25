@@ -3,6 +3,8 @@ import AppError from '#utils/appError';
 import { PostStatus, VoteType, Prisma } from '#prisma';
 import { FORUM_MODERATION_THRESHOLD } from '#utils/env.util';
 import { buildForumMetadata, type ForumProductMention } from '#utils/forumContent.util';
+import { CACHE_TTL } from '#constants/cache.constants';
+import { cacheAside, cacheKeys, hashQuery, invalidateForumPosts } from '#utils/cache.util';
 
 export type ForumMediaInput = { url: string; type: 'image' | 'video' };
 
@@ -11,6 +13,32 @@ const toMediaJson = (media?: ForumMediaInput[]): Prisma.InputJsonValue | undefin
 
 const toJsonValue = (arr?: unknown[] | null): Prisma.InputJsonValue | typeof Prisma.JsonNull =>
   arr && arr.length > 0 ? (arr as Prisma.InputJsonValue) : Prisma.JsonNull;
+
+type AnonPostRow = {
+  id: string;
+  userId: string;
+  title: string;
+  contentPreview: string;
+  mediaUrls: unknown;
+  tags: unknown;
+  productMentions: unknown;
+  categoryId: string | null;
+  groupId: string | null;
+  upvotes: number;
+  downvotes: number;
+  viewCount: number;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+  user: {
+    id: string;
+    fullName: string;
+    avatarUrl: string | null;
+    role: string;
+    verification: { isVerified: boolean } | null;
+  };
+  participants: { id: string; fullName: string; avatarUrl: string | null }[];
+  userVote: null;
+};
 
 export const listPosts = async (params: {
   categoryId?: string;
@@ -32,108 +60,127 @@ export const listPosts = async (params: {
     userId,
     sortBy = 'trending',
   } = params;
-  const skip = (page - 1) * limit;
 
-  // MySQL JSON tidak mendukung query path generik via Prisma typed API
-  // untuk semua versi — pakai $queryRaw kalau perlu strict. Untuk
-  // simpilitas pakai `string_contains` (MySQL JSON_CONTAINS-like) yang
-  // bekerja stabil di Prisma 5+.
-  const normalizedTag = tag?.trim().toLowerCase().replace(/^#/, '');
+  const anonParams = { categoryId, groupId, keyword, tag, page, limit, sortBy };
+  const {
+    posts: anonPosts,
+    total,
+    totalPages,
+  } = await cacheAside(
+    cacheKeys.forumPostsAnon(hashQuery(anonParams)),
+    CACHE_TTL.FORUM_LIST,
+    async () => {
+      const skip = (page - 1) * limit;
+      const normalizedTag = tag?.trim().toLowerCase().replace(/^#/, '');
 
-  const where: Prisma.ForumPostWhereInput = {
-    ...(categoryId && { categoryId }),
-    ...(groupId ? { groupId } : { groupId: null }),
-    ...(keyword && {
-      OR: [{ title: { contains: keyword } }, { content: { contains: keyword } }],
-    }),
-    ...(normalizedTag && {
-      // Cari posts dengan tag yang persis match (case-insensitive sudah karena
-      // semua tag disimpan lowercase saat parse).
-      tags: { array_contains: [normalizedTag] } as unknown as Prisma.JsonNullableFilter,
-    }),
-    status: PostStatus.PUBLISHED,
-  };
+      const where: Prisma.ForumPostWhereInput = {
+        ...(categoryId && { categoryId }),
+        ...(groupId ? { groupId } : { groupId: null }),
+        ...(keyword && {
+          OR: [{ title: { contains: keyword } }, { content: { contains: keyword } }],
+        }),
+        ...(normalizedTag && {
+          tags: { array_contains: [normalizedTag] } as unknown as Prisma.JsonNullableFilter,
+        }),
+        status: PostStatus.PUBLISHED,
+      };
 
-  let orderBy: any = { createdAt: 'desc' };
-  if (sortBy === 'popular') {
-    orderBy = { upvotes: 'desc' };
-  } else if (sortBy === 'trending') {
-    orderBy = [{ upvotes: 'desc' }, { createdAt: 'desc' }];
-  }
+      let orderBy: any = { createdAt: 'desc' };
+      if (sortBy === 'popular') {
+        orderBy = { upvotes: 'desc' };
+      } else if (sortBy === 'trending') {
+        orderBy = [{ upvotes: 'desc' }, { createdAt: 'desc' }];
+      }
 
-  const [rawPosts, total] = await prisma.$transaction([
-    prisma.forumPost.findMany({
-      where,
-      select: {
-        id: true,
-        userId: true,
-        title: true,
-        content: true,
-        mediaUrls: true,
-        tags: true,
-        productMentions: true,
-        categoryId: true,
-        groupId: true,
-        upvotes: true,
-        downvotes: true,
-        viewCount: true,
-        createdAt: true,
-        updatedAt: true,
-        user: {
+      const [rawPosts, totalCount] = await prisma.$transaction([
+        prisma.forumPost.findMany({
+          where,
           select: {
             id: true,
-            fullName: true,
-            avatarUrl: true,
-            role: true,
-            verification: { select: { isVerified: true } },
-          },
-        },
-        _count: { select: { comments: true } },
-        comments: {
-          take: 8,
-          orderBy: { createdAt: 'desc' },
-          select: {
+            userId: true,
+            title: true,
+            content: true,
+            mediaUrls: true,
+            tags: true,
+            productMentions: true,
+            categoryId: true,
+            groupId: true,
+            upvotes: true,
+            downvotes: true,
+            viewCount: true,
+            createdAt: true,
+            updatedAt: true,
             user: {
-              select: { id: true, fullName: true, avatarUrl: true },
+              select: {
+                id: true,
+                fullName: true,
+                avatarUrl: true,
+                role: true,
+                verification: { select: { isVerified: true } },
+              },
+            },
+            _count: { select: { comments: true } },
+            comments: {
+              take: 8,
+              orderBy: { createdAt: 'desc' },
+              select: {
+                user: {
+                  select: { id: true, fullName: true, avatarUrl: true },
+                },
+              },
             },
           },
-        },
-        ...(userId && {
-          votes: {
-            where: { userId },
-            select: { type: true },
-          },
+          orderBy,
+          skip,
+          take: limit,
         }),
-      },
-      orderBy,
-      skip,
-      take: limit,
-    }),
-    prisma.forumPost.count({ where }),
-  ]);
+        prisma.forumPost.count({ where }),
+      ]);
 
-  const posts = rawPosts.map(({ content, votes, comments, ...rest }) => {
-    // Dedupe commenter berdasarkan userId, urutan dari komentar terbaru,
-    // ambil maksimal 4 untuk ditampilkan di avatar stack mobile.
-    const seen = new Set<string>();
-    const participants: { id: string; fullName: string; avatarUrl: string | null }[] = [];
-    for (const c of comments ?? []) {
-      if (!c?.user) continue;
-      if (seen.has(c.user.id)) continue;
-      seen.add(c.user.id);
-      participants.push(c.user);
-      if (participants.length === 4) break;
-    }
+      const posts: AnonPostRow[] = rawPosts.map(({ content, comments, ...rest }) => {
+        const seen = new Set<string>();
+        const participants: { id: string; fullName: string; avatarUrl: string | null }[] = [];
+        for (const c of comments ?? []) {
+          if (!c?.user) continue;
+          if (seen.has(c.user.id)) continue;
+          seen.add(c.user.id);
+          participants.push(c.user);
+          if (participants.length === 4) break;
+        }
 
-    return {
-      ...rest,
-      contentPreview: content.length > 200 ? `${content.slice(0, 200)}…` : content,
-      userVote: userId && votes && (votes as any[]).length > 0 ? (votes as any[])[0].type : null,
-      participants,
-    };
+        return {
+          ...rest,
+          contentPreview: content.length > 200 ? `${content.slice(0, 200)}…` : content,
+          userVote: null,
+          participants,
+        };
+      });
+
+      return { posts, total: totalCount, totalPages: Math.ceil(totalCount / limit) };
+    },
+  );
+
+  if (!userId || anonPosts.length === 0) {
+    return { posts: anonPosts, total, totalPages };
+  }
+
+  const votes = await prisma.forumVote.findMany({
+    where: {
+      userId,
+      postId: { in: anonPosts.map((p) => p.id) },
+    },
+    select: { postId: true, type: true },
   });
+  const voteByPost = new Map(
+    votes.filter((v) => v.postId).map((v) => [v.postId as string, v.type]),
+  );
 
-  return { posts, total, totalPages: Math.ceil(total / limit) };
+  const posts = anonPosts.map((p) => ({
+    ...p,
+    userVote: voteByPost.get(p.id) ?? null,
+  }));
+
+  return { posts, total, totalPages };
 };
 
 export const getPostById = async (id: string, isAdmin = false, userId?: string) => {
@@ -275,7 +322,7 @@ export const createPost = async (
     explicitTags: data.tags,
   });
 
-  return prisma.forumPost.create({
+  const created = await prisma.forumPost.create({
     data: {
       userId,
       title: data.title,
@@ -288,6 +335,8 @@ export const createPost = async (
       status: (data.status as PostStatus) || PostStatus.PUBLISHED,
     },
   });
+  void invalidateForumPosts();
+  return created;
 };
 
 /**
@@ -344,7 +393,7 @@ export const updatePost = async (
     });
   }
 
-  return prisma.forumPost.update({
+  const updated = await prisma.forumPost.update({
     where: { id },
     data: {
       ...(data.title !== undefined && { title: data.title }),
@@ -376,6 +425,8 @@ export const updatePost = async (
       _count: { select: { comments: true } },
     },
   });
+  void invalidateForumPosts();
+  return updated;
 };
 
 /**
@@ -601,8 +652,10 @@ export const deletePost = async (id: string, userId: string, role?: string) => {
   }
 
   // Soft Delete: Change status to ARCHIVED
-  return prisma.forumPost.update({
+  const archived = await prisma.forumPost.update({
     where: { id },
     data: { status: PostStatus.ARCHIVED },
   });
+  void invalidateForumPosts();
+  return archived;
 };

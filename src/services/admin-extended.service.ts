@@ -17,6 +17,7 @@ import * as negotiationService from '#services/negotiation.service';
 import { sendDisputeMediationMessage } from '#services/dispute-mediation.service';
 import { invalidatePolicies } from '#utils/cache.util';
 import { POLICY_KEYS } from '#services/policy.service';
+import { createAuditLog } from '#services/admin.service';
 import { CATEGORY_TYPE } from '#prisma';
 import { attachOrderMediaUrls } from '#utils/orderMedia.util';
 import { attachUserMediaUrls } from '#utils/userMedia.util';
@@ -567,6 +568,7 @@ export const listForumGroupsAdmin = async (params: {
         avatarUrl: true,
         bannerUrl: true,
         isPublic: true,
+        isActive: true,
         memberCount: true,
         createdAt: true,
         owner: {
@@ -757,6 +759,7 @@ export const listPoliciesAdmin = async () => {
 export const updatePolicyAdmin = async (
   id: string,
   data: { content?: string; version?: string; isActive?: boolean },
+  adminId?: string,
 ) => {
   const policy = await prisma.policy.findUnique({ where: { id } });
   if (!policy) throw new AppError('Kebijakan tidak ditemukan', 404);
@@ -776,6 +779,22 @@ export const updatePolicyAdmin = async (
       updatedAt: true,
     },
   });
+  if (adminId) {
+    await createAuditLog({
+      userId: adminId,
+      action: 'UPDATE_POLICY',
+      entity: 'POLICY',
+      entityId: id,
+      oldValue: {
+        version: policy.version,
+        isActive: policy.isActive,
+      },
+      newValue: {
+        version: updated.version,
+        isActive: updated.isActive,
+      },
+    });
+  }
   void invalidatePolicies();
   return updated;
 };

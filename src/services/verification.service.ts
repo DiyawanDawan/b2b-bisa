@@ -1,6 +1,12 @@
 import prisma from '#config/prisma';
 import AppError from '#utils/appError';
 import { VerificationStatus } from '#prisma';
+import {
+  revealBusinessAddress,
+  revealTaxId,
+  sealBusinessAddress,
+  sealTaxId,
+} from '#utils/piiField.util';
 
 export const submitVerification = async (
   userId: string,
@@ -29,15 +35,34 @@ export const submitVerification = async (
     throw new AppError('Akun Anda sudah terverifikasi.', 409);
   }
 
-  return prisma.userVerification.upsert({
+  const sealed = {
+    ...data,
+    ...(data.taxId !== undefined && { taxId: sealTaxId(data.taxId) ?? null }),
+    ...(data.businessAddress !== undefined && {
+      businessAddress: sealBusinessAddress(data.businessAddress) ?? null,
+    }),
+  };
+
+  const row = await prisma.userVerification.upsert({
     where: { userId },
-    create: { userId, ...data, verificationStatus: VerificationStatus.PENDING, isVerified: false },
-    update: { ...data, verificationStatus: VerificationStatus.PENDING, isVerified: false },
+    create: {
+      userId,
+      ...sealed,
+      verificationStatus: VerificationStatus.PENDING,
+      isVerified: false,
+    },
+    update: { ...sealed, verificationStatus: VerificationStatus.PENDING, isVerified: false },
   });
+
+  return {
+    ...row,
+    taxId: revealTaxId(row.taxId) ?? null,
+    businessAddress: revealBusinessAddress(row.businessAddress) ?? null,
+  };
 };
 
 export const getPendingVerifications = async () => {
-  return prisma.userVerification.findMany({
+  const rows = await prisma.userVerification.findMany({
     where: { verificationStatus: VerificationStatus.PENDING },
     select: {
       id: true,
@@ -58,6 +83,12 @@ export const getPendingVerifications = async () => {
     },
     orderBy: { createdAt: 'asc' },
   });
+
+  return rows.map((row) => ({
+    ...row,
+    taxId: revealTaxId(row.taxId) ?? null,
+    businessAddress: revealBusinessAddress(row.businessAddress) ?? null,
+  }));
 };
 
 export const updateVerificationStatus = async (

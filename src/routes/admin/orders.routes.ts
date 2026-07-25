@@ -1,9 +1,11 @@
 import { Router } from 'express';
 import * as adminController from '#controllers/admin.controller';
 import * as extendedController from '#controllers/admin-extended.controller';
+import * as partialController from '#controllers/admin-partial.controller';
 import validate from '#middlewares/validate';
 import { financialLimiter } from '#middlewares/rateLimiter';
 import * as adminValidation from '#validations/admin.validation';
+import * as partialValidation from '#validations/admin-partial.validation';
 
 const router = Router();
 
@@ -76,6 +78,35 @@ router.post(
  * GET /api/v1/admin/orders/:id
  */
 router.get('/:id', extendedController.getOrderDetail);
+
+/**
+ * GET /api/v1/admin/orders/:id/timeline
+ */
+router.get(
+  '/:id/timeline',
+  validate(partialValidation.adminOrderTimelineQuerySchema, 'query'),
+  partialController.getOrderTimeline,
+);
+
+/**
+ * PATCH /api/v1/admin/orders/:id/status
+ */
+router.patch(
+  '/:id/status',
+  financialLimiter,
+  validate(partialValidation.adminUpdateOrderStatusSchema),
+  partialController.updateOrderStatus,
+);
+
+/**
+ * POST /api/v1/admin/orders/:id/cancel
+ */
+router.post(
+  '/:id/cancel',
+  financialLimiter,
+  validate(partialValidation.adminCancelOrderSchema),
+  partialController.cancelOrder,
+);
 
 /**
  * POST /api/v1/admin/orders/:id/resolve

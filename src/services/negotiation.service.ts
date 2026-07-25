@@ -3,6 +3,7 @@ import pusher from '#config/pusher';
 import AppError from '#utils/appError';
 import { assertQuantityMeetsMinOrder } from '#utils/productOrderRules';
 import { assertBuyerCommerceReady } from '#utils/readiness.util';
+import { revealShippingAddressSnapshot } from '#utils/piiField.util';
 import {
   NegotiationStatus,
   NotificationPriority,
@@ -926,6 +927,14 @@ export const getNegotiationById = async (id: string, userId: string) => {
   const { _count, messages, ...rest } = negotiation;
   return {
     ...rest,
+    order: rest.order
+      ? {
+          ...rest.order,
+          shippingAddressSnapshot: revealShippingAddressSnapshot(
+            rest.order.shippingAddressSnapshot,
+          ),
+        }
+      : rest.order,
     economics,
     messages: [...messages].reverse(),
     messagesTotal: _count.messages,

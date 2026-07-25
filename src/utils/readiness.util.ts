@@ -2,6 +2,7 @@ import prisma from '#config/prisma';
 import AppError from '#utils/appError';
 import { optional } from '#utils/env.util';
 import { ensureSupplierShippingOriginFromAddresses } from '#services/order-shipping.service';
+import { revealAddress, revealAddressFields } from '#utils/piiField.util';
 
 export type StoreReadinessKey =
   | 'companyName'
@@ -90,12 +91,12 @@ const resolveCompanyName = (user: NonNullable<Awaited<ReturnType<typeof loadRead
   user.profile?.companyName?.trim() || user.verification?.businessName?.trim() || '';
 
 const resolveBusinessAddress = (user: NonNullable<Awaited<ReturnType<typeof loadReadinessUser>>>) =>
-  user.profile?.address?.fullAddress?.trim() || '';
+  (revealAddress(user.profile?.address?.fullAddress)?.trim() || '') as string;
 
 const hasProfileAddressComplete = (
   user: NonNullable<Awaited<ReturnType<typeof loadReadinessUser>>>,
 ) => {
-  const addr = user.profile?.address;
+  const addr = revealAddressFields(user.profile?.address);
   if (!addr) return false;
   if (!textMin(addr.fullAddress, 10)) return false;
   const lat = addr.latitude != null ? Number(addr.latitude) : NaN;
@@ -180,7 +181,7 @@ export const evaluateBuyerCommerceReadiness = async (
   }
 
   const missing: BuyerReadinessKey[] = [];
-  const linked = resolveBuyerLinkedAddress(user);
+  const linked = revealAddressFields(resolveBuyerLinkedAddress(user));
   const addressText = linked?.fullAddress?.trim() ?? '';
 
   if (addressText.length < 10) {

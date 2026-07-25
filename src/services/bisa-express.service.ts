@@ -22,8 +22,37 @@ import {
   UserRole,
 } from '#prisma';
 import { convertUnit, formatQty, isWithinWeightBand } from '#utils/unit.util';
+import type { AccessRequester } from '#utils/access.util';
+import { isAdminRole } from '#utils/access.util';
+import {
+  revealAddressFields,
+  revealShipmentFields,
+  sealAddress,
+  sealAddressPhone,
+  sealShipmentAddress,
+  sealShipmentContact,
+  sealShipmentPhone,
+} from '#utils/piiField.util';
+import { invalidateAuthUser } from '#utils/cache.util';
 
 type Tx = Prisma.TransactionClient;
+
+const assertShipmentParticipant = async (
+  shipment: {
+    order: { buyerId: string; sellerId: string };
+    pickupDriver: { userId: string } | null;
+    deliveryDriver: { userId: string } | null;
+  },
+  requester: AccessRequester,
+) => {
+  if (isAdminRole(requester.role)) return;
+  const allowed =
+    shipment.order.buyerId === requester.id ||
+    shipment.order.sellerId === requester.id ||
+    shipment.pickupDriver?.userId === requester.id ||
+    shipment.deliveryDriver?.userId === requester.id;
+  if (!allowed) throw new AppError('Akses ditolak', 403);
+};
 
 /** Alamat tunggal untuk ongkir/jarak BISA Express — wajib dari UserProfile.address + GIS. */
 export type ProfileShippingAddress = {
@@ -139,7 +168,7 @@ export const requireProfileAddress = async (
     throw new AppError('User tidak ditemukan.', 404);
   }
 
-  const addr = user.profile?.address;
+  const addr = revealAddressFields(user.profile?.address);
   const lat = toNum(addr?.latitude);
   const lng = toNum(addr?.longitude);
   const fullAddress = addr?.fullAddress?.trim() ?? '';
@@ -700,7 +729,7 @@ const appendStatusLog = async (
 
 export const createShipmentFromPaidOrder = async (orderId: string) => {
   const existing = await prisma.bisaExpressShipment.findUnique({ where: { orderId } });
-  if (existing) return existing;
+  if (existing) return revealShipmentFields(existing);
 
   const order = await prisma.order.findUnique({
     where: { id: orderId },
@@ -744,14 +773,14 @@ export const createShipmentFromPaidOrder = async (orderId: string) => {
         orderId,
         awbNumber,
         status: BisaExpressStatus.AWAITING_PICKUP,
-        pickupAddress: sellerAddr.fullAddress,
-        pickupContact: sellerAddr.contactName,
-        pickupPhone: sellerAddr.phone,
+        pickupAddress: sealShipmentAddress(sellerAddr.fullAddress) as string,
+        pickupContact: sealShipmentContact(sellerAddr.contactName) as string,
+        pickupPhone: sealShipmentPhone(sellerAddr.phone) as string,
         pickupLat: new Prisma.Decimal(sellerAddr.latitude),
         pickupLng: new Prisma.Decimal(sellerAddr.longitude),
-        deliveryAddress: buyerAddr.fullAddress,
-        deliveryContact: buyerAddr.contactName,
-        deliveryPhone: buyerAddr.phone,
+        deliveryAddress: sealShipmentAddress(buyerAddr.fullAddress) as string,
+        deliveryContact: sealShipmentContact(buyerAddr.contactName) as string,
+        deliveryPhone: sealShipmentPhone(buyerAddr.phone) as string,
         deliveryLat: new Prisma.Decimal(buyerAddr.latitude),
         deliveryLng: new Prisma.Decimal(buyerAddr.longitude),
         weight: Number(order.orderShipping!.weight),
@@ -775,7 +804,7 @@ export const createShipmentFromPaidOrder = async (orderId: string) => {
     return created;
   });
 
-  return shipment;
+  return revealShipmentFields(shipment);
 };
 
 export const getShipmentByOrderId = async (orderId: string, userId: string) => {
@@ -794,55 +823,134 @@ export const getShipmentByOrderId = async (orderId: string, userId: string) => {
   if (shipment.order.buyerId !== userId && shipment.order.sellerId !== userId) {
     throw new AppError('Akses ditolak', 403);
   }
-  return shipment;
+  return revealShipmentFields(shipment);
 };
 
-export const trackByAwb = async (awb: string) => {
+export const trackByAwb = async (awb: string, requester: AccessRequester) => {
   const shipment = await prisma.bisaExpressShipment.findUnique({
     where: { awbNumber: awb },
     include: {
       statusLogs: { orderBy: { createdAt: 'asc' } },
+      order: { select: { buyerId: true, sellerId: true } },
       pickupDriver: {
-        select: { currentLat: true, currentLng: true, lastLocationAt: true, status: true },
+        select: {
+          userId: true,
+          currentLat: true,
+          currentLng: true,
+          lastLocationAt: true,
+          status: true,
+        },
       },
       deliveryDriver: {
-        select: { currentLat: true, currentLng: true, lastLocationAt: true, status: true },
+        select: {
+          userId: true,
+          currentLat: true,
+          currentLng: true,
+          lastLocationAt: true,
+          status: true,
+        },
       },
     },
   });
   if (!shipment) throw new AppError('AWB tidak ditemukan', 404);
-  return shipment;
+  await assertShipmentParticipant(shipment, requester);
+
+  const stripDriverUserId = <
+    T extends {
+      userId: string;
+      currentLat: Prisma.Decimal | null;
+      currentLng: Prisma.Decimal | null;
+      lastLocationAt: Date | null;
+      status: DriverStatus;
+    },
+  >(
+    d: T | null,
+  ) => {
+    if (!d) return null;
+    const { userId: _uid, ...rest } = d;
+    return rest;
+  };
+
+  const { order: _order, pickupDriver, deliveryDriver, ...rest } = shipment;
+  return revealShipmentFields({
+    ...rest,
+    pickupDriver: stripDriverUserId(pickupDriver),
+    deliveryDriver: stripDriverUserId(deliveryDriver),
+  });
 };
 
-export const getTimeline = async (shipmentId: string) => {
+export const getTimeline = async (shipmentId: string, requester: AccessRequester) => {
+  const shipment = await prisma.bisaExpressShipment.findUnique({
+    where: { id: shipmentId },
+    select: {
+      id: true,
+      order: { select: { buyerId: true, sellerId: true } },
+      pickupDriver: { select: { userId: true } },
+      deliveryDriver: { select: { userId: true } },
+    },
+  });
+  if (!shipment) throw new AppError('Shipment tidak ditemukan', 404);
+  await assertShipmentParticipant(shipment, requester);
+
   return prisma.shipmentStatusLog.findMany({
     where: { shipmentId },
     orderBy: { createdAt: 'asc' },
   });
 };
 
-export const getLiveLocation = async (shipmentId: string) => {
+export const getLiveLocation = async (shipmentId: string, requester: AccessRequester) => {
   const shipment = await prisma.bisaExpressShipment.findUnique({
     where: { id: shipmentId },
     include: {
+      order: { select: { buyerId: true, sellerId: true } },
       deliveryDriver: {
-        select: { currentLat: true, currentLng: true, lastLocationAt: true, status: true },
+        select: {
+          userId: true,
+          currentLat: true,
+          currentLng: true,
+          lastLocationAt: true,
+          status: true,
+        },
       },
       pickupDriver: {
-        select: { currentLat: true, currentLng: true, lastLocationAt: true, status: true },
+        select: {
+          userId: true,
+          currentLat: true,
+          currentLng: true,
+          lastLocationAt: true,
+          status: true,
+        },
       },
     },
   });
   if (!shipment) throw new AppError('Shipment tidak ditemukan', 404);
+  await assertShipmentParticipant(shipment, requester);
+
   const driver =
     shipment.status === BisaExpressStatus.OUT_FOR_DELIVERY ||
     shipment.status === BisaExpressStatus.DELIVERED
       ? shipment.deliveryDriver
       : (shipment.pickupDriver ?? shipment.deliveryDriver);
+
+  // Do not expose driver.userId to clients.
+  const sanitizeDriver = (
+    d: {
+      userId: string;
+      currentLat: Prisma.Decimal | null;
+      currentLng: Prisma.Decimal | null;
+      lastLocationAt: Date | null;
+      status: DriverStatus;
+    } | null,
+  ) => {
+    if (!d) return null;
+    const { userId: _uid, ...rest } = d;
+    return rest;
+  };
+
   return {
     shipmentId,
     status: shipment.status,
-    driver,
+    driver: sanitizeDriver(driver),
   };
 };
 
@@ -865,13 +973,15 @@ export const requestPickup = async (
   }
   if (!shipment) throw new AppError('Gagal membuat shipment', 500);
 
-  return prisma.bisaExpressShipment.update({
-    where: { id: shipment.id },
-    data: {
-      pickupScheduledAt: data.pickupScheduledAt,
-      sellerNote: data.sellerNote,
-    },
-  });
+  return revealShipmentFields(
+    await prisma.bisaExpressShipment.update({
+      where: { id: shipment.id },
+      data: {
+        pickupScheduledAt: data.pickupScheduledAt,
+        sellerNote: data.sellerNote,
+      },
+    }),
+  );
 };
 
 export const updateSellerNote = async (sellerId: string, shipmentId: string, note: string) => {
@@ -882,18 +992,21 @@ export const updateSellerNote = async (sellerId: string, shipmentId: string, not
   if (!shipment || shipment.order.sellerId !== sellerId) {
     throw new AppError('Shipment tidak ditemukan', 404);
   }
-  return prisma.bisaExpressShipment.update({
-    where: { id: shipmentId },
-    data: { sellerNote: note },
-  });
+  return revealShipmentFields(
+    await prisma.bisaExpressShipment.update({
+      where: { id: shipmentId },
+      data: { sellerNote: note },
+    }),
+  );
 };
 
 export const listSellerShipments = async (sellerId: string) => {
-  return prisma.bisaExpressShipment.findMany({
+  const items = await prisma.bisaExpressShipment.findMany({
     where: { order: { sellerId } },
     orderBy: { createdAt: 'desc' },
     take: 100,
   });
+  return items.map(revealShipmentFields);
 };
 
 const getDriverOrThrow = async (userId: string) => {
@@ -906,7 +1019,7 @@ const getDriverOrThrow = async (userId: string) => {
 
 export const listDriverAssignments = async (userId: string) => {
   const driver = await getDriverOrThrow(userId);
-  return prisma.bisaExpressShipment.findMany({
+  const items = await prisma.bisaExpressShipment.findMany({
     where: {
       OR: [{ pickupDriverId: driver.id }, { deliveryDriverId: driver.id }],
       status: {
@@ -919,6 +1032,7 @@ export const listDriverAssignments = async (userId: string) => {
     },
     orderBy: { createdAt: 'desc' },
   });
+  return items.map(revealShipmentFields);
 };
 
 export const acceptAssignment = async (userId: string, shipmentId: string) => {
@@ -935,28 +1049,30 @@ export const acceptAssignment = async (userId: string, shipmentId: string) => {
 
   assertTransition(shipment.status, BisaExpressStatus.PICKUP_ASSIGNED);
 
-  return prisma.$transaction(async (tx) => {
-    const updated = await tx.bisaExpressShipment.update({
-      where: { id: shipmentId },
-      data: {
+  return revealShipmentFields(
+    await prisma.$transaction(async (tx) => {
+      const updated = await tx.bisaExpressShipment.update({
+        where: { id: shipmentId },
+        data: {
+          status: BisaExpressStatus.PICKUP_ASSIGNED,
+          pickupDriverId: shipment.pickupDriverId ?? driver.id,
+        },
+      });
+      await tx.bisaExpressDriver.update({
+        where: { id: driver.id },
+        data: { status: DriverStatus.ON_PICKUP },
+      });
+      await appendStatusLog(tx, {
+        shipmentId,
         status: BisaExpressStatus.PICKUP_ASSIGNED,
-        pickupDriverId: shipment.pickupDriverId ?? driver.id,
-      },
-    });
-    await tx.bisaExpressDriver.update({
-      where: { id: driver.id },
-      data: { status: DriverStatus.ON_PICKUP },
-    });
-    await appendStatusLog(tx, {
-      shipmentId,
-      status: BisaExpressStatus.PICKUP_ASSIGNED,
-      description: `Driver ${driver.employeeCode} menerima assignment`,
-      actorId: driver.id,
-      actorType: 'DRIVER',
-    });
-    await syncShipmentTracking(shipment.orderId, updated, null, null, tx);
-    return updated;
-  });
+        description: `Driver ${driver.employeeCode} menerima assignment`,
+        actorId: driver.id,
+        actorType: 'DRIVER',
+      });
+      await syncShipmentTracking(shipment.orderId, updated, null, null, tx);
+      return updated;
+    }),
+  );
 };
 
 export const confirmPickup = async (
@@ -971,33 +1087,35 @@ export const confirmPickup = async (
   }
   assertTransition(shipment.status, BisaExpressStatus.PICKED_UP);
 
-  return prisma.$transaction(async (tx) => {
-    const updated = await tx.bisaExpressShipment.update({
-      where: { id: shipmentId },
-      data: {
+  return revealShipmentFields(
+    await prisma.$transaction(async (tx) => {
+      const updated = await tx.bisaExpressShipment.update({
+        where: { id: shipmentId },
+        data: {
+          status: BisaExpressStatus.PICKED_UP,
+          pickedUpAt: new Date(),
+          driverNote: data.note,
+        },
+      });
+      await tx.bisaExpressDriver.update({
+        where: { id: driver.id },
+        data: { totalPickups: { increment: 1 } },
+      });
+      await appendStatusLog(tx, {
+        shipmentId,
         status: BisaExpressStatus.PICKED_UP,
-        pickedUpAt: new Date(),
-        driverNote: data.note,
-      },
-    });
-    await tx.bisaExpressDriver.update({
-      where: { id: driver.id },
-      data: { totalPickups: { increment: 1 } },
-    });
-    await appendStatusLog(tx, {
-      shipmentId,
-      status: BisaExpressStatus.PICKED_UP,
-      description: 'Barang berhasil dijemput dari seller',
-      actorId: driver.id,
-      actorType: 'DRIVER',
-      latitude: data.latitude,
-      longitude: data.longitude,
-      photoUrl: data.photoUrl,
-    });
-    await syncShipmentTracking(shipment.orderId, updated, data.latitude, data.longitude, tx);
-    await maybeMarkOrderShipped(shipment.orderId, BisaExpressStatus.PICKED_UP, tx);
-    return updated;
-  });
+        description: 'Barang berhasil dijemput dari seller',
+        actorId: driver.id,
+        actorType: 'DRIVER',
+        latitude: data.latitude,
+        longitude: data.longitude,
+        photoUrl: data.photoUrl,
+      });
+      await syncShipmentTracking(shipment.orderId, updated, data.latitude, data.longitude, tx);
+      await maybeMarkOrderShipped(shipment.orderId, BisaExpressStatus.PICKED_UP, tx);
+      return updated;
+    }),
+  );
 };
 
 export const arriveHub = async (
@@ -1024,59 +1142,63 @@ export const arriveHub = async (
     assertTransition(shipment.status, next);
   }
 
-  return prisma.$transaction(async (tx) => {
-    let current = shipment;
-    if (shipment.status === BisaExpressStatus.PICKED_UP) {
-      current = await tx.bisaExpressShipment.update({
+  return revealShipmentFields(
+    await prisma.$transaction(async (tx) => {
+      let current = shipment;
+      if (shipment.status === BisaExpressStatus.PICKED_UP) {
+        current = await tx.bisaExpressShipment.update({
+          where: { id: shipmentId },
+          data: {
+            status: BisaExpressStatus.IN_TRANSIT_TO_HUB,
+            originHubId: data.hubId,
+          },
+        });
+        await appendStatusLog(tx, {
+          shipmentId,
+          status: BisaExpressStatus.IN_TRANSIT_TO_HUB,
+          description: 'Dalam perjalanan ke hub',
+          actorId: driver.id,
+          actorType: 'DRIVER',
+        });
+      }
+
+      const updated = await tx.bisaExpressShipment.update({
         where: { id: shipmentId },
         data: {
-          status: BisaExpressStatus.IN_TRANSIT_TO_HUB,
-          originHubId: data.hubId,
+          status:
+            current.status === BisaExpressStatus.IN_TRANSIT
+              ? BisaExpressStatus.AT_DESTINATION_HUB
+              : BisaExpressStatus.AT_ORIGIN_HUB,
+          originHubId: shipment.originHubId ?? data.hubId,
+          destinationHubId:
+            current.status === BisaExpressStatus.IN_TRANSIT
+              ? data.hubId
+              : shipment.destinationHubId,
         },
       });
+
+      await tx.shipmentHubLog.create({
+        data: {
+          shipmentId,
+          hubId: data.hubId,
+          action: 'RECEIVED',
+          note: data.note,
+          scannedBy: driver.id,
+        },
+      });
+
       await appendStatusLog(tx, {
         shipmentId,
-        status: BisaExpressStatus.IN_TRANSIT_TO_HUB,
-        description: 'Dalam perjalanan ke hub',
+        status: updated.status,
+        description: data.note || 'Scan masuk hub',
         actorId: driver.id,
         actorType: 'DRIVER',
+        location: data.hubId,
       });
-    }
-
-    const updated = await tx.bisaExpressShipment.update({
-      where: { id: shipmentId },
-      data: {
-        status:
-          current.status === BisaExpressStatus.IN_TRANSIT
-            ? BisaExpressStatus.AT_DESTINATION_HUB
-            : BisaExpressStatus.AT_ORIGIN_HUB,
-        originHubId: shipment.originHubId ?? data.hubId,
-        destinationHubId:
-          current.status === BisaExpressStatus.IN_TRANSIT ? data.hubId : shipment.destinationHubId,
-      },
-    });
-
-    await tx.shipmentHubLog.create({
-      data: {
-        shipmentId,
-        hubId: data.hubId,
-        action: 'RECEIVED',
-        note: data.note,
-        scannedBy: driver.id,
-      },
-    });
-
-    await appendStatusLog(tx, {
-      shipmentId,
-      status: updated.status,
-      description: data.note || 'Scan masuk hub',
-      actorId: driver.id,
-      actorType: 'DRIVER',
-      location: data.hubId,
-    });
-    await syncShipmentTracking(shipment.orderId, updated, null, null, tx);
-    return updated;
-  });
+      await syncShipmentTracking(shipment.orderId, updated, null, null, tx);
+      return updated;
+    }),
+  );
 };
 
 export const departHub = async (
@@ -1094,34 +1216,36 @@ export const departHub = async (
       : BisaExpressStatus.OUT_FOR_DELIVERY;
   assertTransition(shipment.status, next);
 
-  return prisma.$transaction(async (tx) => {
-    const updated = await tx.bisaExpressShipment.update({
-      where: { id: shipmentId },
-      data: {
-        status: next,
-        deliveryDriverId:
-          next === BisaExpressStatus.OUT_FOR_DELIVERY ? driver.id : shipment.deliveryDriverId,
-      },
-    });
-    await tx.shipmentHubLog.create({
-      data: {
+  return revealShipmentFields(
+    await prisma.$transaction(async (tx) => {
+      const updated = await tx.bisaExpressShipment.update({
+        where: { id: shipmentId },
+        data: {
+          status: next,
+          deliveryDriverId:
+            next === BisaExpressStatus.OUT_FOR_DELIVERY ? driver.id : shipment.deliveryDriverId,
+        },
+      });
+      await tx.shipmentHubLog.create({
+        data: {
+          shipmentId,
+          hubId: data.hubId,
+          action: 'DISPATCHED',
+          note: data.note,
+          scannedBy: driver.id,
+        },
+      });
+      await appendStatusLog(tx, {
         shipmentId,
-        hubId: data.hubId,
-        action: 'DISPATCHED',
-        note: data.note,
-        scannedBy: driver.id,
-      },
-    });
-    await appendStatusLog(tx, {
-      shipmentId,
-      status: next,
-      description: data.note || 'Scan keluar hub',
-      actorId: driver.id,
-      actorType: 'DRIVER',
-    });
-    await syncShipmentTracking(shipment.orderId, updated, null, null, tx);
-    return updated;
-  });
+        status: next,
+        description: data.note || 'Scan keluar hub',
+        actorId: driver.id,
+        actorType: 'DRIVER',
+      });
+      await syncShipmentTracking(shipment.orderId, updated, null, null, tx);
+      return updated;
+    }),
+  );
 };
 
 export const outForDelivery = async (userId: string, shipmentId: string) => {
@@ -1130,29 +1254,31 @@ export const outForDelivery = async (userId: string, shipmentId: string) => {
   if (!shipment) throw new AppError('Shipment tidak ditemukan', 404);
   assertTransition(shipment.status, BisaExpressStatus.OUT_FOR_DELIVERY);
 
-  return prisma.$transaction(async (tx) => {
-    const updated = await tx.bisaExpressShipment.update({
-      where: { id: shipmentId },
-      data: {
+  return revealShipmentFields(
+    await prisma.$transaction(async (tx) => {
+      const updated = await tx.bisaExpressShipment.update({
+        where: { id: shipmentId },
+        data: {
+          status: BisaExpressStatus.OUT_FOR_DELIVERY,
+          deliveryDriverId: driver.id,
+        },
+      });
+      await tx.bisaExpressDriver.update({
+        where: { id: driver.id },
+        data: { status: DriverStatus.ON_DELIVERY },
+      });
+      await appendStatusLog(tx, {
+        shipmentId,
         status: BisaExpressStatus.OUT_FOR_DELIVERY,
-        deliveryDriverId: driver.id,
-      },
-    });
-    await tx.bisaExpressDriver.update({
-      where: { id: driver.id },
-      data: { status: DriverStatus.ON_DELIVERY },
-    });
-    await appendStatusLog(tx, {
-      shipmentId,
-      status: BisaExpressStatus.OUT_FOR_DELIVERY,
-      description: 'Kurir mulai antar ke penerima',
-      actorId: driver.id,
-      actorType: 'DRIVER',
-    });
-    await syncShipmentTracking(shipment.orderId, updated, null, null, tx);
-    await maybeMarkOrderShipped(shipment.orderId, BisaExpressStatus.OUT_FOR_DELIVERY, tx);
-    return updated;
-  });
+        description: 'Kurir mulai antar ke penerima',
+        actorId: driver.id,
+        actorType: 'DRIVER',
+      });
+      await syncShipmentTracking(shipment.orderId, updated, null, null, tx);
+      await maybeMarkOrderShipped(shipment.orderId, BisaExpressStatus.OUT_FOR_DELIVERY, tx);
+      return updated;
+    }),
+  );
 };
 
 export const confirmDeliver = async (
@@ -1174,50 +1300,52 @@ export const confirmDeliver = async (
   }
   assertTransition(shipment.status, BisaExpressStatus.DELIVERED);
 
-  return prisma.$transaction(async (tx) => {
-    const updated = await tx.bisaExpressShipment.update({
-      where: { id: shipmentId },
-      data: {
-        status: BisaExpressStatus.DELIVERED,
-        deliveredAt: new Date(),
-        podPhotoUrl: data.podPhotoUrl,
-        podSignatureUrl: data.podSignatureUrl,
-        podReceivedBy: data.podReceivedBy,
-        podNote: data.podNote,
-      },
-    });
-    await tx.bisaExpressDriver.update({
-      where: { id: driver.id },
-      data: {
-        status: DriverStatus.AVAILABLE,
-        totalDeliveries: { increment: 1 },
-      },
-    });
-    await tx.deliveryAttempt.create({
-      data: {
+  return revealShipmentFields(
+    await prisma.$transaction(async (tx) => {
+      const updated = await tx.bisaExpressShipment.update({
+        where: { id: shipmentId },
+        data: {
+          status: BisaExpressStatus.DELIVERED,
+          deliveredAt: new Date(),
+          podPhotoUrl: data.podPhotoUrl,
+          podSignatureUrl: data.podSignatureUrl,
+          podReceivedBy: sealShipmentContact(data.podReceivedBy) as string,
+          podNote: data.podNote,
+        },
+      });
+      await tx.bisaExpressDriver.update({
+        where: { id: driver.id },
+        data: {
+          status: DriverStatus.AVAILABLE,
+          totalDeliveries: { increment: 1 },
+        },
+      });
+      await tx.deliveryAttempt.create({
+        data: {
+          shipmentId,
+          driverId: driver.id,
+          attemptNumber: 1,
+          result: DeliveryAttemptResult.SUCCESS,
+          note: data.podNote,
+          photoUrl: data.podPhotoUrl,
+          latitude: data.latitude != null ? new Prisma.Decimal(data.latitude) : undefined,
+          longitude: data.longitude != null ? new Prisma.Decimal(data.longitude) : undefined,
+        },
+      });
+      await appendStatusLog(tx, {
         shipmentId,
-        driverId: driver.id,
-        attemptNumber: 1,
-        result: DeliveryAttemptResult.SUCCESS,
-        note: data.podNote,
+        status: BisaExpressStatus.DELIVERED,
+        description: 'POD dikonfirmasi diterima',
+        actorId: driver.id,
+        actorType: 'DRIVER',
+        latitude: data.latitude,
+        longitude: data.longitude,
         photoUrl: data.podPhotoUrl,
-        latitude: data.latitude != null ? new Prisma.Decimal(data.latitude) : undefined,
-        longitude: data.longitude != null ? new Prisma.Decimal(data.longitude) : undefined,
-      },
-    });
-    await appendStatusLog(tx, {
-      shipmentId,
-      status: BisaExpressStatus.DELIVERED,
-      description: `POD diterima oleh ${data.podReceivedBy}`,
-      actorId: driver.id,
-      actorType: 'DRIVER',
-      latitude: data.latitude,
-      longitude: data.longitude,
-      photoUrl: data.podPhotoUrl,
-    });
-    await syncShipmentTracking(shipment.orderId, updated, data.latitude, data.longitude, tx);
-    return updated;
-  });
+      });
+      await syncShipmentTracking(shipment.orderId, updated, data.latitude, data.longitude, tx);
+      return updated;
+    }),
+  );
 };
 
 export const reportFailedDelivery = async (
@@ -1243,39 +1371,41 @@ export const reportFailedDelivery = async (
 
   const attemptNumber = shipment.attempts.length + 1;
 
-  return prisma.$transaction(async (tx) => {
-    const updated = await tx.bisaExpressShipment.update({
-      where: { id: shipmentId },
-      data: {
-        status: BisaExpressStatus.FAILED_DELIVERY,
-        failReason: data.note || data.result,
-      },
-    });
-    await tx.deliveryAttempt.create({
-      data: {
+  return revealShipmentFields(
+    await prisma.$transaction(async (tx) => {
+      const updated = await tx.bisaExpressShipment.update({
+        where: { id: shipmentId },
+        data: {
+          status: BisaExpressStatus.FAILED_DELIVERY,
+          failReason: data.note || data.result,
+        },
+      });
+      await tx.deliveryAttempt.create({
+        data: {
+          shipmentId,
+          driverId: driver.id,
+          attemptNumber,
+          result: data.result,
+          note: data.note,
+          photoUrl: data.photoUrl,
+          latitude: data.latitude != null ? new Prisma.Decimal(data.latitude) : undefined,
+          longitude: data.longitude != null ? new Prisma.Decimal(data.longitude) : undefined,
+        },
+      });
+      await appendStatusLog(tx, {
         shipmentId,
-        driverId: driver.id,
-        attemptNumber,
-        result: data.result,
-        note: data.note,
+        status: BisaExpressStatus.FAILED_DELIVERY,
+        description: `Gagal kirim (percobaan ${attemptNumber}): ${data.result}`,
+        actorId: driver.id,
+        actorType: 'DRIVER',
+        latitude: data.latitude,
+        longitude: data.longitude,
         photoUrl: data.photoUrl,
-        latitude: data.latitude != null ? new Prisma.Decimal(data.latitude) : undefined,
-        longitude: data.longitude != null ? new Prisma.Decimal(data.longitude) : undefined,
-      },
-    });
-    await appendStatusLog(tx, {
-      shipmentId,
-      status: BisaExpressStatus.FAILED_DELIVERY,
-      description: `Gagal kirim (percobaan ${attemptNumber}): ${data.result}`,
-      actorId: driver.id,
-      actorType: 'DRIVER',
-      latitude: data.latitude,
-      longitude: data.longitude,
-      photoUrl: data.photoUrl,
-    });
-    await syncShipmentTracking(shipment.orderId, updated, data.latitude, data.longitude, tx);
-    return updated;
-  });
+      });
+      await syncShipmentTracking(shipment.orderId, updated, data.latitude, data.longitude, tx);
+      return updated;
+    }),
+  );
 };
 
 export const updateDriverLocation = async (
@@ -1388,6 +1518,7 @@ export const adminCreateDriver = async (data: {
         where: { id: data.userId },
         data: { role: UserRole.COURIER },
       });
+      void invalidateAuthUser(data.userId);
     }
 
     return driver;
@@ -1418,17 +1549,77 @@ export const adminSuspendDriver = async (id: string, suspend: boolean) => {
   });
 };
 
-export const adminListHubs = () =>
-  prisma.bisaExpressHub.findMany({
-    include: { address: true },
+type HubAddressInput = {
+  fullAddress: string;
+  zipCode?: string;
+  phoneNumber?: string;
+  latitude: number;
+  longitude: number;
+  provinceId?: string;
+  regencyId?: string | null;
+  districtId?: string | null;
+};
+
+const resolveIndonesiaCountryId = async () => {
+  const country = await prisma.country.findFirst({
+    where: { OR: [{ code: 'ID' }, { name: 'Indonesia' }] },
+    select: { id: true },
+  });
+  if (!country) throw new AppError('Country Indonesia tidak ditemukan di GIS', 500);
+  return country.id;
+};
+
+const createHubAddress = async (input: HubAddressInput) => {
+  const countryId = await resolveIndonesiaCountryId();
+  return prisma.address.create({
+    data: {
+      countryId,
+      provinceId: input.provinceId ?? null,
+      regencyId: input.regencyId ?? null,
+      districtId: input.districtId ?? null,
+      fullAddress: sealAddress(input.fullAddress.trim()) as string,
+      zipCode: input.zipCode?.trim() || '00000',
+      phoneNumber: (sealAddressPhone(input.phoneNumber?.trim() || null) as string | null) ?? null,
+      latitude: input.latitude,
+      longitude: input.longitude,
+    },
+  });
+};
+
+export const adminListHubs = async () => {
+  const hubs = await prisma.bisaExpressHub.findMany({
+    include: {
+      address: {
+        select: {
+          id: true,
+          fullAddress: true,
+          zipCode: true,
+          phoneNumber: true,
+          latitude: true,
+          longitude: true,
+          provinceId: true,
+          regencyId: true,
+          province: { select: { id: true, name: true } },
+          regency: { select: { id: true, name: true } },
+        },
+      },
+      _count: { select: { drivers: true } },
+    },
     orderBy: { code: 'asc' },
   });
+
+  return hubs.map((hub) => ({
+    ...hub,
+    address: hub.address ? revealAddressFields(hub.address) : hub.address,
+  }));
+};
 
 export const adminCreateHub = async (data: {
   code: string;
   name: string;
   type?: HubType;
-  addressId: string;
+  addressId?: string;
+  address?: HubAddressInput;
   coverageProvinces?: string[];
   coverageRegencies?: string[];
   contactPhone?: string;
@@ -1436,12 +1627,19 @@ export const adminCreateHub = async (data: {
   operatingHours?: string;
   maxDailyCapacity?: number;
 }) => {
-  return prisma.bisaExpressHub.create({
+  let addressId = data.addressId;
+  if (!addressId && data.address) {
+    const created = await createHubAddress(data.address);
+    addressId = created.id;
+  }
+  if (!addressId) throw new AppError('addressId atau address wajib diisi', 400);
+
+  const hub = await prisma.bisaExpressHub.create({
     data: {
-      code: data.code,
-      name: data.name,
+      code: data.code.trim().toUpperCase(),
+      name: data.name.trim(),
       type: data.type ?? HubType.MAIN_HUB,
-      addressId: data.addressId,
+      addressId,
       coverageProvinces: data.coverageProvinces ?? undefined,
       coverageRegencies: data.coverageRegencies ?? undefined,
       contactPhone: data.contactPhone,
@@ -1449,14 +1647,107 @@ export const adminCreateHub = async (data: {
       operatingHours: data.operatingHours,
       maxDailyCapacity: data.maxDailyCapacity,
     },
+    include: {
+      address: {
+        select: {
+          id: true,
+          fullAddress: true,
+          latitude: true,
+          longitude: true,
+          province: { select: { id: true, name: true } },
+        },
+      },
+    },
   });
+
+  return {
+    ...hub,
+    address: hub.address ? revealAddressFields(hub.address) : hub.address,
+  };
 };
 
-export const adminUpdateHub = async (id: string, data: Record<string, unknown>) => {
-  return prisma.bisaExpressHub.update({ where: { id }, data });
+export const adminUpdateHub = async (
+  id: string,
+  data: {
+    name?: string;
+    type?: HubType;
+    addressId?: string;
+    address?: HubAddressInput;
+    coverageProvinces?: string[];
+    coverageRegencies?: string[];
+    contactPhone?: string | null;
+    contactName?: string | null;
+    operatingHours?: string | null;
+    maxDailyCapacity?: number | null;
+    isActive?: boolean;
+  },
+) => {
+  const existing = await prisma.bisaExpressHub.findUnique({ where: { id } });
+  if (!existing) throw new AppError('Hub tidak ditemukan', 404);
+
+  let addressId = data.addressId;
+  if (data.address) {
+    if (existing.addressId) {
+      await prisma.address.update({
+        where: { id: existing.addressId },
+        data: {
+          fullAddress: sealAddress(data.address.fullAddress.trim()) as string,
+          zipCode: data.address.zipCode?.trim() || undefined,
+          phoneNumber:
+            data.address.phoneNumber !== undefined
+              ? ((sealAddressPhone(data.address.phoneNumber?.trim() || null) as string | null) ??
+                null)
+              : undefined,
+          latitude: data.address.latitude,
+          longitude: data.address.longitude,
+          provinceId: data.address.provinceId ?? undefined,
+          regencyId: data.address.regencyId === undefined ? undefined : data.address.regencyId,
+          districtId: data.address.districtId === undefined ? undefined : data.address.districtId,
+        },
+      });
+      addressId = existing.addressId;
+    } else {
+      const created = await createHubAddress(data.address);
+      addressId = created.id;
+    }
+  }
+
+  const hub = await prisma.bisaExpressHub.update({
+    where: { id },
+    data: {
+      name: data.name?.trim(),
+      type: data.type,
+      addressId,
+      coverageProvinces: data.coverageProvinces,
+      coverageRegencies: data.coverageRegencies,
+      contactPhone: data.contactPhone,
+      contactName: data.contactName,
+      operatingHours: data.operatingHours,
+      maxDailyCapacity: data.maxDailyCapacity,
+      isActive: data.isActive,
+    },
+    include: {
+      address: {
+        select: {
+          id: true,
+          fullAddress: true,
+          latitude: true,
+          longitude: true,
+          province: { select: { id: true, name: true } },
+        },
+      },
+    },
+  });
+
+  return {
+    ...hub,
+    address: hub.address ? revealAddressFields(hub.address) : hub.address,
+  };
 };
 
 export const adminDeactivateHub = async (id: string) => {
+  const existing = await prisma.bisaExpressHub.findUnique({ where: { id } });
+  if (!existing) throw new AppError('Hub tidak ditemukan', 404);
   return prisma.bisaExpressHub.update({ where: { id }, data: { isActive: false } });
 };
 
@@ -1553,8 +1844,34 @@ export const adminDeleteRate = async (id: string) => {
   return prisma.bisaExpressRate.delete({ where: { id } });
 };
 
-export const adminListCoverage = () =>
-  prisma.bisaExpressCoverage.findMany({ orderBy: { zone: 'asc' } });
+export const adminListCoverage = async () => {
+  const rows = await prisma.bisaExpressCoverage.findMany({
+    orderBy: [{ zone: 'asc' }, { provinceId: 'asc' }],
+  });
+  const provinceIds = [...new Set(rows.map((r) => r.provinceId))];
+  const regencyIds = [...new Set(rows.map((r) => r.regencyId).filter(Boolean))] as string[];
+  const [provinces, regencies] = await Promise.all([
+    provinceIds.length
+      ? prisma.province.findMany({
+          where: { id: { in: provinceIds } },
+          select: { id: true, name: true, code: true },
+        })
+      : Promise.resolve([]),
+    regencyIds.length
+      ? prisma.regency.findMany({
+          where: { id: { in: regencyIds } },
+          select: { id: true, name: true, code: true },
+        })
+      : Promise.resolve([]),
+  ]);
+  const provinceMap = new Map(provinces.map((p) => [p.id, p]));
+  const regencyMap = new Map(regencies.map((r) => [r.id, r]));
+  return rows.map((row) => ({
+    ...row,
+    province: provinceMap.get(row.provinceId) ?? null,
+    regency: row.regencyId ? (regencyMap.get(row.regencyId) ?? null) : null,
+  }));
+};
 
 export const adminCreateCoverage = async (data: {
   provinceId: string;
@@ -1562,20 +1879,68 @@ export const adminCreateCoverage = async (data: {
   zone: string;
   isPickup?: boolean;
   isDelivery?: boolean;
+  isActive?: boolean;
 }) => {
+  const province = await prisma.province.findUnique({ where: { id: data.provinceId } });
+  if (!province) throw new AppError('Provinsi GIS tidak ditemukan', 404);
+  if (data.regencyId) {
+    const regency = await prisma.regency.findFirst({
+      where: { id: data.regencyId, provinceId: data.provinceId },
+    });
+    if (!regency) throw new AppError('Kabupaten/kota tidak cocok dengan provinsi', 400);
+  }
+
   return prisma.bisaExpressCoverage.create({
     data: {
       provinceId: data.provinceId,
       regencyId: data.regencyId ?? null,
-      zone: data.zone,
+      zone: data.zone.trim().toUpperCase(),
       isPickup: data.isPickup ?? true,
       isDelivery: data.isDelivery ?? true,
+      isActive: data.isActive ?? true,
     },
   });
 };
 
-export const adminUpdateCoverage = async (id: string, data: Record<string, unknown>) => {
-  return prisma.bisaExpressCoverage.update({ where: { id }, data });
+export const adminUpdateCoverage = async (
+  id: string,
+  data: {
+    provinceId?: string;
+    regencyId?: string | null;
+    zone?: string;
+    isPickup?: boolean;
+    isDelivery?: boolean;
+    isActive?: boolean;
+  },
+) => {
+  const existing = await prisma.bisaExpressCoverage.findUnique({ where: { id } });
+  if (!existing) throw new AppError('Coverage tidak ditemukan', 404);
+
+  const provinceId = data.provinceId ?? existing.provinceId;
+  const regencyId = data.regencyId === undefined ? existing.regencyId : data.regencyId;
+
+  if (data.provinceId) {
+    const province = await prisma.province.findUnique({ where: { id: provinceId } });
+    if (!province) throw new AppError('Provinsi GIS tidak ditemukan', 404);
+  }
+  if (regencyId) {
+    const regency = await prisma.regency.findFirst({
+      where: { id: regencyId, provinceId },
+    });
+    if (!regency) throw new AppError('Kabupaten/kota tidak cocok dengan provinsi', 400);
+  }
+
+  return prisma.bisaExpressCoverage.update({
+    where: { id },
+    data: {
+      provinceId: data.provinceId,
+      regencyId: data.regencyId === undefined ? undefined : data.regencyId,
+      zone: data.zone?.trim().toUpperCase(),
+      isPickup: data.isPickup,
+      isDelivery: data.isDelivery,
+      isActive: data.isActive,
+    },
+  });
 };
 
 export const adminListShipments = async (query: {
@@ -1609,66 +1974,138 @@ export const adminListShipments = async (query: {
     }),
     prisma.bisaExpressShipment.count({ where }),
   ]);
-  return { items, total, page: query.page, limit: query.limit };
+  return {
+    items: items.map(revealShipmentFields),
+    total,
+    page: query.page,
+    limit: query.limit,
+  };
+};
+
+export const adminGetShipment = async (shipmentId: string) => {
+  const shipment = await prisma.bisaExpressShipment.findUnique({
+    where: { id: shipmentId },
+    include: {
+      statusLogs: { orderBy: { createdAt: 'desc' } },
+      hubLogs: {
+        orderBy: { createdAt: 'desc' },
+        include: { hub: { select: { id: true, code: true, name: true } } },
+      },
+      attempts: {
+        orderBy: { attemptNumber: 'desc' },
+        include: {
+          driver: { select: { id: true, employeeCode: true } },
+        },
+      },
+      pickupDriver: {
+        select: {
+          id: true,
+          employeeCode: true,
+          status: true,
+          vehicleType: true,
+          vehiclePlate: true,
+          user: { select: { id: true, fullName: true, phone: true } },
+        },
+      },
+      deliveryDriver: {
+        select: {
+          id: true,
+          employeeCode: true,
+          status: true,
+          vehicleType: true,
+          vehiclePlate: true,
+          user: { select: { id: true, fullName: true, phone: true } },
+        },
+      },
+      originHub: { select: { id: true, code: true, name: true } },
+      destinationHub: { select: { id: true, code: true, name: true } },
+      order: {
+        select: {
+          id: true,
+          orderNumber: true,
+          status: true,
+          buyerId: true,
+          sellerId: true,
+          buyer: { select: { id: true, fullName: true, phone: true, email: true } },
+          seller: { select: { id: true, fullName: true, phone: true, email: true } },
+        },
+      },
+    },
+  });
+  if (!shipment) throw new AppError('Shipment tidak ditemukan', 404);
+
+  const overrideHistory = shipment.statusLogs.filter(
+    (log) => log.actorType === 'ADMIN' || /override/i.test(log.description),
+  );
+
+  return revealShipmentFields({ ...shipment, overrideHistory });
 };
 
 export const adminAssignDrivers = async (
   shipmentId: string,
   data: { pickupDriverId?: string; deliveryDriverId?: string },
+  actorId?: string,
 ) => {
   const shipment = await prisma.bisaExpressShipment.findUnique({ where: { id: shipmentId } });
   if (!shipment) throw new AppError('Shipment tidak ditemukan', 404);
 
-  return prisma.$transaction(async (tx) => {
-    const nextStatus =
-      data.pickupDriverId && shipment.status === BisaExpressStatus.AWAITING_PICKUP
-        ? BisaExpressStatus.PICKUP_ASSIGNED
-        : shipment.status;
+  return revealShipmentFields(
+    await prisma.$transaction(async (tx) => {
+      const nextStatus =
+        data.pickupDriverId && shipment.status === BisaExpressStatus.AWAITING_PICKUP
+          ? BisaExpressStatus.PICKUP_ASSIGNED
+          : shipment.status;
 
-    const updated = await tx.bisaExpressShipment.update({
-      where: { id: shipmentId },
-      data: {
-        pickupDriverId: data.pickupDriverId ?? shipment.pickupDriverId,
-        deliveryDriverId: data.deliveryDriverId ?? shipment.deliveryDriverId,
-        status: nextStatus,
-      },
-    });
-
-    if (nextStatus !== shipment.status) {
-      await appendStatusLog(tx, {
-        shipmentId,
-        status: nextStatus,
-        description: 'Driver di-assign oleh admin',
-        actorType: 'ADMIN',
+      const updated = await tx.bisaExpressShipment.update({
+        where: { id: shipmentId },
+        data: {
+          pickupDriverId: data.pickupDriverId ?? shipment.pickupDriverId,
+          deliveryDriverId: data.deliveryDriverId ?? shipment.deliveryDriverId,
+          status: nextStatus,
+        },
       });
-      await syncShipmentTracking(shipment.orderId, updated, null, null, tx);
-    }
-    return updated;
-  });
+
+      if (nextStatus !== shipment.status) {
+        await appendStatusLog(tx, {
+          shipmentId,
+          status: nextStatus,
+          description: 'Driver di-assign oleh admin',
+          actorType: 'ADMIN',
+          actorId,
+        });
+        await syncShipmentTracking(shipment.orderId, updated, null, null, tx);
+      }
+      return updated;
+    }),
+  );
 };
 
 export const adminOverrideStatus = async (
   shipmentId: string,
   data: { status: BisaExpressStatus; description?: string },
+  actorId?: string,
 ) => {
   const shipment = await prisma.bisaExpressShipment.findUnique({ where: { id: shipmentId } });
   if (!shipment) throw new AppError('Shipment tidak ditemukan', 404);
 
-  return prisma.$transaction(async (tx) => {
-    const updated = await tx.bisaExpressShipment.update({
-      where: { id: shipmentId },
-      data: { status: data.status },
-    });
-    await appendStatusLog(tx, {
-      shipmentId,
-      status: data.status,
-      description: data.description || `Override status → ${data.status}`,
-      actorType: 'ADMIN',
-    });
-    await syncShipmentTracking(shipment.orderId, updated, null, null, tx);
-    await maybeMarkOrderShipped(shipment.orderId, data.status, tx);
-    return updated;
-  });
+  return revealShipmentFields(
+    await prisma.$transaction(async (tx) => {
+      const updated = await tx.bisaExpressShipment.update({
+        where: { id: shipmentId },
+        data: { status: data.status },
+      });
+      await appendStatusLog(tx, {
+        shipmentId,
+        status: data.status,
+        description: data.description || `Override status → ${data.status}`,
+        actorType: 'ADMIN',
+        actorId,
+      });
+      await syncShipmentTracking(shipment.orderId, updated, null, null, tx);
+      await maybeMarkOrderShipped(shipment.orderId, data.status, tx);
+      return updated;
+    }),
+  );
 };
 
 export const adminDashboard = async () => {
@@ -1689,40 +2126,172 @@ export const adminDashboard = async () => {
   return { byStatus, activeDrivers, todayCount };
 };
 
+const ACTIVE_LIVE_SHIPMENT_STATUSES: BisaExpressStatus[] = [
+  BisaExpressStatus.PICKUP_ASSIGNED,
+  BisaExpressStatus.PICKED_UP,
+  BisaExpressStatus.IN_TRANSIT_TO_HUB,
+  BisaExpressStatus.AT_ORIGIN_HUB,
+  BisaExpressStatus.IN_TRANSIT,
+  BisaExpressStatus.AT_DESTINATION_HUB,
+  BisaExpressStatus.OUT_FOR_DELIVERY,
+];
+
 export const adminLiveMap = async () => {
-  return prisma.bisaExpressDriver.findMany({
-    where: {
-      isActive: true,
-      status: { notIn: [DriverStatus.OFF_DUTY, DriverStatus.SUSPENDED] },
-      currentLat: { not: null },
-      currentLng: { not: null },
-    },
-    select: {
-      id: true,
-      employeeCode: true,
-      status: true,
-      vehicleType: true,
-      vehiclePlate: true,
-      currentLat: true,
-      currentLng: true,
-      lastLocationAt: true,
-      user: { select: { fullName: true, phone: true } },
-    },
-  });
+  const [drivers, shipments] = await Promise.all([
+    prisma.bisaExpressDriver.findMany({
+      where: {
+        isActive: true,
+        status: { notIn: [DriverStatus.OFF_DUTY, DriverStatus.SUSPENDED] },
+        currentLat: { not: null },
+        currentLng: { not: null },
+      },
+      select: {
+        id: true,
+        employeeCode: true,
+        status: true,
+        vehicleType: true,
+        vehiclePlate: true,
+        currentLat: true,
+        currentLng: true,
+        lastLocationAt: true,
+        user: { select: { fullName: true, phone: true } },
+      },
+    }),
+    prisma.bisaExpressShipment.findMany({
+      where: {
+        status: { in: ACTIVE_LIVE_SHIPMENT_STATUSES },
+        OR: [
+          { pickupLat: { not: null }, pickupLng: { not: null } },
+          { deliveryLat: { not: null }, deliveryLng: { not: null } },
+        ],
+      },
+      select: {
+        id: true,
+        awbNumber: true,
+        status: true,
+        serviceType: true,
+        pickupLat: true,
+        pickupLng: true,
+        deliveryLat: true,
+        deliveryLng: true,
+        pickupDriverId: true,
+        deliveryDriverId: true,
+        order: { select: { orderNumber: true } },
+      },
+      take: 200,
+      orderBy: { updatedAt: 'desc' },
+    }),
+  ]);
+
+  return { drivers, shipments, updatedAt: new Date().toISOString() };
 };
 
-export const adminReports = async () => {
-  const delivered = await prisma.bisaExpressShipment.count({
-    where: { status: BisaExpressStatus.DELIVERED },
-  });
-  const failed = await prisma.bisaExpressShipment.count({
-    where: { status: BisaExpressStatus.FAILED_DELIVERY },
-  });
-  const total = await prisma.bisaExpressShipment.count();
+const parseReportPeriod = (query?: { startDate?: string; endDate?: string }) => {
+  const end = query?.endDate ? new Date(`${query.endDate}T23:59:59.999`) : new Date();
+  const start = query?.startDate
+    ? new Date(`${query.startDate}T00:00:00.000`)
+    : new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    throw new AppError('Format tanggal tidak valid. Gunakan YYYY-MM-DD', 400);
+  }
+  if (start > end) throw new AppError('startDate tidak boleh setelah endDate', 400);
+
+  const diffDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+  if (diffDays > 93) {
+    throw new AppError('Rentang laporan maksimal 93 hari', 400);
+  }
+
+  return { start, end };
+};
+
+export const adminReports = async (query?: { startDate?: string; endDate?: string }) => {
+  const { start, end } = parseReportPeriod(query);
+  const where: Prisma.BisaExpressShipmentWhereInput = {
+    createdAt: { gte: start, lte: end },
+  };
+
+  const [total, delivered, failed, cancelled, returned, byStatus, byServiceType] =
+    await Promise.all([
+      prisma.bisaExpressShipment.count({ where }),
+      prisma.bisaExpressShipment.count({
+        where: { ...where, status: BisaExpressStatus.DELIVERED },
+      }),
+      prisma.bisaExpressShipment.count({
+        where: { ...where, status: BisaExpressStatus.FAILED_DELIVERY },
+      }),
+      prisma.bisaExpressShipment.count({
+        where: { ...where, status: BisaExpressStatus.CANCELLED },
+      }),
+      prisma.bisaExpressShipment.count({
+        where: { ...where, status: BisaExpressStatus.RETURNED },
+      }),
+      prisma.bisaExpressShipment.groupBy({
+        by: ['status'],
+        where,
+        _count: { _all: true },
+      }),
+      prisma.bisaExpressShipment.groupBy({
+        by: ['serviceType'],
+        where,
+        _count: { _all: true },
+        _sum: { shippingCost: true },
+      }),
+    ]);
+
+  const inProgress = total - delivered - failed - cancelled - returned;
+
   return {
+    period: {
+      startDate: start.toISOString().slice(0, 10),
+      endDate: end.toISOString().slice(0, 10),
+    },
     total,
     delivered,
     failed,
+    cancelled,
+    returned,
+    inProgress: Math.max(0, inProgress),
     successRate: total > 0 ? delivered / total : 0,
+    byStatus,
+    byServiceType: byServiceType.map((row) => ({
+      serviceType: row.serviceType,
+      count: row._count._all,
+      shippingCostSum: row._sum.shippingCost,
+    })),
+  };
+};
+
+export const adminExportReportsCsv = async (query?: { startDate?: string; endDate?: string }) => {
+  const { start, end } = parseReportPeriod(query);
+  const shipments = await prisma.bisaExpressShipment.findMany({
+    where: { createdAt: { gte: start, lte: end } },
+    orderBy: { createdAt: 'desc' },
+    take: 5000,
+    include: {
+      order: { select: { orderNumber: true } },
+      pickupDriver: { select: { employeeCode: true } },
+      deliveryDriver: { select: { employeeCode: true } },
+    },
+  });
+
+  return {
+    period: {
+      startDate: start.toISOString().slice(0, 10),
+      endDate: end.toISOString().slice(0, 10),
+    },
+    rows: shipments.map((s) => ({
+      awbNumber: s.awbNumber,
+      orderNumber: s.order?.orderNumber ?? '',
+      status: s.status,
+      serviceType: s.serviceType,
+      weight: String(s.weight),
+      weightUnit: s.weightUnit,
+      shippingCost: String(s.shippingCost),
+      pickupDriver: s.pickupDriver?.employeeCode ?? '',
+      deliveryDriver: s.deliveryDriver?.employeeCode ?? '',
+      createdAt: s.createdAt.toISOString(),
+      deliveredAt: s.deliveredAt?.toISOString() ?? '',
+    })),
   };
 };

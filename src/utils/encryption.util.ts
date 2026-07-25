@@ -1,12 +1,26 @@
 import crypto from 'crypto';
 import { Prisma } from '#prisma';
-import { getEncryptionKeyBufferForVersion } from '#utils/env.util';
+import { getActiveEncryptionVersion, getEncryptionKeyBufferForVersion } from '#utils/env.util';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;
 const VERSION_PREFIX = /^v(\d+):/;
 
 export const isEncryptedPayload = (value: string): boolean => VERSION_PREFIX.test(value);
+
+/** Extract `n` from `v{n}:...` ciphertext, or null if not encrypted. */
+export const getPayloadVersion = (payload: string): string | null => {
+  const match = payload.match(VERSION_PREFIX);
+  return match?.[1] ?? null;
+};
+
+export const needsReencryption = (
+  payload: string,
+  targetVersion = getActiveEncryptionVersion(),
+): boolean => {
+  if (!payload || !isEncryptedPayload(payload)) return false;
+  return getPayloadVersion(payload) !== targetVersion;
+};
 
 const parsePayload = (
   payload: string,
@@ -38,23 +52,13 @@ const decryptWithKey = (payload: string, key: Buffer): string => {
   return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
 };
 
-/** Random IV — untuk NPWP, providerActions, dll. */
-export const encryptField = (plaintext: string, version = '1'): string => {
-  if (!plaintext) return plaintext;
-  if (isEncryptedPayload(plaintext)) return plaintext;
+const sealWithRandomIv = (plaintext: string, version: string): string => {
   const key = getEncryptionKeyBufferForVersion(version);
   const iv = crypto.randomBytes(IV_LENGTH);
   return encryptWithKey(plaintext, key, version, iv);
 };
 
-/** Deterministic IV — untuk accountNumber agar unique index DB tetap valid. */
-export const encryptFieldDeterministic = (
-  plaintext: string,
-  context: string,
-  version = '1',
-): string => {
-  if (!plaintext) return plaintext;
-  if (isEncryptedPayload(plaintext)) return plaintext;
+const sealWithDeterministicIv = (plaintext: string, context: string, version: string): string => {
   const key = getEncryptionKeyBufferForVersion(version);
   const iv = crypto
     .createHmac('sha256', key)
@@ -64,10 +68,27 @@ export const encryptFieldDeterministic = (
   return encryptWithKey(plaintext, key, version, iv);
 };
 
+/** Random IV — untuk NPWP, providerActions, dll. Writes use active key version (v2 when set). */
+export const encryptField = (plaintext: string, version = getActiveEncryptionVersion()): string => {
+  if (!plaintext) return plaintext;
+  if (isEncryptedPayload(plaintext)) return plaintext;
+  return sealWithRandomIv(plaintext, version);
+};
+
+/** Deterministic IV — untuk accountNumber agar unique index DB tetap valid. */
+export const encryptFieldDeterministic = (
+  plaintext: string,
+  context: string,
+  version = getActiveEncryptionVersion(),
+): string => {
+  if (!plaintext) return plaintext;
+  if (isEncryptedPayload(plaintext)) return plaintext;
+  return sealWithDeterministicIv(plaintext, context, version);
+};
+
 export const decryptField = (payload: string): string => {
   if (!payload || !isEncryptedPayload(payload)) return payload;
-  const versionMatch = payload.match(VERSION_PREFIX);
-  const version = versionMatch?.[1] ?? '1';
+  const version = getPayloadVersion(payload) ?? '1';
   const key = getEncryptionKeyBufferForVersion(version);
   return decryptWithKey(payload, key);
 };
@@ -75,7 +96,48 @@ export const decryptField = (payload: string): string => {
 export const decryptFieldDeterministic = (payload: string, _context: string): string =>
   decryptField(payload);
 
+/**
+ * Re-encrypt an already-sealed (or plaintext) value to `targetVersion`.
+ * Safe to call repeatedly when payload is already on the target version.
+ */
+export const reencryptField = (
+  payload: string,
+  targetVersion = getActiveEncryptionVersion(),
+): string => {
+  if (!payload) return payload;
+  if (isEncryptedPayload(payload) && getPayloadVersion(payload) === targetVersion) {
+    return payload;
+  }
+  const plain = isEncryptedPayload(payload) ? decryptField(payload) : payload;
+  return sealWithRandomIv(plain, targetVersion);
+};
+
+export const reencryptFieldDeterministic = (
+  payload: string,
+  context: string,
+  targetVersion = getActiveEncryptionVersion(),
+): string => {
+  if (!payload) return payload;
+  if (isEncryptedPayload(payload) && getPayloadVersion(payload) === targetVersion) {
+    return payload;
+  }
+  const plain = isEncryptedPayload(payload) ? decryptField(payload) : payload;
+  return sealWithDeterministicIv(plain, context, targetVersion);
+};
+
 export const encryptJsonValue = (value: unknown): string => encryptField(JSON.stringify(value));
+
+export const reencryptJsonValue = (
+  stored: unknown,
+  targetVersion = getActiveEncryptionVersion(),
+): string => {
+  if (typeof stored === 'string' && isEncryptedPayload(stored)) {
+    if (getPayloadVersion(stored) === targetVersion) return stored;
+    const plain = decryptField(stored);
+    return sealWithRandomIv(plain, targetVersion);
+  }
+  return sealWithRandomIv(JSON.stringify(stored), targetVersion);
+};
 
 export const decryptJsonValue = (stored: unknown): unknown | null => {
   if (stored == null) return null;

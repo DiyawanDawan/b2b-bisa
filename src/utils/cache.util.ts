@@ -27,6 +27,13 @@ export const cacheKeys = {
   shipDest: (keyword: string, limit?: number, offset?: number) =>
     buildCacheKey('ship', 'dest', keyword.toLowerCase(), String(limit ?? 20), String(offset ?? 0)),
   prodCollections: () => buildCacheKey('prod', 'collections', 'meta'),
+  prodFeatured: (limit: number) => buildCacheKey('prod', 'featured', String(limit)),
+  prodRecommendations: (productId: string, limit: number) =>
+    buildCacheKey('prod', 'reco', productId, String(limit)),
+  prodList: (filtersHash: string) => buildCacheKey('prod', 'list', filtersHash),
+  authUser: (userId: string) => buildCacheKey('auth', 'user', userId),
+  forumPostsAnon: (paramsHash: string) => buildCacheKey('forum', 'posts', 'anon', paramsHash),
+  forumGroupsAnon: (paramsHash: string) => buildCacheKey('forum', 'groups', 'anon', paramsHash),
   /** Agregat admin — jangan dipakai untuk stok/produk live */
   adminDashStats: () => buildCacheKey('admin', 'dash', 'stats'),
   adminBiomassTrend: () => buildCacheKey('admin', 'dash', 'biomass'),
@@ -166,4 +173,9 @@ export const invalidateShippingConfig = async () => {
   await invalidateByPrefix('ship:vehicles');
 };
 export const invalidateProductCollections = () => invalidateByPrefix('prod:collections:');
+/** Featured, reco, list, collections — semua prefix prod: */
+export const invalidateProductCatalog = () => invalidateByPrefix('prod:');
+export const invalidateAuthUser = (userId: string) => invalidateByPrefix(`auth:user:${userId}`);
+export const invalidateForumPosts = () => invalidateByPrefix('forum:posts:');
+export const invalidateForumGroups = () => invalidateByPrefix('forum:groups:');
 export const invalidateAdminAnalytics = () => invalidateByPrefix('admin:');

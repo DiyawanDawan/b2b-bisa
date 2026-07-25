@@ -2,7 +2,7 @@ import bcrypt from 'bcrypt';
 import { addMinutes } from 'date-fns';
 import crypto from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
-import { TokenType, UserStatus, UserRole, Prisma } from '#prisma';
+import { TokenType, UserStatus, UserRole } from '#prisma';
 import prisma from '#config/prisma';
 import admin from '#config/firebase';
 import AppError from '#utils/appError';
@@ -183,14 +183,44 @@ export const register = async (userData: {
 }) => {
   const { fullName, email, password, phone, role, province, regency, referralCode } = userData;
 
-  // Check if user exists
-  const orConditions: Prisma.UserWhereInput[] = [{ email }];
-  if (phone) orConditions.push({ phone });
+  const existingByEmail = await prisma.user.findUnique({ where: { email } });
 
-  const existingUser = await prisma.user.findFirst({
-    where: { OR: orConditions },
-  });
-  if (existingUser) throw new AppError('Email atau nomor telepon sudah terdaftar', 400);
+  // Email terdaftar tapi BELUM diverifikasi → izinkan daftar ulang:
+  // data diperbarui dan OTP baru dikirim. Aman karena hanya pemilik inbox
+  // email tersebut yang bisa menyelesaikan verifikasi.
+  if (existingByEmail && !existingByEmail.isEmailVerified) {
+    if (phone) {
+      const phoneOwner = await prisma.user.findFirst({
+        where: { phone, NOT: { id: existingByEmail.id } },
+      });
+      if (phoneOwner) throw new AppError('Email atau nomor telepon sudah terdaftar', 400);
+    }
+
+    const rehashedPassword = password ? await bcrypt.hash(password, BCRYPT_ROUNDS) : undefined;
+    const user = await prisma.user.update({
+      where: { id: existingByEmail.id },
+      data: {
+        fullName,
+        ...(rehashedPassword && { password: rehashedPassword }),
+        phone,
+        role,
+        province,
+        regency,
+      },
+    });
+
+    const otp = await tokenService.generateOtp(user.id, TokenType.EMAIL_VERIFICATION);
+    // Jangan await SMTP — hindari 504 gateway timeout; OTP sudah di DB.
+    emailService.queueOtpEmail(user.email, user.fullName, otp);
+    return { id: user.id, email: user.email, role: user.role };
+  }
+
+  if (existingByEmail) throw new AppError('Email atau nomor telepon sudah terdaftar', 400);
+
+  if (phone) {
+    const phoneOwner = await prisma.user.findFirst({ where: { phone } });
+    if (phoneOwner) throw new AppError('Email atau nomor telepon sudah terdaftar', 400);
+  }
 
   // Hash password
 
@@ -214,7 +244,8 @@ export const register = async (userData: {
   }
 
   const otp = await tokenService.generateOtp(user.id, TokenType.EMAIL_VERIFICATION);
-  await emailService.sendOtpEmail(user.email, user.fullName, otp);
+  // Jangan await SMTP — hindari 504 gateway timeout; OTP sudah di DB.
+  emailService.queueOtpEmail(user.email, user.fullName, otp);
   return { id: user.id, email: user.email, role: user.role };
 };
 
@@ -236,7 +267,9 @@ export const loginUser = async (email: string, password: string) => {
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user || !user.password) throw new AppError('Email atau password salah.', 401);
   if (!user.isEmailVerified)
-    throw new AppError('Email belum diverifikasi. Periksa email Anda.', 403);
+    throw new AppError('Email belum diverifikasi. Periksa email Anda.', 403, {
+      code: 'EMAIL_NOT_VERIFIED',
+    });
   if (user.status !== UserStatus.ACTIVE)
     throw new AppError('Akun Anda telah dinonaktifkan atau diblokir. Hubungi admin.', 403);
 
@@ -372,7 +405,8 @@ export const forgotPassword = async (email: string) => {
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) return;
   const otp = await tokenService.generateOtp(user.id, TokenType.RESET_PASSWORD);
-  await emailService.sendPasswordResetEmail(user.email, user.fullName, otp);
+  // Jangan await SMTP — hindari 504 gateway timeout; OTP sudah di DB.
+  emailService.queuePasswordResetEmail(user.email, user.fullName, otp);
 };
 
 /**
@@ -558,17 +592,22 @@ export const updateProfile = async (userId: string, data: UpdateProfileInput) =>
 // ─── Resend OTP ──────────────────────────────────────────
 export const resendOTP = async (email: string, type: ResendOtpType) => {
   const user = await prisma.user.findUnique({ where: { email } });
+  // Hindari enumerasi email: tetap sukses di response, tapi jangan generate OTP.
   if (!user) return;
+
   const otp = await tokenService.generateOtp(user.id, type);
+  // OTP di DB dulu; kirim email async agar HTTP tidak menunggu SMTP (504 ~60s).
   if (type === TokenType.EMAIL_VERIFICATION) {
-    await emailService.sendOtpEmail(user.email, user.fullName, otp);
+    emailService.queueOtpEmail(user.email, user.fullName, otp);
   } else {
-    await emailService.sendPasswordResetEmail(user.email, user.fullName, otp);
+    emailService.queuePasswordResetEmail(user.email, user.fullName, otp);
   }
 };
 
 // ─── Email Availability Check ────────────────────────────
 export const isEmailAvailable = async (email: string): Promise<boolean> => {
   const existingUser = await prisma.user.findUnique({ where: { email } });
-  return !existingUser;
+  // Email belum diverifikasi dianggap tersedia — pemiliknya boleh daftar ulang
+  // untuk mengaktifkan akun (lihat register()).
+  return !existingUser || !existingUser.isEmailVerified;
 };

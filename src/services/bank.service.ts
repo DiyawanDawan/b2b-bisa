@@ -269,6 +269,10 @@ export type AdminPaymentChannelItem = {
   maxAmount: number | null;
   settlementTime: string | null;
   xenditType: string | null;
+  refundCapability: string | null;
+  supportsSave: boolean;
+  reusablePaymentCode: boolean;
+  merchantInitiatedTransaction: boolean;
   logoUrl: string | null;
   isActive: boolean;
   usage: {
@@ -337,6 +341,10 @@ export const listPaymentChannelsAdmin = async (params?: {
       maxAmount: ch.maxAmount != null ? toNumber(ch.maxAmount) : null,
       settlementTime: ch.settlementTime,
       xenditType: ch.xenditType,
+      refundCapability: ch.refundCapability,
+      supportsSave: ch.supportsSave,
+      reusablePaymentCode: ch.reusablePaymentCode,
+      merchantInitiatedTransaction: ch.merchantInitiatedTransaction,
       logoUrl: ch.logoUrl,
       isActive: ch.isActive,
       usage: {
@@ -359,6 +367,10 @@ export const createPaymentChannel = async (data: {
   maxAmount?: number;
   settlementTime?: string;
   xenditType?: string;
+  refundCapability?: string | null;
+  supportsSave?: boolean;
+  reusablePaymentCode?: boolean;
+  merchantInitiatedTransaction?: boolean;
   logoUrl?: string;
   isActive?: boolean;
 }) => {
@@ -380,6 +392,10 @@ export const createPaymentChannel = async (data: {
       maxAmount: data.maxAmount != null ? new Prisma.Decimal(data.maxAmount) : undefined,
       settlementTime: data.settlementTime,
       xenditType: data.xenditType,
+      refundCapability: data.refundCapability,
+      supportsSave: data.supportsSave ?? false,
+      reusablePaymentCode: data.reusablePaymentCode ?? false,
+      merchantInitiatedTransaction: data.merchantInitiatedTransaction ?? false,
       logoUrl: data.logoUrl,
       isActive: data.isActive ?? true,
     },
@@ -400,6 +416,10 @@ export const updatePaymentChannel = async (
     maxAmount?: number | null;
     settlementTime?: string | null;
     xenditType?: string | null;
+    refundCapability?: string | null;
+    supportsSave?: boolean;
+    reusablePaymentCode?: boolean;
+    merchantInitiatedTransaction?: boolean;
     logoUrl?: string | null;
     isActive?: boolean;
   },
@@ -428,6 +448,14 @@ export const updatePaymentChannel = async (
       ...(data.currency !== undefined ? { currency: data.currency } : {}),
       ...(data.settlementTime !== undefined ? { settlementTime: data.settlementTime } : {}),
       ...(data.xenditType !== undefined ? { xenditType: data.xenditType } : {}),
+      ...(data.refundCapability !== undefined ? { refundCapability: data.refundCapability } : {}),
+      ...(data.supportsSave !== undefined ? { supportsSave: data.supportsSave } : {}),
+      ...(data.reusablePaymentCode !== undefined
+        ? { reusablePaymentCode: data.reusablePaymentCode }
+        : {}),
+      ...(data.merchantInitiatedTransaction !== undefined
+        ? { merchantInitiatedTransaction: data.merchantInitiatedTransaction }
+        : {}),
       ...(data.logoUrl !== undefined ? { logoUrl: data.logoUrl } : {}),
       ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
       ...(data.minAmount !== undefined

@@ -1,5 +1,4 @@
 // ecosystem.config.cjs
-/* eslint-env node */
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -60,6 +59,7 @@ module.exports = {
         EMAIL_SMTP_SERVICE_NAME: process.env.EMAIL_SMTP_SERVICE_NAME,
         CLIENT_HOST: process.env.CLIENT_HOST,
         CORS_ORIGINS: process.env.CORS_ORIGINS,
+        // Staging/prod: enable Redis when REDIS_URL is set (REDIS_ENABLED=true)
         REDIS_ENABLED: process.env.REDIS_ENABLED,
         REDIS_HOST: process.env.REDIS_HOST,
         REDIS_PORT: process.env.REDIS_PORT,
@@ -97,6 +97,7 @@ module.exports = {
         EMAIL_SMTP_SERVICE_NAME: process.env.EMAIL_SMTP_SERVICE_NAME,
         CLIENT_HOST: process.env.CLIENT_HOST,
         CORS_ORIGINS: process.env.CORS_ORIGINS,
+        // Staging/prod: enable Redis when REDIS_URL is set (REDIS_ENABLED=true)
         REDIS_ENABLED: process.env.REDIS_ENABLED,
         REDIS_HOST: process.env.REDIS_HOST,
         REDIS_PORT: process.env.REDIS_PORT,

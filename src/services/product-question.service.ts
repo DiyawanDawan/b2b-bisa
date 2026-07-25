@@ -35,15 +35,16 @@ export const listProductQuestions = async (productId: string, page = 1, limit = 
   }
 
   const skip = (page - 1) * limit;
+  const where = { productId, isHidden: false };
   const [rows, total] = await Promise.all([
     prisma.productQuestion.findMany({
-      where: { productId },
+      where,
       orderBy: { createdAt: 'desc' },
       skip,
       take: limit,
       select: questionSelect,
     }),
-    prisma.productQuestion.count({ where: { productId } }),
+    prisma.productQuestion.count({ where }),
   ]);
 
   return {

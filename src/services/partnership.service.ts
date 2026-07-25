@@ -149,6 +149,7 @@ const mapPartnership = (row: {
   rejectionReason: string | null;
   terminatedAt: Date | null;
   terminatedBy: string | null;
+  internalNotes?: string | null;
   renewalCount: number;
   renewalProposedEndDate: Date | null;
   renewalRequestedBy: string | null;
@@ -228,6 +229,7 @@ const mapPartnership = (row: {
     rejectionReason: row.rejectionReason,
     terminatedAt: row.terminatedAt,
     terminatedBy: row.terminatedBy,
+    internalNotes: row.internalNotes ?? null,
     renewalCount: row.renewalCount,
     renewalProposedEndDate: row.renewalProposedEndDate,
     renewalRequestedBy: row.renewalRequestedBy,
@@ -445,12 +447,12 @@ export const listMyPartnerships = async (
   const keyword = search?.trim();
   if (keyword && role === UserRole.ADMIN) {
     where.OR = [
-      { contractNumber: { contains: keyword, mode: 'insensitive' } },
-      { title: { contains: keyword, mode: 'insensitive' } },
-      { buyer: { fullName: { contains: keyword, mode: 'insensitive' } } },
-      { supplier: { fullName: { contains: keyword, mode: 'insensitive' } } },
-      { buyer: { profile: { companyName: { contains: keyword, mode: 'insensitive' } } } },
-      { supplier: { profile: { companyName: { contains: keyword, mode: 'insensitive' } } } },
+      { contractNumber: { contains: keyword } },
+      { title: { contains: keyword } },
+      { buyer: { fullName: { contains: keyword } } },
+      { supplier: { fullName: { contains: keyword } } },
+      { buyer: { profile: { companyName: { contains: keyword } } } },
+      { supplier: { profile: { companyName: { contains: keyword } } } },
     ];
   }
 
@@ -514,12 +516,12 @@ export const listAdminPartnerships = async (params: {
   const keyword = params.search?.trim();
   if (keyword) {
     where.OR = [
-      { contractNumber: { contains: keyword, mode: 'insensitive' } },
-      { title: { contains: keyword, mode: 'insensitive' } },
-      { buyer: { fullName: { contains: keyword, mode: 'insensitive' } } },
-      { supplier: { fullName: { contains: keyword, mode: 'insensitive' } } },
-      { buyer: { profile: { companyName: { contains: keyword, mode: 'insensitive' } } } },
-      { supplier: { profile: { companyName: { contains: keyword, mode: 'insensitive' } } } },
+      { contractNumber: { contains: keyword } },
+      { title: { contains: keyword } },
+      { buyer: { fullName: { contains: keyword } } },
+      { supplier: { fullName: { contains: keyword } } },
+      { buyer: { profile: { companyName: { contains: keyword } } } },
+      { supplier: { profile: { companyName: { contains: keyword } } } },
     ];
   }
 
@@ -558,7 +560,14 @@ export const getPartnershipById = async (
     include: partnershipInclude,
   });
   if (!row) throw new AppError('Kontrak kerjasama tidak ditemukan.', 404);
-  return mapPartnership(row);
+  const mapped = mapPartnership(row);
+  if (!isAdmin) {
+    const { internalNotes: _notes, ...publicView } = mapped as typeof mapped & {
+      internalNotes?: string | null;
+    };
+    return publicView;
+  }
+  return mapped;
 };
 
 export const checkPartnershipWithSupplier = async (buyerId: string, supplierId: string) => {
@@ -706,7 +715,10 @@ export const signPartnership = async (
     throw new AppError('Anda tidak berhak menandatangani kontrak ini.', 403);
   }
 
-  if (![PartnershipStatus.PENDING, PartnershipStatus.AWAITING_SIGNATURE].includes(row.status)) {
+  if (
+    row.status !== PartnershipStatus.PENDING &&
+    row.status !== PartnershipStatus.AWAITING_SIGNATURE
+  ) {
     throw new AppError('Kontrak tidak dalam status penandatanganan.', 400);
   }
 

@@ -12,8 +12,13 @@ router.put('/drivers/:id/suspend', ctrl.adminSuspendDriver);
 
 router.get('/hubs', ctrl.adminListHubs);
 router.post('/hubs', validate(v.adminCreateHubSchema), ctrl.adminCreateHub);
-router.put('/hubs/:id', validate(v.adminUpdateHubSchema), ctrl.adminUpdateHub);
-router.delete('/hubs/:id', ctrl.adminDeleteHub);
+router.put(
+  '/hubs/:id',
+  validate(v.idParamSchema, 'params'),
+  validate(v.adminUpdateHubSchema),
+  ctrl.adminUpdateHub,
+);
+router.delete('/hubs/:id', validate(v.idParamSchema, 'params'), ctrl.adminDeleteHub);
 
 router.get('/rates', ctrl.adminListRates);
 router.post('/rates', validate(v.adminCreateRateSchema), ctrl.adminCreateRate);
@@ -35,18 +40,35 @@ router.delete('/service-rules/:id', ctrl.adminDeleteServiceRule);
 
 router.get('/coverage', ctrl.adminListCoverage);
 router.post('/coverage', validate(v.adminCreateCoverageSchema), ctrl.adminCreateCoverage);
-router.put('/coverage/:id', ctrl.adminUpdateCoverage);
+router.put(
+  '/coverage/:id',
+  validate(v.idParamSchema, 'params'),
+  validate(v.adminUpdateCoverageSchema),
+  ctrl.adminUpdateCoverage,
+);
 
 router.get('/shipments', validate(v.listShipmentsQuerySchema, 'query'), ctrl.adminListShipments);
-router.put('/shipments/:id/assign', validate(v.adminAssignSchema), ctrl.adminAssign);
+router.get('/shipments/:id', validate(v.idParamSchema, 'params'), ctrl.adminGetShipment);
+router.put(
+  '/shipments/:id/assign',
+  validate(v.idParamSchema, 'params'),
+  validate(v.adminAssignSchema),
+  ctrl.adminAssign,
+);
 router.put(
   '/shipments/:id/override-status',
+  validate(v.idParamSchema, 'params'),
   validate(v.adminOverrideStatusSchema),
   ctrl.adminOverrideStatus,
 );
 
 router.get('/dashboard', ctrl.adminDashboard);
 router.get('/live-map', ctrl.adminLiveMap);
-router.get('/reports', ctrl.adminReports);
+router.get('/reports', validate(v.adminReportsQuerySchema, 'query'), ctrl.adminReports);
+router.get(
+  '/reports/export',
+  validate(v.adminReportsQuerySchema, 'query'),
+  ctrl.adminExportReports,
+);
 
 export default router;

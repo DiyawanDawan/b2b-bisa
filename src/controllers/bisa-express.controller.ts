@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { AuthRequest } from '#types/index';
 import catchAsync from '#utils/catchAsync';
 import { successResponse } from '#utils/response.util';
+import { toCsv } from '#utils/csv.util';
 import * as bisaExpressService from '#services/bisa-express.service';
 
 export const checkCoverage = catchAsync(async (req: AuthRequest, res: Response) => {
@@ -37,7 +38,10 @@ export const listServices = catchAsync(async (_req: AuthRequest, res: Response) 
 });
 
 export const trackAwb = catchAsync(async (req: AuthRequest, res: Response) => {
-  const data = await bisaExpressService.trackByAwb(req.params.awb);
+  const data = await bisaExpressService.trackByAwb(req.params.awb, {
+    id: req.user!.id,
+    role: req.user!.role,
+  });
   return successResponse(res, data, 'Tracking BISA Express');
 });
 
@@ -47,12 +51,18 @@ export const getByOrder = catchAsync(async (req: AuthRequest, res: Response) => 
 });
 
 export const getTimeline = catchAsync(async (req: AuthRequest, res: Response) => {
-  const data = await bisaExpressService.getTimeline(req.params.id);
+  const data = await bisaExpressService.getTimeline(req.params.id, {
+    id: req.user!.id,
+    role: req.user!.role,
+  });
   return successResponse(res, data, 'Timeline shipment');
 });
 
 export const getLocation = catchAsync(async (req: AuthRequest, res: Response) => {
-  const data = await bisaExpressService.getLiveLocation(req.params.id);
+  const data = await bisaExpressService.getLiveLocation(req.params.id, {
+    id: req.user!.id,
+    role: req.user!.role,
+  });
   return successResponse(res, data, 'Lokasi driver');
 });
 
@@ -268,17 +278,24 @@ export const adminListShipments = catchAsync(async (req: AuthRequest, res: Respo
     'Shipments',
   );
 });
+export const adminGetShipment = catchAsync(async (req: AuthRequest, res: Response) => {
+  return successResponse(
+    res,
+    await bisaExpressService.adminGetShipment(req.params.id),
+    'Detail shipment',
+  );
+});
 export const adminAssign = catchAsync(async (req: AuthRequest, res: Response) => {
   return successResponse(
     res,
-    await bisaExpressService.adminAssignDrivers(req.params.id, req.body),
+    await bisaExpressService.adminAssignDrivers(req.params.id, req.body, req.user!.id),
     'Driver di-assign',
   );
 });
 export const adminOverrideStatus = catchAsync(async (req: AuthRequest, res: Response) => {
   return successResponse(
     res,
-    await bisaExpressService.adminOverrideStatus(req.params.id, req.body),
+    await bisaExpressService.adminOverrideStatus(req.params.id, req.body, req.user!.id),
     'Status di-override',
   );
 });
@@ -288,6 +305,30 @@ export const adminDashboard = catchAsync(async (_req: AuthRequest, res: Response
 export const adminLiveMap = catchAsync(async (_req: AuthRequest, res: Response) => {
   return successResponse(res, await bisaExpressService.adminLiveMap(), 'Live map drivers');
 });
-export const adminReports = catchAsync(async (_req: AuthRequest, res: Response) => {
-  return successResponse(res, await bisaExpressService.adminReports(), 'Laporan operasional');
+export const adminReports = catchAsync(async (req: AuthRequest, res: Response) => {
+  return successResponse(
+    res,
+    await bisaExpressService.adminReports(req.query as never),
+    'Laporan operasional',
+  );
+});
+export const adminExportReports = catchAsync(async (req: AuthRequest, res: Response) => {
+  const data = await bisaExpressService.adminExportReportsCsv(req.query as never);
+  const headers = [
+    'awbNumber',
+    'orderNumber',
+    'status',
+    'serviceType',
+    'weight',
+    'weightUnit',
+    'shippingCost',
+    'pickupDriver',
+    'deliveryDriver',
+    'createdAt',
+    'deliveredAt',
+  ];
+  const csvContent = toCsv(headers, data.rows as Array<Record<string, unknown>>);
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.attachment(`Laporan_BISA_Express_${data.period.startDate}_${data.period.endDate}.csv`);
+  res.status(200).send(csvContent);
 });

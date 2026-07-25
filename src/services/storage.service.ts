@@ -19,7 +19,7 @@ const PUBLIC_ASSET_PREFIXES = [
   'products/',
   'general/',
   'forum/',
-  'negotiations/',
+  // negotiations/ and verification/ require signed proxy after auth
   'articles/',
   'categories/',
 ];
@@ -98,14 +98,15 @@ export const getSignedProxyUrl = (path: string | null, expiresIn = 3600): string
   if (!path) return null;
   if (path.startsWith('http')) return path;
 
+  const normalizedPath = path.replace(/^\//, '');
   const expires = Math.floor(Date.now() / 1000) + expiresIn;
   const signature = crypto
     .createHmac('sha256', JWT_SECRET)
-    .update(`${path}:${expires}`)
+    .update(`${normalizedPath}:${expires}`)
     .digest('hex');
 
   const baseUrl = getMediaBaseUrl();
-  return `${baseUrl}/api/v1/storage/secure/${path}?expires=${expires}&signature=${signature}`;
+  return `${baseUrl}/api/v1/storage/secure/${normalizedPath}?expires=${expires}&signature=${signature}`;
 };
 
 /**

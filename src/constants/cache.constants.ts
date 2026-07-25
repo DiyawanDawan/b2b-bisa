@@ -11,6 +11,14 @@ export const CACHE_TTL = {
   SHIP_VEHICLES: 6 * 3600,
   SHIP_DEST: 24 * 3600,
   PROD_COLLECTIONS: 3600,
+  /** Featured / reco — katalog publik, bukan stok live */
+  PROD_FEATURED: 10 * 60,
+  PROD_RECOMMENDATIONS: 15 * 60,
+  /** List publik — TTL pendek (≥ stok di response, ≤ 60s) */
+  PROD_LIST: 45,
+  AUTH_USER: 45,
+  FORUM_LIST: 45,
+  FORUM_GROUPS: 60,
   /** Agregat dashboard/CRM/finance — short TTL, bukan stok produk */
   ADMIN_ANALYTICS: 60,
   ADMIN_GALLERY: 120,

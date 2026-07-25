@@ -1,4 +1,5 @@
 import logger from '../../src/config/logger.js';
+import { sealBusinessAddress } from '../../src/utils/piiField.util.ts';
 
 export async function seedVerifications(prisma) {
   logger.info('🌱 [12] Seeding User Verifications for Suppliers...');
@@ -26,7 +27,7 @@ export async function seedVerifications(prisma) {
         verificationStatus: 'VERIFIED',
         reviewedAt: new Date(),
         businessName: supplier.fullName,
-        businessAddress: 'Verified Hub Area',
+        businessAddress: sealBusinessAddress('Verified Hub Area'),
         ktpUrl: 'https://bisa.es/docs/ktp_sample.jpg',
         selfieUrl: 'https://bisa.es/docs/selfie_sample.jpg',
       },

@@ -195,9 +195,84 @@ export async function seedStoreBanners(prisma, users) {
   const repaired = await repairStoreBannerImageRefs();
   const activeBannerCount = await prisma.storeBanner.count({ where: { isActive: true } });
 
+  await seedBannerModerationDemo(prisma, users);
+
   logger.info(
     `✅ [17] ${total} banner (${uploaded} di R2, sisanya CDN fallback), ${repaired} URL diperbaiki, ${activeBannerCount} aktif.`,
   );
 
   return { total, suppliers: suppliers.length, activeBannerCount, uploaded, repaired };
+}
+
+async function seedBannerModerationDemo(prisma, users) {
+  const admin =
+    users?.admin ??
+    (await prisma.user.findUnique({ where: { email: 'admin@bisaes.com' } }));
+  if (!admin) {
+    logger.warn('⚠️ [17] Admin tidak ditemukan — moderasi banner dilewati.');
+    return;
+  }
+
+  const now = new Date();
+  const sitiId = users?.siti?.id;
+
+  const firstBanner = await prisma.storeBanner.findFirst({
+    where: sitiId ? { userId: sitiId } : undefined,
+    orderBy: { sortOrder: 'asc' },
+  });
+  if (!firstBanner) return;
+
+  await prisma.storeBanner.update({
+    where: { id: firstBanner.id },
+    data: {
+      moderationStatus: 'APPROVED',
+      reviewedById: admin.id,
+      reviewedAt: now,
+      rejectionReason: null,
+    },
+  });
+  await prisma.storeBannerModerationHistory.create({
+    data: {
+      bannerId: firstBanner.id,
+      action: 'APPROVE',
+      fromStatus: 'PENDING',
+      toStatus: 'APPROVED',
+      note: 'Demo seed: banner disetujui admin.',
+      actorId: admin.id,
+      createdAt: now,
+    },
+  });
+
+  const secondBanner = await prisma.storeBanner.findFirst({
+    where: {
+      id: { not: firstBanner.id },
+      ...(sitiId ? { userId: sitiId } : {}),
+    },
+    orderBy: { sortOrder: 'asc' },
+  });
+  if (!secondBanner) return;
+
+  const rejectReason = 'Demo seed: gambar tidak sesuai pedoman konten toko.';
+  await prisma.storeBanner.update({
+    where: { id: secondBanner.id },
+    data: {
+      moderationStatus: 'REJECTED',
+      reviewedById: admin.id,
+      reviewedAt: now,
+      rejectionReason: rejectReason,
+    },
+  });
+  await prisma.storeBannerModerationHistory.create({
+    data: {
+      bannerId: secondBanner.id,
+      action: 'REJECT',
+      fromStatus: 'PENDING',
+      toStatus: 'REJECTED',
+      note: rejectReason,
+      actorId: admin.id,
+      createdAt: now,
+    },
+  });
+
+  logger.info('✅ [17] StoreBannerModerationHistory demo (APPROVED + REJECTED) seeded.');
 }

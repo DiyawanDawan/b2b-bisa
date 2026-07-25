@@ -1,4 +1,5 @@
 import prisma from '#config/prisma';
+import AppError from '#utils/appError';
 import { BiomassaType, BiocharGrade } from '#prisma';
 import {
   GOOGLE_GEMINI_API_KEY,
@@ -154,6 +155,18 @@ const getAiRuntimeConfig = async () => {
     assistantTimeoutMs: getNumber('AI_ASSISTANT_TIMEOUT_MS', 10000),
   };
 };
+
+/**
+ * Toggle fitur AI (dikelola dari panel admin /ai-operations via PlatformSetting).
+ * Default aktif jika setting belum pernah disimpan.
+ */
+const isAiFeatureEnabled = async (key: 'AI_ASSISTANT_ENABLED' | 'AI_PREDICTION_ENABLED') => {
+  const setting = await prisma.platformSetting.findUnique({
+    where: { key },
+    select: { value: true },
+  });
+  return setting ? setting.value === 'true' : true;
+};
 /**
  * Predict Biochar Quality based on pyrolysis parameters (XGBoost Logic Placeholder)
  */
@@ -167,6 +180,9 @@ export const predictBiocharQuality = async (
   },
   options: { meta?: Record<string, unknown> } = {},
 ) => {
+  if (!(await isAiFeatureEnabled('AI_PREDICTION_ENABLED'))) {
+    throw new AppError('Fitur prediksi AI sedang dinonaktifkan oleh admin.', 503);
+  }
   const config = await getAiRuntimeConfig();
   const mlResult = await callMlPredict(data);
 
@@ -287,6 +303,9 @@ const stripMarkdown = (text: string): string => {
  * AI Assistant for Biomass queries using Google Gemini API
  */
 export const askAssistant = async (question: string): Promise<string> => {
+  if (!(await isAiFeatureEnabled('AI_ASSISTANT_ENABLED'))) {
+    return 'Maaf, asisten AI sedang dinonaktifkan sementara oleh admin.';
+  }
   if (!DEEPSEEK_API_KEY && !GOOGLE_GEMINI_API_KEY) {
     return 'Maaf, asisten AI sedang tidak aktif. Mohon hubungi administrator (API Key missing).';
   }

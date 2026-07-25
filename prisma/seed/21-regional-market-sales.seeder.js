@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import logger from '../../src/config/logger.js';
 import { recomputeAllSnapshots } from '#services/marketSupplyDemand.service';
 import { avatarSeedPath } from '../../src/utils/loremFlickrMedia.util.ts';
+import { sealAddress, sealShippingAddressSnapshot } from '../../src/utils/piiField.util.ts';
 import {
   backfillStaleProductMedia,
   buildProductMediaSlug,
@@ -588,7 +589,7 @@ export async function seedRegionalMarketSales(prisma) {
           countryId: country.id,
           provinceId: province.id,
           regencyId: regency?.id,
-          fullAddress: `${faker.location.streetAddress()}, ${province.name}`,
+          fullAddress: sealAddress(`${faker.location.streetAddress()}, ${province.name}`),
           zipCode: faker.location.zipCode('#####'),
           latitude: -6 + Math.random() * 4,
           longitude: 106 + Math.random() * 5,
@@ -642,7 +643,7 @@ export async function seedRegionalMarketSales(prisma) {
           countryId: country.id,
           provinceId: province.id,
           regencyId: regency?.id,
-          fullAddress: `${faker.location.streetAddress()}, ${province.name}`,
+          fullAddress: sealAddress(`${faker.location.streetAddress()}, ${province.name}`),
           zipCode: faker.location.zipCode('#####'),
           latitude: -6 + Math.random() * 4,
           longitude: 106 + Math.random() * 5,
@@ -699,14 +700,14 @@ export async function seedRegionalMarketSales(prisma) {
     const provSlug = slugProvince(buyer.province ?? 'id');
     const orderNumber = `${MARKER}${provSlug}-${String(orderSeq++).padStart(4, '0')}`;
 
-    const shippingAddressSnapshot = {
+    const shippingAddressSnapshot = sealShippingAddressSnapshot({
       recipient: buyer.fullName,
       phone: buyer.phone ?? '+6281234567890',
       email: buyer.email,
       address: buyer.province ?? 'Indonesia',
       province: buyer.province,
       regency: buyer.regency,
-    };
+    });
 
     await prisma.order.create({
       data: {
