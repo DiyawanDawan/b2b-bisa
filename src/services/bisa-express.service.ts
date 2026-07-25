@@ -34,6 +34,7 @@ import {
   sealShipmentPhone,
 } from '#utils/piiField.util';
 import { invalidateAuthUser } from '#utils/cache.util';
+import { applyShippingMarkup, loadCourierMarkup } from '#utils/shipping-markup.util';
 
 type Tx = Prisma.TransactionClient;
 
@@ -518,11 +519,13 @@ export const calculateRates = async (params: {
   });
 
   const weightRuleHint = await serviceEligibilityHint(weight, productUnit);
+  const markup = await loadCourierMarkup(BISA_EXPRESS_COURIER_CODE);
 
   return filtered.map((rate) => {
     const base = Number(rate.baseCost);
     const perUnit = Number(rate.perUnitCost);
-    const cost = calcCost(base, perUnit, weight, productUnit, rate.weightUnit);
+    const tariffBase = calcCost(base, perUnit, weight, productUnit, rate.weightUnit);
+    const marked = applyShippingMarkup(tariffBase, markup);
     const billableQty = Math.max(1, Math.ceil(convertUnit(weight, productUnit, rate.weightUnit)));
     const insurance =
       params.itemValue && params.itemValue > 0 ? Math.round(params.itemValue * 0.002) : 0;
@@ -534,7 +537,9 @@ export const calculateRates = async (params: {
       description: isVip
         ? 'VIP Express — prioritas ontime, armada khusus (tarif premium)'
         : `BISA Express ${rate.serviceType}`,
-      cost: cost + insurance,
+      cost: marked.cost + insurance,
+      baseCost: marked.baseCost,
+      markupAmount: marked.markupAmount,
       etd: isVip ? 'Ontime (prioritas)' : `${rate.etdDays} hari`,
       etdDays: rate.etdDays,
       originZone: rate.originZone,

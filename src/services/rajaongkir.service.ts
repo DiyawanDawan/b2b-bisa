@@ -24,6 +24,11 @@ import { UnitStatus } from '#prisma';
 import { toGrams } from '#utils/unit.util';
 import { CACHE_TTL } from '#constants/cache.constants';
 import { cacheAside, cacheKeys, invalidateShippingConfig } from '#utils/cache.util';
+import {
+  applyShippingMarkup,
+  loadCourierMarkupMap,
+  normalizeMarkupConfig,
+} from '#utils/shipping-markup.util';
 import logger from '#config/logger';
 
 type RequestOpts = {
@@ -47,6 +52,10 @@ export type ShippingCourierRow = {
   label: string | null;
   isActive: boolean;
   sortOrder: number;
+  /** Markup % di atas tarif dasar (null/0 = tanpa %). */
+  markupPercent: number | null;
+  /** Markup flat IDR di atas tarif dasar (null/0 = tanpa flat). */
+  markupFlat: number | null;
   provider: ShippingCourierProvider;
   updatedAt: Date;
 };
@@ -63,16 +72,23 @@ const mapCourierRow = (row: {
   label: string | null;
   isActive: boolean;
   sortOrder: number;
+  markupPercent?: unknown;
+  markupFlat?: unknown;
   updatedAt: Date;
-}): ShippingCourierRow => ({
-  id: row.id,
-  code: row.code,
-  label: row.label,
-  isActive: row.isActive,
-  sortOrder: row.sortOrder,
-  provider: courierProvider(row.code),
-  updatedAt: row.updatedAt,
-});
+}): ShippingCourierRow => {
+  const markup = normalizeMarkupConfig(row);
+  return {
+    id: row.id,
+    code: row.code,
+    label: row.label,
+    isActive: row.isActive,
+    sortOrder: row.sortOrder,
+    markupPercent: markup.markupPercent > 0 ? markup.markupPercent : null,
+    markupFlat: markup.markupFlat > 0 ? markup.markupFlat : null,
+    provider: courierProvider(row.code),
+    updatedAt: row.updatedAt,
+  };
+};
 
 const normalizeCourierCodes = (raw: unknown): string[] => {
   if (Array.isArray(raw)) {
@@ -374,7 +390,25 @@ export const calculateDomesticCost = async (params: {
     });
 
     const options = Array.isArray(data) ? data : [];
-    return options.filter((o) => courierCodes.includes(o.code?.toLowerCase?.() ?? ''));
+    const filtered = options.filter((o) =>
+      courierCodes.includes(o.code?.toLowerCase?.() ?? ''),
+    );
+    if (!filtered.length) return [];
+
+    const markupMap = await loadCourierMarkupMap(
+      filtered.map((o) => o.code?.toLowerCase?.() ?? ''),
+    );
+
+    return filtered.map((o) => {
+      const code = o.code?.toLowerCase?.() ?? '';
+      const marked = applyShippingMarkup(Number(o.cost) || 0, markupMap.get(code));
+      return {
+        ...o,
+        cost: marked.cost,
+        baseCost: marked.baseCost,
+        markupAmount: marked.markupAmount,
+      };
+    });
   } catch (error) {
     logger.warn(
       `calculateDomesticCost: RajaOngkir gagal — graceful degrade ke opsi lokal (${
@@ -556,6 +590,8 @@ export const listShippingCouriers = async (): Promise<ShippingCourierRow[]> => {
       label: true,
       isActive: true,
       sortOrder: true,
+      markupPercent: true,
+      markupFlat: true,
       updatedAt: true,
     },
   });
@@ -563,9 +599,29 @@ export const listShippingCouriers = async (): Promise<ShippingCourierRow[]> => {
   return rows.map(mapCourierRow);
 };
 
+const clampMarkupPercent = (value: number | null | undefined): number | null => {
+  if (value === null || value === undefined) return null;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.min(999.99, Math.round(n * 100) / 100);
+};
+
+const clampMarkupFlat = (value: number | null | undefined): number | null => {
+  if (value === null || value === undefined) return null;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.round(n);
+};
+
 export const updateShippingCourier = async (
   code: string,
-  data: { isActive?: boolean; label?: string | null; sortOrder?: number },
+  data: {
+    isActive?: boolean;
+    label?: string | null;
+    sortOrder?: number;
+    markupPercent?: number | null;
+    markupFlat?: number | null;
+  },
 ): Promise<ShippingCourierRow> => {
   const normalized = code.trim().toLowerCase();
   if (!normalized || normalized.length < 2) {
@@ -583,7 +639,9 @@ export const updateShippingCourier = async (
   if (
     data.isActive === undefined &&
     data.label === undefined &&
-    data.sortOrder === undefined
+    data.sortOrder === undefined &&
+    data.markupPercent === undefined &&
+    data.markupFlat === undefined
   ) {
     throw new AppError('Tidak ada field yang diubah.', 400);
   }
@@ -596,6 +654,10 @@ export const updateShippingCourier = async (
         ? { label: data.label?.trim() || (isLocalCourierCode(normalized) ? 'BISA Express' : normalized.toUpperCase()) }
         : {}),
       ...(data.sortOrder !== undefined ? { sortOrder: data.sortOrder } : {}),
+      ...(data.markupPercent !== undefined
+        ? { markupPercent: clampMarkupPercent(data.markupPercent) }
+        : {}),
+      ...(data.markupFlat !== undefined ? { markupFlat: clampMarkupFlat(data.markupFlat) } : {}),
     },
     select: {
       id: true,
@@ -603,6 +665,8 @@ export const updateShippingCourier = async (
       label: true,
       isActive: true,
       sortOrder: true,
+      markupPercent: true,
+      markupFlat: true,
       updatedAt: true,
     },
   });

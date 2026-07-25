@@ -1970,13 +1970,17 @@ model ShippingPickupVehicle {
 }
 
 model ShippingCourier {
-  id        String   @id @default(uuid())
-  code      String   @unique @map("code")
-  label     String?  @map("label")
-  isActive  Boolean  @default(true) @map("is_active")
-  sortOrder Int      @default(0) @map("sort_order")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id            String   @id @default(uuid())
+  code          String   @unique @map("code")
+  label         String?  @map("label")
+  isActive      Boolean  @default(true) @map("is_active")
+  sortOrder     Int      @default(0) @map("sort_order")
+  /** Markup % di atas tarif dasar (RajaOngkir / lokal). Null = 0. */
+  markupPercent Decimal? @map("markup_percent") @db.Decimal(5, 2)
+  /** Markup flat (IDR) di atas tarif dasar. Null = 0. */
+  markupFlat    Decimal? @map("markup_flat") @db.Decimal(15, 2)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
   @@index([isActive, sortOrder])
   @@map("shipping_couriers")

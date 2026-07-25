@@ -24,8 +24,13 @@ export type RajaOngkirShippingOption = {
   code: string;
   service: string;
   description: string;
+  /** Tarif final (setelah markup platform). */
   cost: number;
   etd: string;
+  /** Tarif dasar sebelum markup (opsional; untuk audit/admin). */
+  baseCost?: number;
+  /** Jumlah markup yang ditambahkan (opsional). */
+  markupAmount?: number;
 };
 
 export type RajaOngkirWaybillSummary = {

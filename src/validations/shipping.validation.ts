@@ -81,10 +81,22 @@ export const updateShippingCourierSchema = z
     isActive: z.boolean().optional(),
     label: z.string().min(1).max(120).optional().nullable(),
     sortOrder: z.coerce.number().int().min(0).max(9999).optional(),
+    /** Markup % (≥ 0). Null/0 = hapus markup persen. */
+    markupPercent: z.coerce.number().min(0).max(999.99).optional().nullable(),
+    /** Markup flat IDR (≥ 0). Null/0 = hapus markup flat. */
+    markupFlat: z.coerce.number().min(0).max(10_000_000).optional().nullable(),
   })
   .refine(
-    (v) => v.isActive !== undefined || v.label !== undefined || v.sortOrder !== undefined,
-    { message: 'Minimal satu field (isActive, label, atau sortOrder) wajib diisi' },
+    (v) =>
+      v.isActive !== undefined ||
+      v.label !== undefined ||
+      v.sortOrder !== undefined ||
+      v.markupPercent !== undefined ||
+      v.markupFlat !== undefined,
+    {
+      message:
+        'Minimal satu field (isActive, label, sortOrder, markupPercent, atau markupFlat) wajib diisi',
+    },
   );
 
 /** Dipakai saat checkout — disimpan di snapshot order */
