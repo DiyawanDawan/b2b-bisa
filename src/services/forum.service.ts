@@ -3,6 +3,7 @@ import AppError from '#utils/appError';
 import { PostStatus, VoteType, Prisma } from '#prisma';
 import { FORUM_MODERATION_THRESHOLD } from '#utils/env.util';
 import { buildForumMetadata, type ForumProductMention } from '#utils/forumContent.util';
+import { stripHtmlToPlain } from '#utils/htmlSanitize.util';
 import { CACHE_TTL } from '#constants/cache.constants';
 import { cacheAside, cacheKeys, hashQuery, invalidateForumPosts } from '#utils/cache.util';
 
@@ -13,6 +14,11 @@ const toMediaJson = (media?: ForumMediaInput[]): Prisma.InputJsonValue | undefin
 
 const toJsonValue = (arr?: unknown[] | null): Prisma.InputJsonValue | typeof Prisma.JsonNull =>
   arr && arr.length > 0 ? (arr as Prisma.InputJsonValue) : Prisma.JsonNull;
+
+const toContentPreview = (content: string): string => {
+  const plain = stripHtmlToPlain(content);
+  return plain.length > 200 ? `${plain.slice(0, 200)}…` : plain;
+};
 
 type AnonPostRow = {
   id: string;
@@ -150,7 +156,7 @@ export const listPosts = async (params: {
 
         return {
           ...rest,
-          contentPreview: content.length > 200 ? `${content.slice(0, 200)}…` : content,
+          contentPreview: toContentPreview(content),
           userVote: null,
           participants,
         };
@@ -486,7 +492,7 @@ export const listMyPosts = async (params: {
   const posts = rawPosts.map(({ content, ...rest }) => ({
     ...rest,
     content,
-    contentPreview: content.length > 200 ? `${content.slice(0, 200)}…` : content,
+    contentPreview: toContentPreview(content),
     userVote: null,
     participants: [],
   }));

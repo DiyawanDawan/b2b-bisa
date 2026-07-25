@@ -23,6 +23,7 @@ import {
   queryLimit,
   queryPage,
 } from '#validations/admin-query.validation';
+import { sanitizeProductDescriptionHtml, stripHtmlToPlain } from '#utils/htmlSanitize.util';
 
 export {
   idParamSchema,
@@ -378,9 +379,17 @@ export const moderateForumSchema = z.object({
   status: z.enum(['PUBLISHED', 'DRAFT', 'ARCHIVED']),
 });
 
+const adminForumContentSchema = z
+  .string()
+  .max(20000, 'Konten terlalu panjang')
+  .transform((value) => sanitizeProductDescriptionHtml(value) ?? '')
+  .refine((value) => stripHtmlToPlain(value).length >= 10, {
+    message: 'Konten minimal 10 karakter teks',
+  });
+
 export const adminForumCreatePostSchema = z.object({
   title: z.string().min(5, 'Judul minimal 5 karakter').max(150),
-  content: z.string().min(10, 'Konten minimal 10 karakter').max(5000),
+  content: adminForumContentSchema,
   status: z.enum(['PUBLISHED', 'DRAFT', 'ARCHIVED']).optional().default('PUBLISHED'),
   categoryId: z.string().uuid('Kategori tidak valid').optional(),
   authorUserId: z.string().uuid('Penulis tidak valid').optional(),
@@ -389,7 +398,7 @@ export const adminForumCreatePostSchema = z.object({
 
 export const adminForumUpdatePostSchema = z.object({
   title: z.string().min(5).max(150).optional(),
-  content: z.string().max(5000).optional(),
+  content: adminForumContentSchema.optional(),
   status: z.enum(['PUBLISHED', 'DRAFT', 'ARCHIVED']).optional(),
   categoryId: z.string().uuid().nullable().optional(),
   tags: z.array(z.string().min(1).max(40)).max(10).optional(),

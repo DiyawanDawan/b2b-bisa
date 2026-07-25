@@ -42,9 +42,22 @@ export async function seedOperations(prisma, users) {
     });
   }
 
-  // Audit logs
+  // Audit logs — cover admin moderation surfaces used in dashboards
   const admin = users.admin;
   if (admin) {
+    const sampleProduct = await prisma.product.findFirst({
+      where: { name: { startsWith: '[SEED] Status BLOCKED' } },
+      select: { id: true },
+    });
+    const sampleArticle = await prisma.article.findFirst({
+      where: { title: { startsWith: '[SEED]' } },
+      select: { id: true },
+    });
+    const pendingKyc = await prisma.userVerification.findFirst({
+      where: { verificationStatus: 'PENDING' },
+      select: { id: true, userId: true },
+    });
+
     await prisma.auditLog.createMany({
       data: [
         {
@@ -60,6 +73,42 @@ export async function seedOperations(prisma, users) {
           entity: 'PlatformFeeSetting',
           entityId: 'global',
           newValue: JSON.stringify({ amount: 3.5 }),
+        },
+        {
+          userId: admin.id,
+          action: 'MODERATE_PRODUCT_STATUS',
+          entity: 'Product',
+          entityId: sampleProduct?.id ?? 'seed-product',
+          oldValue: JSON.stringify({ status: 'ACTIVE' }),
+          newValue: JSON.stringify({ status: 'BLOCKED', reason: '[SEED] Moderation demo' }),
+          ipAddress: '192.168.1.1',
+        },
+        {
+          userId: admin.id,
+          action: 'PUBLISH_ARTICLE',
+          entity: 'Article',
+          entityId: sampleArticle?.id ?? 'seed-article',
+          newValue: JSON.stringify({ status: 'PUBLISHED' }),
+          ipAddress: '192.168.1.1',
+        },
+        {
+          userId: admin.id,
+          action: 'REVIEW_KYC',
+          entity: 'UserVerification',
+          entityId: pendingKyc?.id ?? 'seed-kyc',
+          newValue: JSON.stringify({
+            verificationStatus: 'PENDING',
+            userId: pendingKyc?.userId ?? null,
+          }),
+          ipAddress: '192.168.1.1',
+        },
+        {
+          userId: admin.id,
+          action: 'FLAG_RFQ',
+          entity: 'Rfq',
+          entityId: 'seed-rfq',
+          newValue: JSON.stringify({ isFlagged: true, reason: '[SEED] audit coverage' }),
+          ipAddress: '192.168.1.1',
         },
       ],
     });

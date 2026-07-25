@@ -55,7 +55,10 @@ export const buildMockPaymentInitResult = (input: MockPaymentBuildInput) => {
     paymentData.qr_string = qrPayload;
   } else if (xenditType === 'EWALLET') {
     const base = process.env.CORS_ORIGINS?.split(',')[0] || 'http://localhost:3000';
-    paymentData.redirectUrl = `${base}/payment/success?mock=1`;
+    const redirectUrl = `${base}/payment/success?mock=1`;
+    channelProperties.success_return_url = redirectUrl;
+    channelProperties.failure_return_url = `${base}/payment/failed?mock=1`;
+    paymentData.redirectUrl = redirectUrl;
   } else {
     channelProperties.payment_code = `MOCK${digits}`;
     paymentData.payment_code = channelProperties.payment_code;

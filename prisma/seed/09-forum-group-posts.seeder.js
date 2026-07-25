@@ -8,6 +8,23 @@ const GROUP_MEDIA_KEYWORDS = {
   'supply-chain-organik-indonesia': ['warehouse', 'truck', 'logistics'],
 };
 
+/** Convert plain seed text (newlines) into simple Quill-compatible HTML. */
+function toForumHtml(plain) {
+  if (!plain) return '<p></p>';
+  if (/<[a-z][\s\S]*>/i.test(plain)) return plain;
+  const blocks = String(plain)
+    .split(/\n\n+/)
+    .map((b) => b.trim())
+    .filter(Boolean);
+  return blocks
+    .map((block) => {
+      const withBreaks = block.replace(/\n/g, '<br/>');
+      const withBoldTags = withBreaks.replace(/#(\w[\w-]*)/g, '<strong>#$1</strong>');
+      return `<p>${withBoldTags}</p>`;
+    })
+    .join('');
+}
+
 /**
  * Konten postingan + komentar per grup (deterministik, cocok untuk QA mobile/web).
  * Key = slug grup dari 09-forum-groups.seeder.js
@@ -318,7 +335,10 @@ export async function seedForumGroupPosts(prisma) {
     logger.info(`   ↺ Menghapus ${removed} postingan grup lama + komentarnya`);
   }
 
-  const forumCat = await prisma.category.findFirst({ where: { categoryType: 'FORUM' } });
+  const forumCats = await prisma.category.findMany({
+    where: { categoryType: 'FORUM', isActive: true },
+    orderBy: { name: 'asc' },
+  });
 
   let postCount = 0;
   let commentCount = 0;
@@ -347,7 +367,8 @@ export async function seedForumGroupPosts(prisma) {
       continue;
     }
 
-    for (const seed of seeds) {
+    for (let seedIdx = 0; seedIdx < seeds.length; seedIdx++) {
+      const seed = seeds[seedIdx];
       const author =
         (await findUserIdByEmail(prisma, seed.authorEmail)) ??
         (await prisma.user.findUnique({
@@ -372,30 +393,44 @@ export async function seedForumGroupPosts(prisma) {
         includeVideo,
       });
 
+      // Rotate PUBLISHED / DRAFT / ARCHIVED across templates for admin CMS coverage
+      const status =
+        seedIdx === seeds.length - 1
+          ? 'ARCHIVED'
+          : seedIdx === seeds.length - 2
+            ? 'DRAFT'
+            : 'PUBLISHED';
+      const forumCat = forumCats[postCount % Math.max(forumCats.length, 1)];
+
       const post = await prisma.forumPost.create({
         data: {
           title: seed.title,
-          content: seed.content,
+          content: toForumHtml(seed.content),
           tags: seed.tags ?? [],
-          categoryId: forumCat?.id,
+          categoryId: forumCat?.id ?? null,
           groupId: group.id,
           userId: authorId,
           mediaUrls,
-          status: 'PUBLISHED',
+          status,
           upvotes: 3 + (postCount % 12),
           viewCount: 40 + postCount * 17,
         },
       });
       postCount += 1;
 
-      // Vote post dari 1–2 member lain
-      for (const voterId of memberIds.filter((id) => id !== authorId).slice(0, 2)) {
+      // Vote post dari 1–2 member lain (mix UP/DOWN)
+      const otherMembers = memberIds.filter((id) => id !== authorId).slice(0, 2);
+      for (let vi = 0; vi < otherMembers.length; vi++) {
+        const voterId = otherMembers[vi];
+        const voteType = vi === 0 ? 'UP' : 'DOWN';
         await prisma.forumVote.upsert({
           where: { userId_postId: { userId: voterId, postId: post.id } },
-          update: { type: 'UP' },
-          create: { postId: post.id, userId: voterId, type: 'UP' },
+          update: { type: voteType },
+          create: { postId: post.id, userId: voterId, type: voteType },
         });
       }
+
+      if (status !== 'PUBLISHED') continue;
 
       for (const commentSeed of seed.comments ?? []) {
         const commenter = (await findUserIdByEmail(prisma, commentSeed.authorEmail)) ?? null;

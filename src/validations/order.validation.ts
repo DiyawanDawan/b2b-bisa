@@ -97,6 +97,12 @@ export const initializePaymentSchema = z.object({
   channelCode: z.string().max(20, 'Kode channel terlalu panjang').optional(),
   /** Ganti metode bayar: reset inisialisasi lama (hanya order PENDING). */
   forceNew: z.boolean().optional(),
+  /** Opsional: nomor HP untuk e-wallet yang membutuhkannya (mis. OVO). */
+  mobileNumber: z
+    .string()
+    .min(8, 'Nomor HP terlalu pendek')
+    .max(20, 'Nomor HP terlalu panjang')
+    .optional(),
 });
 
 /** Satu pembayaran untuk semua pesanan dari checkout yang sama (multi-supplier). */
@@ -107,6 +113,11 @@ export const batchCheckoutPaymentSchema = z.object({
     .max(50, 'Maksimal 50 pesanan per checkout'),
   channelCode: z.string().max(20, 'Kode channel terlalu panjang').optional(),
   forceNew: z.boolean().optional(),
+  mobileNumber: z
+    .string()
+    .min(8, 'Nomor HP terlalu pendek')
+    .max(20, 'Nomor HP terlalu panjang')
+    .optional(),
 });
 
 export const batchSimulatePaymentSchema = z.object({

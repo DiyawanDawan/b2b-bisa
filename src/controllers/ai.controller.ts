@@ -44,3 +44,8 @@ export const generateProductDescription = catchAsync(async (req: AuthRequest, re
   const description = await aiService.generateProductDescription(imageBase64, mimeType);
   successResponse(res, { description }, 'Deskripsi produk berhasil digenerate');
 });
+
+export const suggestProductTitles = catchAsync(async (req: AuthRequest, res: Response) => {
+  const suggestions = await aiService.suggestProductTitles(req.body);
+  successResponse(res, { suggestions }, 'Saran judul produk berhasil digenerate');
+});

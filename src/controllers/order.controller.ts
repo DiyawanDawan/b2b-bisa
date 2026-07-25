@@ -67,13 +67,14 @@ export const updatePendingInvoice = catchAsync(async (req: AuthRequest, res: Res
  */
 export const initializePayment = catchAsync(async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
-  const { channelCode, forceNew } = req.body;
+  const { channelCode, forceNew, mobileNumber } = req.body;
 
   const result = await orderService.initializePayment(
     id,
     req.user!.id,
     channelCode,
     forceNew === true,
+    mobileNumber ? { mobileNumber } : undefined,
   );
 
   successResponse(res, result, 'Pembayaran berhasil diinisialisasi. Silakan selesaikan transaksi.');
@@ -81,13 +82,14 @@ export const initializePayment = catchAsync(async (req: AuthRequest, res: Respon
 
 /** [BUYER] Satu pembayaran gabungan untuk semua pesanan dari checkout cart (1–N supplier). */
 export const initializeBatchPayment = catchAsync(async (req: AuthRequest, res: Response) => {
-  const { orderIds, channelCode, forceNew } = req.body;
+  const { orderIds, channelCode, forceNew, mobileNumber } = req.body;
 
   const result = await orderService.initializeBatchPayment(
     req.user!.id,
     orderIds,
     channelCode,
     forceNew === true,
+    mobileNumber ? { mobileNumber } : undefined,
   );
 
   successResponse(

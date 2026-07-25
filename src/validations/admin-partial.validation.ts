@@ -5,6 +5,7 @@ import {
   queryBoolean,
   idParamSchema,
 } from '#validations/admin-query.validation';
+import { sanitizeProductDescriptionHtml } from '#utils/htmlSanitize.util';
 
 export { idParamSchema };
 
@@ -31,10 +32,18 @@ export const adminCancelOrderSchema = z.object({
 export const adminOrderTimelineQuerySchema = paginationQuerySchema;
 
 /** Products */
+const adminProductDescriptionSchema = z.union([
+  z
+    .string()
+    .max(20000, 'Deskripsi terlalu panjang')
+    .transform((value) => sanitizeProductDescriptionHtml(value) ?? null),
+  z.null(),
+]);
+
 export const adminUpdateProductMetadataSchema = z
   .object({
     name: z.string().trim().min(2).max(200).optional(),
-    description: z.string().trim().max(5000).nullable().optional(),
+    description: adminProductDescriptionSchema.optional(),
     categoryId: z.string().uuid().nullable().optional(),
     pricePerUnit: z.number().positive().optional(),
     minOrder: z.number().positive().optional(),

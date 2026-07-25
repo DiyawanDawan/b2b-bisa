@@ -13,6 +13,7 @@ const dispatchXenditWebhook = async (body: unknown, token: string): Promise<void
   const payload = body as XenditWebhookPayload;
 
   if (normalized.kind === 'ignored') {
+    // Includes payment_method.* and qr.* (QR Codes V1 — not our PR V3 contract).
     console.log(
       `[XENDIT WEBHOOK] Event "${normalized.event}" diabaikan (bukan webhook pembayaran order).`,
     );

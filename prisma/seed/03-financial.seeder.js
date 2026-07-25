@@ -127,12 +127,20 @@ export async function seedFinancial(prisma) {
     usedPaymentNames.add(name);
 
     const group = mapPaymentTypeToGroup(row.Type);
-    const minAmount = parseAmount(row['Min Amount']);
+    let minAmount = parseAmount(row['Min Amount']);
     const maxAmount = parseAmount(row['Max Amount']);
     const refundCapability = parseRefundCapability(row.Refund);
     const supportsSave = parseCsvCheck(row.Save);
     const reusablePaymentCode = parseCsvCheck(row['Reusable Payment Code']);
     const merchantInitiatedTransaction = parseCsvCheck(row['Merchant Initiated Transaction']);
+
+    // QRIS DYNAMIC: floor resmi 1.500 IDR (jangan seed min=1).
+    if (group === 'QRIS' && (minAmount == null || minAmount < 1500)) {
+      minAmount = 1500;
+    }
+
+    // Channel tanpa group valid (Paylater, crypto, …) tidak ditawarkan di checkout.
+    const isActive = group != null;
 
     await prisma.paymentChannel.upsert({
       where: { code },
@@ -149,7 +157,7 @@ export async function seedFinancial(prisma) {
         supportsSave,
         reusablePaymentCode,
         merchantInitiatedTransaction,
-        isActive: true,
+        isActive,
       },
       create: {
         name,
@@ -165,10 +173,21 @@ export async function seedFinancial(prisma) {
         supportsSave,
         reusablePaymentCode,
         merchantInitiatedTransaction,
-        isActive: true,
+        isActive,
       },
     });
     paymentCount++;
+  }
+
+  // Hygiene: nonaktifkan sisa channel group null (Paylater dll.) di DB lama.
+  const deactivatedNullGroup = await prisma.paymentChannel.updateMany({
+    where: { group: null, isActive: true },
+    data: { isActive: false },
+  });
+  if (deactivatedNullGroup.count > 0) {
+    logger.info(
+      `   ↳ Nonaktifkan ${deactivatedNullGroup.count} payment channel tanpa group (Paylater/dll.).`,
+    );
   }
 
   // 3. PAYOUT BANKS — from Xendit Indonesia CSV

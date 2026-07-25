@@ -45,3 +45,21 @@ export const generateProductDescriptionSchema = z.object({
     .optional()
     .default('image/jpeg'),
 });
+
+export const suggestProductTitlesSchema = z.object({
+  nameHint: z.string().max(255).optional(),
+  categoryName: z.string().max(120).optional(),
+  productMode: z.string().max(40).optional(),
+  imageBase64: z
+    .string()
+    .min(100)
+    .optional()
+    .refine((v) => v == null || !v.startsWith('data:'), {
+      message: 'Kirim hanya konten base64 tanpa prefix "data:image/..."',
+    }),
+  mimeType: z
+    .string()
+    .regex(/^image\/(jpeg|png|webp|gif)$/)
+    .optional()
+    .default('image/jpeg'),
+});

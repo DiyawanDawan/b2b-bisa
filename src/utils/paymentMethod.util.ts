@@ -2,6 +2,13 @@ import { PaymentMethod } from '#prisma';
 import AppError from '#utils/appError';
 import type { PaymentMethodType } from '#xendit/payment_request/models';
 
+/** Batas resmi QRIS DYNAMIC (referensi produk Xendit; seed & create harus selaras). */
+export const QRIS_MIN_AMOUNT_IDR = 1500;
+export const QRIS_MAX_AMOUNT_IDR = 10_000_000;
+
+/** Default kedaluwarsa QR Payment Request V3 (24 jam). */
+export const QRIS_DEFAULT_EXPIRY_MS = 24 * 60 * 60 * 1000;
+
 const paymentMethodMap: Record<PaymentMethod, PaymentMethodType> = {
   [PaymentMethod.BANK_TRANSFER]: 'VIRTUAL_ACCOUNT',
   [PaymentMethod.E_WALLET]: 'EWALLET',
@@ -15,6 +22,32 @@ const legacyAliasMap: Record<string, PaymentMethod> = {
   EWALLET: PaymentMethod.E_WALLET,
   CARDS: PaymentMethod.CREDIT_CARD,
   OTC: PaymentMethod.CASH,
+};
+
+const SUPPORTED_CHECKOUT_GROUPS = new Set<string>(Object.values(PaymentMethod));
+
+/**
+ * Tolak channel tanpa group valid (Paylater / null) — jangan pernah default ke BANK_TRANSFER.
+ */
+export const requirePaymentMethodGroup = (
+  group: PaymentMethod | string | null | undefined,
+  channelLabel?: string,
+): PaymentMethod => {
+  if (group == null || String(group).trim() === '') {
+    throw new AppError(
+      channelLabel
+        ? `Metode pembayaran "${channelLabel}" tidak didukung untuk checkout (group kosong).`
+        : 'Metode pembayaran tidak didukung untuk checkout (group kosong).',
+      400,
+    );
+  }
+
+  const normalized = String(group).toUpperCase();
+  if (!SUPPORTED_CHECKOUT_GROUPS.has(normalized)) {
+    throw new AppError(`Unsupported payment method: ${group}`, 400);
+  }
+
+  return normalized as PaymentMethod;
 };
 
 export const mapMethodToXenditType = (method: PaymentMethod | string): PaymentMethodType => {
@@ -43,6 +76,85 @@ export const mapMethodToPaymentKey = (xenditType: PaymentMethodType): string => 
         return 'qrCode';
       }
       throw new AppError(`Unsupported Xendit payment method type: ${xenditType}`, 400);
+  }
+};
+
+export type BuildChannelPropertiesInput = {
+  methodGroup: PaymentMethod;
+  customerName?: string | null;
+  /** Nomór HP untuk channel yang membutuhkannya (mis. OVO). */
+  mobileNumber?: string | null;
+  channelCode?: string;
+  /** Base URL untuk return e-wallet (tanpa path). */
+  returnBaseUrl?: string;
+  /** Override kedaluwarsa QRIS (default: sekarang + 24 jam). */
+  qrisExpiresAt?: Date;
+};
+
+const defaultReturnBase = () =>
+  process.env.CORS_ORIGINS?.split(',')[0]?.trim() || 'http://localhost:3000';
+
+/**
+ * Bangun channel_properties Payment Request V3 per group.
+ * VA / QRIS / e-wallet punya field berbeda — jangan campur.
+ */
+export const buildXenditChannelProperties = (
+  input: BuildChannelPropertiesInput,
+): Record<string, unknown> => {
+  const base = (input.returnBaseUrl || defaultReturnBase()).replace(/\/$/, '');
+  const upperCode = (input.channelCode || '').toUpperCase();
+
+  if (input.methodGroup === PaymentMethod.BANK_TRANSFER) {
+    return {
+      customerName: input.customerName?.trim() || 'BISA B2B Buyer',
+    };
+  }
+
+  if (input.methodGroup === PaymentMethod.QRIS) {
+    return {
+      expiresAt: input.qrisExpiresAt ?? new Date(Date.now() + QRIS_DEFAULT_EXPIRY_MS),
+    };
+  }
+
+  if (input.methodGroup === PaymentMethod.E_WALLET) {
+    const props: Record<string, unknown> = {
+      successReturnUrl: `${base}/payment/success`,
+      failureReturnUrl: `${base}/payment/failed`,
+    };
+    const phone = input.mobileNumber?.trim();
+    if (phone && (upperCode === 'OVO' || upperCode === 'SHOPEEPAY')) {
+      props.mobileNumber = phone;
+    }
+    return props;
+  }
+
+  return {};
+};
+
+/**
+ * Enforce min/max channel + floor/ceiling QRIS (1.500–10.000.000).
+ */
+export const assertPaymentAmountForChannel = (params: {
+  amount: number;
+  methodGroup: PaymentMethod;
+  minAmount?: number | null;
+  maxAmount?: number | null;
+  currency?: string | null;
+}): void => {
+  const currency = params.currency || 'IDR';
+  let min = params.minAmount != null ? Number(params.minAmount) : null;
+  let max = params.maxAmount != null ? Number(params.maxAmount) : null;
+
+  if (params.methodGroup === PaymentMethod.QRIS) {
+    min = Math.max(min ?? QRIS_MIN_AMOUNT_IDR, QRIS_MIN_AMOUNT_IDR);
+    max = Math.min(max ?? QRIS_MAX_AMOUNT_IDR, QRIS_MAX_AMOUNT_IDR);
+  }
+
+  if (min != null && params.amount < min) {
+    throw new AppError(`Minimal pembayaran ${min} ${currency}.`, 400);
+  }
+  if (max != null && params.amount > max) {
+    throw new AppError(`Maksimal pembayaran ${max} ${currency}.`, 400);
   }
 };
 
@@ -174,15 +286,26 @@ export const extractPaymentExpiryDate = (raw: unknown): string | null => {
     const text = String(value).trim();
     if (text.length > 0) return text;
   }
+
+  const paymentMethod = pickRecord(payload, 'payment_method', 'paymentMethod');
+  if (paymentMethod) {
+    for (const key of ['qrCode', 'qr_code', 'virtualAccount', 'virtual_account', 'ewallet']) {
+      const methodData = pickRecord(paymentMethod, key);
+      const channelProps = pickRecord(methodData, 'channel_properties', 'channelProperties');
+      const nested = pickString(channelProps, 'expires_at', 'expiresAt');
+      if (nested) return nested;
+    }
+  }
+
   return null;
 };
 
 export const paymentDataHasPayableDetail = (paymentData: Record<string, unknown>): boolean =>
   Boolean(
     paymentData.virtual_account_number ||
-    paymentData.virtualAccountNumber ||
-    paymentData.qrString ||
-    paymentData.qr_string ||
-    paymentData.redirectUrl ||
-    paymentData.payment_code,
+      paymentData.virtualAccountNumber ||
+      paymentData.qrString ||
+      paymentData.qr_string ||
+      paymentData.redirectUrl ||
+      paymentData.payment_code,
   );

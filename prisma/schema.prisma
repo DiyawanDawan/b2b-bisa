@@ -673,13 +673,18 @@ enum CATEGORY_TYPE {
 
 model Category {
   id          String    @id @default(uuid())
-  name        String    @unique    // e.g. "Limbah Biomassa", "Produk Biochar"
+  name        String    // Unique per parent (see @@unique)
   description String?   @db.Text
   isActive    Boolean   @default(true) @map("is_active")
   createdAt   DateTime  @default(now()) @map("created_at")
   categoryType CATEGORY_TYPE @map("category_type")
   productMode  ProductMode?  @map("product_mode") // Separates Biomass vs Organic categories
   biomassaType BiomassaType? @map("biomassa_type") // Required filter for BIOMASS_MATERIAL shelf
+  /// 1 = root, 2 = mid, 3 = leaf (products attach to level 3)
+  level        Int           @default(1)
+  parentId     String?       @map("parent_id")
+  parent       Category?     @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children     Category[]    @relation("CategoryTree")
 
   products    Product[]
   articles    Article[]
@@ -687,10 +692,13 @@ model Category {
   rfqs        Rfq[]
   vouchers    Voucher[]
 
+  @@unique([parentId, name])
   @@index([name])
   @@index([categoryType])
   @@index([productMode])
   @@index([productMode, biomassaType])
+  @@index([parentId])
+  @@index([level])
   @@index([isActive])
   @@map("categories")
 }

@@ -12,20 +12,45 @@ import { BiomassaType, CATEGORY_TYPE, ProductMode } from '#prisma';
  *  - productMode         : BIOMASS_MATERIAL | ORGANIC_PRODUCE
  *  - biomassaType        : BIOCHAR | SEKAM_PADI | ... (biomass shelf only)
  *  - search              : filter by name/description
+ *  - parentId            : children of a node
+ *  - leavesOnly          : true|false (PRODUK defaults to leaf/L3)
  */
 export const listCategories = catchAsync(async (req: Request, res: Response) => {
   const type = (req.query.categoryType || req.query.type) as CATEGORY_TYPE;
   const productMode = req.query.productMode as ProductMode | undefined;
   const biomassaType = req.query.biomassaType as BiomassaType | undefined;
   const search = req.query.search as string | undefined;
+  const parentIdRaw = req.query.parentId as string | undefined;
+  const leavesOnlyRaw = req.query.leavesOnly as string | undefined;
+  const leavesOnly =
+    leavesOnlyRaw === 'true' ? true : leavesOnlyRaw === 'false' ? false : undefined;
 
   const data = await categoryService.listCategories({
     type,
     productMode,
     biomassaType,
     search,
+    leavesOnly,
+    parentId: parentIdRaw === 'null' ? null : parentIdRaw,
   });
   return successResponse(res, data, 'Daftar kategori berhasil diambil');
+});
+
+/**
+ * GET /api/v1/categories/tree
+ * Nested L1 → L2 → L3 for product category pickers.
+ */
+export const getCategoryTree = catchAsync(async (req: Request, res: Response) => {
+  const type = (req.query.categoryType || req.query.type || 'PRODUK') as CATEGORY_TYPE;
+  const productMode = req.query.productMode as ProductMode | undefined;
+  const biomassaType = req.query.biomassaType as BiomassaType | undefined;
+
+  const data = await categoryService.getCategoryTree({
+    type,
+    productMode,
+    biomassaType,
+  });
+  return successResponse(res, data, 'Pohon kategori berhasil diambil');
 });
 
 /**

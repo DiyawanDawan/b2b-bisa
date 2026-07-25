@@ -29,10 +29,11 @@ export interface ForumProductMention {
 
 export const extractHashtags = (content: string): string[] => {
   if (!content) return [];
+  const plain = content.replace(/<[^>]+>/g, ' ');
   const tags = new Set<string>();
   let match: RegExpExecArray | null;
   HASHTAG_RE.lastIndex = 0;
-  while ((match = HASHTAG_RE.exec(content)) !== null) {
+  while ((match = HASHTAG_RE.exec(plain)) !== null) {
     tags.add(match[1].toLowerCase());
   }
   return [...tags];
@@ -40,10 +41,11 @@ export const extractHashtags = (content: string): string[] => {
 
 export const extractMentionTokens = (content: string): string[] => {
   if (!content) return [];
+  const plain = content.replace(/<[^>]+>/g, ' ');
   const tokens = new Set<string>();
   let match: RegExpExecArray | null;
   MENTION_RE.lastIndex = 0;
-  while ((match = MENTION_RE.exec(content)) !== null) {
+  while ((match = MENTION_RE.exec(plain)) !== null) {
     tokens.add(match[1].toLowerCase());
   }
   return [...tokens];

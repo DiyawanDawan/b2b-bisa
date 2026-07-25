@@ -9,6 +9,12 @@ const router = Router();
 router.get('/', categoryController.listCategories);
 
 /**
+ * @route   GET /api/v1/categories/tree
+ * Must be registered before /:id
+ */
+router.get('/tree', categoryController.getCategoryTree);
+
+/**
  * @route   GET /api/v1/categories/:id
  */
 router.get('/:id', categoryController.getCategoryById);

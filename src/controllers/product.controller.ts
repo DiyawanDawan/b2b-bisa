@@ -88,8 +88,15 @@ function parseImageOrder(imageOrderRaw: string): ImageOrderItem[] {
   return parsed as ImageOrderItem[];
 }
 
-function resolveImageUrls(uploadedUrls: string[], imageOrderRaw?: string): string[] {
-  if (!imageOrderRaw) return uploadedUrls;
+/**
+ * Resolve ordered product image URLs from imageOrder JSON.
+ * `newSources` = multipart uploads and/or pre-uploaded chunked paths (imageUrls).
+ * Mobile clients pre-upload via chunked upload then send imageUrls + imageOrder
+ * with type:"new" indices — those indices must resolve against imageUrls, not
+ * only against req.files (which is empty in that flow).
+ */
+function resolveImageUrls(newSources: string[], imageOrderRaw?: string): string[] {
+  if (!imageOrderRaw) return newSources;
 
   const order = parseImageOrder(imageOrderRaw);
 
@@ -102,17 +109,29 @@ function resolveImageUrls(uploadedUrls: string[], imageOrderRaw?: string): strin
     }
 
     if (item.type === 'new') {
-      if (item.index === undefined || item.index < 0 || item.index >= uploadedUrls.length) {
+      if (newSources.length === 0) {
         throw new AppError(
-          `Index foto baru tidak valid pada posisi ${position + 1} (harus 0–${uploadedUrls.length - 1}).`,
+          `Index foto baru tidak valid pada posisi ${position + 1}: tidak ada foto baru yang diunggah.`,
           400,
         );
       }
-      return uploadedUrls[item.index];
+      if (item.index === undefined || item.index < 0 || item.index >= newSources.length) {
+        throw new AppError(
+          `Index foto baru tidak valid pada posisi ${position + 1} (harus 0–${newSources.length - 1}).`,
+          400,
+        );
+      }
+      return newSources[item.index];
     }
 
     throw new AppError(`Tipe item imageOrder tidak valid pada posisi ${position + 1}.`, 400);
   });
+}
+
+/** Prefer multipart buffers; fall back to pre-uploaded chunked paths. */
+function coalesceNewImageSources(uploadedUrls: string[], preUploaded: string[]): string[] {
+  if (uploadedUrls.length > 0) return uploadedUrls;
+  return preUploaded;
 }
 
 async function validateExistingImageOwnership(
@@ -221,10 +240,11 @@ export const createProduct = catchAsync(async (req: AuthRequest, res: Response) 
 
     uploadedUrls = await uploadProductImages(files, req.user!.id);
     const imageOrderRaw = req.body.imageOrder as string | undefined;
+    const newSources = coalesceNewImageSources(uploadedUrls, preUploaded);
 
     let imageUrls: string[];
     if (imageOrderRaw) {
-      imageUrls = resolveImageUrls(uploadedUrls, imageOrderRaw);
+      imageUrls = resolveImageUrls(newSources, imageOrderRaw);
     } else if (preUploaded.length > 0) {
       imageUrls = preUploaded;
     } else {
@@ -411,6 +431,7 @@ export const updateProduct = catchAsync(async (req: AuthRequest, res: Response) 
     }
 
     uploadedUrls = await uploadProductImages(files, req.user!.id);
+    const newSources = coalesceNewImageSources(uploadedUrls, preUploaded);
 
     if ((files?.length ?? 0) > 0 && !imageOrder) {
       throw new AppError('imageOrder wajib dikirim saat mengunggah foto produk.', 400);
@@ -418,7 +439,7 @@ export const updateProduct = catchAsync(async (req: AuthRequest, res: Response) 
 
     let imageUrls: string[];
     if (imageOrder) {
-      imageUrls = resolveImageUrls(uploadedUrls, imageOrder);
+      imageUrls = resolveImageUrls(newSources, imageOrder);
     } else if (preUploaded.length > 0) {
       imageUrls = preUploaded;
     } else {

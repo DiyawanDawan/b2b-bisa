@@ -60,12 +60,17 @@ export type NormalizedXenditWebhook = {
 };
 
 const PAYMENT_V3_EVENT_PREFIXES = ['payment.', 'payment_request.'] as const;
-const IGNORED_EVENT_PREFIXES = ['payment_method.'] as const;
+/** payment_method.* bukan completion order; qr.* = QR Codes V1 (bukan kontrak kami). */
+const IGNORED_EVENT_PREFIXES = ['payment_method.', 'qr.'] as const;
 const PAYOUT_EVENT_PREFIXES = ['payout.', 'disbursement.'] as const;
 
 /**
  * Normalizes legacy Invoice webhooks and Payment API v3 webhooks
  * ({ event, data: { reference_id, status, amount } }) into one shape.
+ *
+ * Note: event `qr.payment` (QR Codes V1) is classified as `ignored` —
+ * our contract is Payment Request V3 only. Do not point V1 QR callbacks
+ * at `/payments/session-webhook` expecting order updates.
  */
 export function normalizeXenditWebhookPayload(body: unknown): NormalizedXenditWebhook {
   const root = (body && typeof body === 'object' ? body : {}) as XenditWebhookPayload;

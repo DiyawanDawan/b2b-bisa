@@ -63,9 +63,10 @@ export async function seedCertificates(prisma, users) {
   const storeAsset = readAsset('store-certificate-template.png');
 
   const products = await prisma.product.findMany({
-    where: { userId: { in: suppliers.map((s) => s.id) }, status: 'ACTIVE' },
-    select: { id: true, name: true, userId: true },
-    take: 24,
+    where: { userId: { in: suppliers.map((s) => s.id) } },
+    select: { id: true, name: true, userId: true, status: true },
+    take: 30,
+    orderBy: { createdAt: 'desc' },
   });
 
   let productCertCount = 0;
@@ -89,6 +90,24 @@ export async function seedCertificates(prisma, users) {
         if (uploaded) storageKey = uploaded;
       }
 
+      // Status coverage: mostly APPROVED; some PENDING / REJECTED for admin review queues
+      let status = ProductCertificateStatus.APPROVED;
+      let reviewedById = admin?.id ?? null;
+      let reviewedAt = new Date();
+      let rejectionReason = null;
+      if (index === 0 && presetIndex === 0) {
+        status = ProductCertificateStatus.PENDING;
+        reviewedById = null;
+        reviewedAt = null;
+      } else if (index === 1 && presetIndex === 0) {
+        status = ProductCertificateStatus.REJECTED;
+        rejectionReason = '[SEED] Dokumen sertifikat tidak terbaca / masa berlaku tidak valid.';
+      } else if (product.status !== 'ACTIVE' && presetIndex === 0) {
+        status = ProductCertificateStatus.PENDING;
+        reviewedById = null;
+        reviewedAt = null;
+      }
+
       await prisma.productCertificate.create({
         data: {
           productId: product.id,
@@ -103,9 +122,10 @@ export async function seedCertificates(prisma, users) {
           mimeType: 'image/png',
           fileSizeBytes: productAsset?.buffer.length ?? 512_000,
           sha256: productAsset?.sha256 ?? null,
-          status: ProductCertificateStatus.APPROVED,
-          reviewedById: admin?.id ?? null,
-          reviewedAt: new Date(),
+          status,
+          reviewedById,
+          reviewedAt,
+          rejectionReason,
         },
       });
       productCertCount += 1;
@@ -128,7 +148,7 @@ export async function seedCertificates(prisma, users) {
   let storeCertCount = 0;
   for (const [index, supplier] of suppliers.slice(0, 12).entries()) {
     const presets = STORE_CERT_TYPES.slice(0, index % 3 === 0 ? 2 : 1);
-    for (const preset of presets) {
+    for (const [presetIndex, preset] of presets.entries()) {
       const existing = await prisma.supplierStoreCertificate.findFirst({
         where: { supplierId: supplier.id, certificateType: preset.type },
       });
@@ -146,6 +166,19 @@ export async function seedCertificates(prisma, users) {
         if (uploaded) storageKey = uploaded;
       }
 
+      let status = ProductCertificateStatus.APPROVED;
+      let reviewedById = admin?.id ?? null;
+      let reviewedAt = new Date();
+      let rejectionReason = null;
+      if (index === 0 && presetIndex === 0) {
+        status = ProductCertificateStatus.PENDING;
+        reviewedById = null;
+        reviewedAt = null;
+      } else if (index === 1 && presetIndex === 0) {
+        status = ProductCertificateStatus.REJECTED;
+        rejectionReason = '[SEED] Izin usaha tidak sesuai wilayah operasional.';
+      }
+
       await prisma.supplierStoreCertificate.create({
         data: {
           supplierId: supplier.id,
@@ -160,9 +193,10 @@ export async function seedCertificates(prisma, users) {
           mimeType: 'image/png',
           fileSizeBytes: storeAsset?.buffer.length ?? 512_000,
           sha256: storeAsset?.sha256 ?? null,
-          status: ProductCertificateStatus.APPROVED,
-          reviewedById: admin?.id ?? null,
-          reviewedAt: new Date(),
+          status,
+          reviewedById,
+          reviewedAt,
+          rejectionReason,
         },
       });
       storeCertCount += 1;

@@ -539,18 +539,23 @@ export async function seedRegionalMarketSales(prisma) {
   }
 
   const provinces = await prisma.province.findMany({ where: { countryId: country.id } });
-  const catBiochar = await prisma.category.findFirst({
-    where: { productMode: 'BIOMASS_MATERIAL', biomassaType: 'BIOCHAR' },
-  });
-  const catSekam = await prisma.category.findFirst({
-    where: { productMode: 'BIOMASS_MATERIAL', biomassaType: 'SEKAM_PADI' },
-  });
-  const catJagung = await prisma.category.findFirst({
-    where: { productMode: 'BIOMASS_MATERIAL', biomassaType: 'TONGKOL_JAGUNG' },
-  });
-  const catKelapa = await prisma.category.findFirst({
-    where: { productMode: 'BIOMASS_MATERIAL', biomassaType: 'TEMPURUNG_KELAPA' },
-  });
+  // Always attach regional products to L3 leaves (not L2 mid-nodes).
+  const l3Leaf = async (biomassaType) =>
+    prisma.category.findFirst({
+      where: {
+        categoryType: 'PRODUK',
+        productMode: 'BIOMASS_MATERIAL',
+        biomassaType,
+        level: 3,
+        isActive: true,
+      },
+      orderBy: { name: 'asc' },
+    });
+
+  const catBiochar = await l3Leaf('BIOCHAR');
+  const catSekam = await l3Leaf('SEKAM_PADI');
+  const catJagung = await l3Leaf('TONGKOL_JAGUNG');
+  const catKelapa = await l3Leaf('TEMPURUNG_KELAPA');
   const categoryFor = (biomassaType) => {
     if (biomassaType === 'BIOCHAR') return catBiochar?.id;
     if (biomassaType === 'SEKAM_PADI') return catSekam?.id;

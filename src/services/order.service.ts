@@ -63,11 +63,14 @@ import {
   sleep,
 } from '#utils/xenditPaymentRequestV3.util';
 import {
+  assertPaymentAmountForChannel,
+  buildXenditChannelProperties,
   extractPaymentExpiryDate,
   extractXenditDirectPaymentData,
   mapMethodToPaymentKey,
   mapMethodToXenditType,
   paymentDataHasPayableDetail,
+  requirePaymentMethodGroup,
 } from '#utils/paymentMethod.util';
 import { attachOrderMediaUrls } from '#utils/orderMedia.util';
 import { buildBisaTrackingNumber } from '#utils/order-tracking.util';
@@ -1996,7 +1999,7 @@ const persistMockPaymentInit = async (params: {
   amount: number;
   externalId: string;
 }) => {
-  const methodGroup = params.channel.group || PaymentMethod.BANK_TRANSFER;
+  const methodGroup = requirePaymentMethodGroup(params.channel.group, params.channel.name);
   const { providerActions, response } = buildMockPaymentInitResult({
     orderId: params.order.id,
     orderNumber: params.order.orderNumber,
@@ -2122,6 +2125,7 @@ export const initializeBatchPayment = async (
   orderIds: string[],
   channelCode?: string,
   forceNew = false,
+  opts?: { mobileNumber?: string },
 ) => {
   const uniqueIds = Array.from(new Set(orderIds));
   if (uniqueIds.length === 1) {
@@ -2139,7 +2143,7 @@ export const initializeBatchPayment = async (
     }
     // Direct checkout 1 supplier: tidak punya checkoutBatchId → bayar per pesanan.
     if (!lone.checkoutBatchId) {
-      const payment = await initializePayment(lone.id, buyerId, channelCode, forceNew);
+      const payment = await initializePayment(lone.id, buyerId, channelCode, forceNew, opts);
       return {
         ...payment,
         checkoutBatchId: null,
@@ -2202,7 +2206,7 @@ export const initializeBatchPayment = async (
     });
   });
 
-  const payment = await initializePayment(leadOrder.id, buyerId, channelCode, forceNew);
+  const payment = await initializePayment(leadOrder.id, buyerId, channelCode, forceNew, opts);
 
   const checkoutBatchNumber =
     orders[0]?.checkoutBatchNumber ?? (orders.length === 1 ? orders[0]?.orderNumber : null);
@@ -2283,6 +2287,7 @@ export const initializePayment = async (
   buyerId: string,
   channelCode?: string,
   forceNew = false,
+  opts?: { mobileNumber?: string },
 ) => {
   // 1. Validasi Order (Dinamis: Include Buyer untuk Metadata)
   const order = await prisma.order.findUnique({
@@ -2489,32 +2494,28 @@ export const initializePayment = async (
         503,
       );
 
+    const resolvedGroup = requirePaymentMethodGroup(channel.group, channel.name);
+
     void saveUserPaymentPreference(buyerId, {
       code: channel.code,
       name: channel.name,
-      group: channel.group ?? 'BANK_TRANSFER',
+      group: resolvedGroup,
     });
 
-    const payAmount = new Prisma.Decimal(amount);
-    if (channel.minAmount && payAmount.lt(channel.minAmount)) {
-      throw new AppError(
-        `Minimal pembayaran ${Number(channel.minAmount)} ${channel.currency || 'IDR'}.`,
-        400,
-      );
-    }
-    if (channel.maxAmount && payAmount.gt(channel.maxAmount)) {
-      throw new AppError(
-        `Maksimal pembayaran ${Number(channel.maxAmount)} ${channel.currency || 'IDR'}.`,
-        400,
-      );
-    }
+    assertPaymentAmountForChannel({
+      amount,
+      methodGroup: resolvedGroup,
+      minAmount: channel.minAmount != null ? Number(channel.minAmount) : null,
+      maxAmount: channel.maxAmount != null ? Number(channel.maxAmount) : null,
+      currency: channel.currency,
+    });
   }
 
   if (isXenditMockPaymentEnabled() && !isXenditWebhookDevMode()) {
     const mockChannel =
       channel ??
       (await prisma.paymentChannel.findFirst({
-        where: { isActive: true },
+        where: { isActive: true, group: { not: null } },
         select: paymentChannelSelect,
       }));
     if (!mockChannel) {
@@ -2548,18 +2549,18 @@ export const initializePayment = async (
   // MODE DIRECT (channelCode) â†’ Payment Request V3 (Zero Hardcode)
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   if (channelCode && channel) {
-    const methodGroup = channel.group || PaymentMethod.BANK_TRANSFER;
+    const methodGroup = requirePaymentMethodGroup(channel.group, channel.name);
     const xenditType = mapMethodToXenditType(methodGroup);
     const paymentMethodKey = mapMethodToPaymentKey(xenditType);
     const upperCode = channel.code.toUpperCase();
 
-    // Bangun properti tambahan per grup secara dinamis
-    const props: Record<string, any> = {};
-    if (methodGroup === PaymentMethod.E_WALLET) {
-      props.success_return_url = `${process.env.CORS_ORIGINS?.split(',')[0] || 'http://localhost:3000'}/payment/success`;
-    } else if (methodGroup === PaymentMethod.BANK_TRANSFER) {
-      props.customerName = order.buyer?.fullName || 'BISA B2B Buyer';
-    }
+    // Properti per grup: VA ≠ QRIS ≠ e-wallet (jangan default / campur field).
+    const props = buildXenditChannelProperties({
+      methodGroup,
+      customerName: order.buyer?.fullName,
+      mobileNumber: opts?.mobileNumber,
+      channelCode: upperCode,
+    });
 
     const paymentMethodPayload: Record<string, unknown> = {
       type: xenditType,
@@ -2611,7 +2612,7 @@ export const initializePayment = async (
             data: {
               paymentRequestId: latestPaymentRequest.id,
               paymentChannelId: channel.id,
-              paymentMethod: channel.group ?? undefined,
+              paymentMethod: methodGroup,
               providerActions: sealProviderActions(latestPaymentRequest),
             },
           });
@@ -2624,6 +2625,7 @@ export const initializePayment = async (
             channelName: channel.name,
             paymentData: extractedAttempt.paymentData,
             amount,
+            expiryDate: extractPaymentExpiryDate(latestPaymentRequest),
           };
         }
 
@@ -2640,7 +2642,7 @@ export const initializePayment = async (
         data: {
           paymentRequestId: paymentRequest.id,
           paymentChannelId: channel.id,
-          paymentMethod: channel.group ?? undefined,
+          paymentMethod: methodGroup,
           providerActions: sealProviderActions(latestPaymentRequest),
         },
       });
@@ -2654,8 +2656,14 @@ export const initializePayment = async (
       }
 
       if (!paymentDataHasPayableDetail(extracted.paymentData)) {
+        const hint =
+          methodGroup === PaymentMethod.QRIS
+            ? 'QRIS belum tersedia dari Xendit'
+            : methodGroup === PaymentMethod.E_WALLET
+              ? 'Link e-wallet belum tersedia dari Xendit'
+              : 'Nomor VA belum tersedia dari Xendit';
         throw new AppError(
-          'Nomor VA/QR belum tersedia dari Xendit. Tunggu beberapa detik lalu coba "Lanjut ke Pembayaran" lagi.',
+          `${hint}. Tunggu beberapa detik lalu coba "Lanjut ke Pembayaran" lagi.`,
           502,
         );
       }
@@ -2703,7 +2711,7 @@ export const initializePayment = async (
       const mockChannel =
         channel ??
         (await prisma.paymentChannel.findFirst({
-          where: { isActive: true },
+          where: { isActive: true, group: { not: null } },
           select: paymentChannelSelect,
         }));
       if (mockChannel) {

@@ -661,7 +661,11 @@ export const handleXenditPaymentRequestWebhook = async (
 export const getAvailableChannels = async () =>
   cacheAside(cacheKeys.payChannels(), CACHE_TTL.PAY_CHANNELS, () =>
     prisma.paymentChannel.findMany({
-      where: { isActive: true },
+      where: {
+        isActive: true,
+        // Paylater / crypto / unmapped types have null group — never offer as checkout.
+        group: { not: null },
+      },
       select: {
         id: true,
         name: true,

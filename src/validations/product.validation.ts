@@ -1,5 +1,12 @@
 import { z } from 'zod';
 import { BiomassaType, BiocharGrade, ProductStatus, UnitStatus, ProductMode } from '#prisma';
+import { sanitizeProductDescriptionHtml } from '#utils/htmlSanitize.util';
+
+const descriptionSchema = z
+  .string()
+  .max(20000, 'Deskripsi terlalu panjang')
+  .optional()
+  .transform((v) => sanitizeProductDescriptionHtml(v));
 
 const createStatusSchema = z.union([
   z.literal(ProductStatus.ACTIVE),
@@ -35,7 +42,7 @@ export const createProductSchema = z.object({
   name: z.string().min(3, 'Nama produk minimal 3 karakter'),
   biomassaType: z.nativeEnum(BiomassaType, { required_error: 'Jenis biomassa wajib dipilih' }),
   grade: z.nativeEnum(BiocharGrade).optional(), // Only required if biomassaType === BIOCHAR
-  description: z.string().optional(),
+  description: descriptionSchema,
   pricePerUnit: z.coerce.number().positive('Harga per unit harus lebih dari 0'),
   stock: z.coerce.number().nonnegative('Stok tidak boleh negatif'),
   minOrder: z.coerce.number().min(1).default(100),

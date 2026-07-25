@@ -41,4 +41,12 @@ router.post(
   aiController.generateProductDescription,
 );
 
+router.post(
+  '/suggest-product-titles',
+  requireAuth,
+  chatbotLimiter,
+  validate(aiValidation.suggestProductTitlesSchema, 'body'),
+  aiController.suggestProductTitles,
+);
+
 export default router;

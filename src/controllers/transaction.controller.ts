@@ -77,6 +77,8 @@ export const getTransactionById = catchAsync(async (req: AuthRequest, res: Respo
 export const createPaymentRequest = catchAsync(async (req: AuthRequest, res: Response) => {
   const { id } = req.params; // Transaction ID
   const channelCode = typeof req.body?.channelCode === 'string' ? req.body.channelCode : undefined;
+  const mobileNumber =
+    typeof req.body?.mobileNumber === 'string' ? req.body.mobileNumber : undefined;
 
   const transaction = await prisma.transaction.findUnique({
     where: { id },
@@ -119,6 +121,8 @@ export const createPaymentRequest = catchAsync(async (req: AuthRequest, res: Res
     transaction.orderId,
     transaction.userId,
     channelCode,
+    false,
+    mobileNumber ? { mobileNumber } : undefined,
   );
   successResponse(res, initialized, 'Pembayaran berhasil diinisialisasi.');
 });

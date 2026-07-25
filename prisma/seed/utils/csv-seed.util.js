@@ -92,7 +92,7 @@ const PAYMENT_TYPE_TO_GROUP = {
   'CARDS INSTALLMENT': 'CREDIT_CARD',
   'OVER THE COUNTER': 'CASH',
   'ONLINE BANKING': 'BANK_TRANSFER',
-  PAYLATER: null,
+  PAYLATER: null, // Not a checkout group — seed sets isActive=false
   CRYPTOCURRENCY: null,
 };
 

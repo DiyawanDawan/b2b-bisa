@@ -464,26 +464,24 @@ export const askAssistant = async (question: string): Promise<string> => {
  *  6. Maksimal 3 kalimat.
  */
 const PRODUCT_DESC_SYSTEM_PROMPT = `Kamu adalah asisten pendeskripsian produk untuk marketplace biomassa Indonesia (BISA Marketplace).
-Tugasmu HANYA menulis deskripsi singkat suatu produk biomassa berdasarkan gambar yang diberikan.
+Tugasmu menulis deskripsi produk biomassa/pertanian berdasarkan gambar yang diberikan.
 
-ATURAN WAJIB — TIDAK BOLEH DILANGGAR:
-1. Output HANYA berupa deskripsi produk 2–3 kalimat dalam Bahasa Indonesia yang baik.
-2. DILARANG KERAS menulis kode pemrograman, HTML, markdown, JSON, atau format teknis apapun.
-3. DILARANG menyebut harga, diskon, nama toko, nomor telepon, atau data yang tidak terlihat di gambar.
-4. DILARANG menjawab pertanyaan, memberikan saran, atau melakukan hal selain mendeskripsikan produk.
-5. Jika gambar yang diberikan BUKAN produk biomassa atau produk pertanian (misalnya: foto selfie, pemandangan, makanan, hewan peliharaan, teks, kode, logo, dsb), WAJIB balas HANYA dengan teks tepat ini (tanpa tambahan apapun): BUKAN_PRODUK_BIOMASSA
-6. Deskripsi fokus pada: jenis biomassa, karakteristik fisik yang terlihat (warna, tekstur, bentuk), dan kegunaan umum produk tersebut.
-7. Teks harus polos, tanpa bullet, tanpa penomoran, tanpa tanda bintang.
-8. Maksimal 3 kalimat.
+ATURAN:
+1. Output berupa HTML sederhana saja (tag diizinkan: p, strong, em, ul, ol, li, h3, br). Tanpa markdown, tanpa kode.
+2. 2–4 paragraf singkat dalam Bahasa Indonesia yang baik.
+3. Boleh 1 daftar bullet singkat untuk keunggulan jika relevan.
+4. DILARANG menyebut harga, diskon, nama toko, nomor telepon.
+5. Jika gambar BUKAN produk biomassa/pertanian, balas HANYA: BUKAN_PRODUK_BIOMASSA
+6. Fokus: jenis produk, karakteristik fisik terlihat, kegunaan umum.`;
 
-Contoh output yang BENAR:
-"Biochar sekam padi berkualitas tinggi dengan warna hitam pekat dan tekstur ringan berpori. Diproduksi melalui proses pirolisis terkontrol yang mempertahankan struktur karbon optimal. Cocok digunakan sebagai pembenah tanah untuk meningkatkan kesuburan dan kemampuan tanah menyerap air."
+const PRODUCT_TITLE_SYSTEM_PROMPT = `Kamu adalah asisten penamaan produk untuk marketplace biomassa Indonesia (BISA Marketplace).
+Buat 4 saran judul produk yang jelas, spesifik, dan siap jual (maks 80 karakter per judul).
 
-Contoh output yang SALAH (jangan lakukan ini):
-- Menulis kode: \`const desc = ...\`
-- Menulis harga: "Harga Rp 50.000/kg"
-- Menjawab pertanyaan: "Tentu, gambar ini menunjukkan..."
-- Menambahkan penomoran: "1. Produk ini... 2. ..."`;
+ATURAN:
+1. Output HANYA JSON array string, contoh: ["Judul A","Judul B","Judul C","Judul D"]
+2. Bahasa Indonesia. Tanpa nomor, tanpa markdown, tanpa penjelasan.
+3. Manfaatkan petunjuk nama/kategori jika ada. Jangan sebut harga.
+4. Jika konteks jelas bukan produk biomassa/pertanian, kembalikan [].`;
 
 /**
  * Generate deskripsi produk dari gambar menggunakan Gemini Vision.
@@ -530,9 +528,9 @@ export const generateProductDescription = async (
       // Temperatur rendah = output lebih deterministic, kurangi halusinasi
       temperature: 0.2,
       topP: 0.8,
-      maxOutputTokens: 200,
+      maxOutputTokens: 400,
       // Stop sequence agar tidak ada output di luar deskripsi
-      stopSequences: ['```', '<', 'def ', 'function ', 'import ', 'const '],
+      stopSequences: ['```', 'def ', 'function ', 'import ', 'const '],
     },
     safetySettings: [
       { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_LOW_AND_ABOVE' },
@@ -564,7 +562,7 @@ export const generateProductDescription = async (
     }
 
     const raw = res.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-    const cleaned = stripMarkdown(raw).trim();
+    const cleaned = raw.replace(/```html|```/gi, '').trim();
 
     if (!cleaned) {
       throw new Error('AI tidak menghasilkan deskripsi. Coba foto yang lebih jelas.');
@@ -574,6 +572,92 @@ export const generateProductDescription = async (
   } catch (error: unknown) {
     const errMsg = error instanceof Error ? error.message : 'Unknown error';
     console.error('[AI SERVICE] generateProductDescription Error:', errMsg);
+    throw new Error(errMsg);
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+export type SuggestProductTitlesInput = {
+  nameHint?: string;
+  categoryName?: string;
+  productMode?: string;
+  imageBase64?: string;
+  mimeType?: string;
+};
+
+/**
+ * Suggest several product titles (Tokopedia-style "Saran").
+ */
+export const suggestProductTitles = async (
+  input: SuggestProductTitlesInput,
+): Promise<string[]> => {
+  if (!GOOGLE_GEMINI_API_KEY) {
+    throw new Error('Layanan AI tidak tersedia saat ini. Silakan hubungi administrator.');
+  }
+
+  const parts: Array<Record<string, unknown>> = [
+    { text: PRODUCT_TITLE_SYSTEM_PROMPT },
+    {
+      text: [
+        `Petunjuk nama: ${input.nameHint?.trim() || '(kosong)'}`,
+        `Kategori: ${input.categoryName?.trim() || '(kosong)'}`,
+        `Mode produk: ${input.productMode?.trim() || '(kosong)'}`,
+        'Buat 4 saran judul sekarang sebagai JSON array string.',
+      ].join('\n'),
+    },
+  ];
+
+  if (input.imageBase64 && input.imageBase64.length > 100) {
+    if (input.imageBase64.length > 4_000_000) {
+      throw new Error('Ukuran gambar terlalu besar. Gunakan gambar maksimal 3 MB.');
+    }
+    parts.splice(1, 0, {
+      inline_data: {
+        mime_type: input.mimeType || 'image/jpeg',
+        data: input.imageBase64,
+      },
+    });
+  }
+
+  const body = {
+    contents: [{ parts }],
+    generationConfig: {
+      temperature: 0.4,
+      topP: 0.9,
+      maxOutputTokens: 300,
+    },
+  };
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GOOGLE_GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal as any,
+      },
+    );
+    const res = (await response.json()) as GeminiResponse;
+    if (!response.ok) {
+      throw new Error(res.error?.message || 'Gagal menghubungi layanan AI');
+    }
+    const raw = res.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    const match = raw.match(/\[[\s\S]*\]/);
+    if (!match) return [];
+    const parsed = JSON.parse(match[0]) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((v) => String(v).trim())
+      .filter((v) => v.length >= 3 && v.length <= 255)
+      .slice(0, 5);
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[AI SERVICE] suggestProductTitles Error:', errMsg);
     throw new Error(errMsg);
   } finally {
     clearTimeout(timeout);

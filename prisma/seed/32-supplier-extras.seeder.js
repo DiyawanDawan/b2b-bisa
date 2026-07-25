@@ -68,23 +68,61 @@ export async function seedSupplierExtras(prisma, users) {
     select: { id: true },
   });
 
-  const live = await prisma.liveSession.create({
-    data: {
-      supplierId: supplier.id,
+  const liveSessions = [
+    {
       title: '[SEED] Live Panen Organik Demo',
       description: 'Sesi live demo hasil tani & jadwal panen.',
       status: 'SCHEDULED',
       scheduledAt: new Date(Date.now() + 3 * 86400000),
-      pinnedProductIds: organicProduct ? [organicProduct.id] : [],
+      startedAt: null,
+      endedAt: null,
       viewerCount: 42,
     },
-  });
+    {
+      title: '[SEED] Live sekarang — QC biochar batch',
+      description: 'Sesi LIVE demo seed untuk admin/moderation coverage.',
+      status: 'LIVE',
+      scheduledAt: new Date(Date.now() - 30 * 60000),
+      startedAt: new Date(Date.now() - 25 * 60000),
+      endedAt: null,
+      viewerCount: 128,
+      streamUrl: 'https://bisa.es/live/seed-demo',
+    },
+    {
+      title: '[SEED] Live selesai — review panen minggu lalu',
+      description: 'Replay/ENDED demo seed.',
+      status: 'ENDED',
+      scheduledAt: new Date(Date.now() - 5 * 86400000),
+      startedAt: new Date(Date.now() - 5 * 86400000 + 3600000),
+      endedAt: new Date(Date.now() - 5 * 86400000 + 7200000),
+      viewerCount: 310,
+    },
+  ];
+
+  let firstLiveId = null;
+  for (const sess of liveSessions) {
+    const live = await prisma.liveSession.create({
+      data: {
+        supplierId: supplier.id,
+        title: sess.title,
+        description: sess.description,
+        status: sess.status,
+        scheduledAt: sess.scheduledAt,
+        startedAt: sess.startedAt,
+        endedAt: sess.endedAt,
+        streamUrl: sess.streamUrl ?? null,
+        pinnedProductIds: organicProduct ? [organicProduct.id] : [],
+        viewerCount: sess.viewerCount,
+      },
+    });
+    if (!firstLiveId) firstLiveId = live.id;
+  }
 
   const commentAuthors = [buyer, supplier].filter(Boolean);
   for (let i = 0; i < 3; i++) {
     await prisma.liveSessionComment.create({
       data: {
-        sessionId: live.id,
+        sessionId: firstLiveId,
         userId: commentAuthors[i % commentAuthors.length].id,
         message: ['Kapan panen berikutnya?', 'Bisa booking 2 ton?', 'Kualitas organik terjaga?'][i],
       },
@@ -108,6 +146,27 @@ export async function seedSupplierExtras(prisma, users) {
           sourceType: 'TEXT',
           status: 'INDEXED',
           chunkCount: 2,
+          uploadedById: admin.id,
+        },
+        {
+          title: '[SEED] Dokumen menunggu index',
+          description: 'Knowledge PENDING — antrian indexing.',
+          sourceType: 'PDF',
+          fileName: 'seed-pending.pdf',
+          mimeType: 'application/pdf',
+          status: 'PENDING',
+          chunkCount: 0,
+          uploadedById: admin.id,
+        },
+        {
+          title: '[SEED] Dokumen gagal index',
+          description: 'Knowledge FAILED — error parsing.',
+          sourceType: 'PDF',
+          fileName: 'seed-failed.pdf',
+          mimeType: 'application/pdf',
+          status: 'FAILED',
+          chunkCount: 0,
+          errorMessage: '[SEED] Gagal mengekstrak teks PDF (file korup / password-protected).',
           uploadedById: admin.id,
         },
       ],

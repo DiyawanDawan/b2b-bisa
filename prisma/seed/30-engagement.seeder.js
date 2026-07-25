@@ -1,6 +1,18 @@
 import logger from '../../src/config/logger.js';
 import { faker } from '@faker-js/faker/locale/id_ID';
 
+async function findL3Leaf(prisma, where) {
+  return prisma.category.findFirst({
+    where: {
+      categoryType: 'PRODUK',
+      level: 3,
+      isActive: true,
+      ...where,
+    },
+    orderBy: { name: 'asc' },
+  });
+}
+
 export async function seedEngagement(prisma, users) {
   logger.info('🌱 [30] Seeding engagement (Q&A, RFQ, cart, vouchers, likes, follows)...');
 
@@ -13,6 +25,7 @@ export async function seedEngagement(prisma, users) {
   await prisma.userFollow.deleteMany({});
 
   const buyer = users?.hendra ?? users?.allBuyers?.[0];
+  const admin = users?.admin;
   const suppliers = [users?.siti, users?.green, ...(users?.allSuppliers ?? [])].filter(Boolean);
   const supplierIds = [...new Set(suppliers.map((s) => s.id))];
 
@@ -39,7 +52,7 @@ export async function seedEngagement(prisma, users) {
   });
 
   const biomassProduct = await prisma.product.findFirst({
-    where: { productMode: 'BIOMASS_MATERIAL' },
+    where: { productMode: 'BIOMASS_MATERIAL', status: 'ACTIVE' },
     orderBy: { createdAt: 'desc' },
     select: { id: true, name: true, minOrder: true, userId: true },
   });
@@ -49,7 +62,7 @@ export async function seedEngagement(prisma, users) {
     products.push(biomassProduct);
   }
 
-  // Product Q&A
+  // Product Q&A (including flagged / hidden for admin moderation)
   let qaCount = 0;
   for (const product of products.slice(0, 6)) {
     const questions = [
@@ -73,11 +86,55 @@ export async function seedEngagement(prisma, users) {
     }
   }
 
-  // RFQ
-  const catBiochar = await prisma.category.findFirst({
-    where: { productMode: 'BIOMASS_MATERIAL', biomassaType: 'BIOCHAR' },
+  if (products[0]) {
+    await prisma.productQuestion.create({
+      data: {
+        productId: products[0].id,
+        askerId: buyer.id,
+        question: '[SEED] Pertanyaan di-flag — konten spam promo eksternal',
+        isFlagged: true,
+        moderationNote: 'Flag otomatis seed: mengandung link spam.',
+        moderatedAt: new Date(),
+        moderatedById: admin?.id ?? null,
+      },
+    });
+    qaCount++;
+
+    await prisma.productQuestion.create({
+      data: {
+        productId: products[0].id,
+        askerId: buyer.id,
+        question: '[SEED] Pertanyaan disembunyikan dari PDP',
+        answer: 'Jawaban lama sebelum moderasi.',
+        answeredAt: new Date(),
+        answeredById: products[0].userId,
+        isHidden: true,
+        isFlagged: true,
+        moderationNote: 'Disembunyikan karena tidak relevan / ofensif.',
+        moderatedAt: new Date(),
+        moderatedById: admin?.id ?? null,
+      },
+    });
+    qaCount++;
+  }
+
+  // RFQ — categories must be L3 leaves
+  const catBiochar = await findL3Leaf(prisma, {
+    productMode: 'BIOMASS_MATERIAL',
+    biomassaType: 'BIOCHAR',
   });
-  const catOrganic = await prisma.category.findFirst({ where: { name: 'Beras Organik' } });
+  const catSekam = await findL3Leaf(prisma, {
+    productMode: 'BIOMASS_MATERIAL',
+    biomassaType: 'SEKAM_PADI',
+  });
+  const catOrganic = await findL3Leaf(prisma, {
+    productMode: 'ORGANIC_PRODUCE',
+    name: 'Beras Organik',
+  });
+  const catSayur = await findL3Leaf(prisma, {
+    productMode: 'ORGANIC_PRODUCE',
+    name: 'Sayur Segar',
+  });
 
   const rfqDefs = [
     {
@@ -100,7 +157,7 @@ export async function seedEngagement(prisma, users) {
       title: 'RFQ Sayur Organik Grosir',
       productMode: 'ORGANIC_PRODUCE',
       biomassaType: 'OTHER',
-      categoryId: catOrganic?.id,
+      categoryId: catSayur?.id ?? catOrganic?.id,
       quantity: 500,
       status: 'MATCHED',
     },
@@ -108,7 +165,7 @@ export async function seedEngagement(prisma, users) {
       title: 'RFQ Sekam Padi Industri',
       productMode: 'BIOMASS_MATERIAL',
       biomassaType: 'SEKAM_PADI',
-      categoryId: catBiochar?.id,
+      categoryId: catSekam?.id,
       quantity: 120,
       status: 'CLOSED',
     },
@@ -119,6 +176,17 @@ export async function seedEngagement(prisma, users) {
       categoryId: catOrganic?.id,
       quantity: 10,
       status: 'EXPIRED',
+    },
+    {
+      title: '[SEED] RFQ di-flag admin — spek mencurigakan',
+      productMode: 'BIOMASS_MATERIAL',
+      biomassaType: 'BIOCHAR',
+      categoryId: catBiochar?.id,
+      quantity: 999,
+      status: 'OPEN',
+      isFlagged: true,
+      flagReason: 'Seed: permintaan volume tidak realistis + kontak di luar platform.',
+      flaggedAt: new Date(),
     },
   ];
 
@@ -137,6 +205,9 @@ export async function seedEngagement(prisma, users) {
         deliveryDate: faker.date.soon({ days: 30 }),
         budgetMax: faker.number.int({ min: 5_000_000, max: 50_000_000 }),
         status: def.status,
+        isFlagged: def.isFlagged ?? false,
+        flagReason: def.flagReason ?? null,
+        flaggedAt: def.flaggedAt ?? null,
       },
     });
     rfqCount++;

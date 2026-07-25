@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { PostStatus } from '#prisma';
+import { sanitizeProductDescriptionHtml, stripHtmlToPlain } from '#utils/htmlSanitize.util';
 
 /** Cover: path R2 (articles/…, general/…) atau URL legacy. */
 const articleImageSchema = z
@@ -16,10 +17,18 @@ const articleImageSchema = z
   .optional()
   .nullable();
 
+const articleContentSchema = z
+  .string()
+  .max(20000, 'Konten terlalu panjang')
+  .transform((value) => sanitizeProductDescriptionHtml(value) ?? '')
+  .refine((value) => stripHtmlToPlain(value).length >= 20, {
+    message: 'Konten minimal 20 karakter teks',
+  });
+
 export const createArticleSchema = z.object({
   body: z.object({
     title: z.string().min(5, 'Judul minimal 5 karakter'),
-    content: z.string().min(20, 'Konten minimal 20 karakter'),
+    content: articleContentSchema,
     categoryId: z.string().uuid('Category ID tidak valid').optional(),
     imageUrl: articleImageSchema,
     status: z.nativeEnum(PostStatus).optional().default(PostStatus.PUBLISHED),
@@ -32,7 +41,7 @@ export const updateArticleSchema = z.object({
   }),
   body: z.object({
     title: z.string().min(5, 'Judul minimal 5 karakter').optional(),
-    content: z.string().min(20, 'Konten minimal 20 karakter').optional(),
+    content: articleContentSchema.optional(),
     categoryId: z.string().uuid('Category ID tidak valid').optional().nullable(),
     imageUrl: articleImageSchema,
     status: z.nativeEnum(PostStatus).optional(),

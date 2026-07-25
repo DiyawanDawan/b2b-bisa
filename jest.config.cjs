@@ -17,6 +17,9 @@ module.exports = {
     '^#types/(.*)$': '<rootDir>/src/types/$1',
     '^#validations/(.*)\\.js$': '<rootDir>/src/validations/$1.ts',
     '^#validations/(.*)$': '<rootDir>/src/validations/$1',
+    '^#xendit/payment_request/models$': '<rootDir>/src/xendit/payment_request/models.ts',
+    '^#xendit/refund/models$': '<rootDir>/src/xendit/refund/models.ts',
+    '^#xendit/payout/models$': '<rootDir>/src/xendit/payout/models.ts',
   },
   transform: {
     '^.+\\.tsx?$': [

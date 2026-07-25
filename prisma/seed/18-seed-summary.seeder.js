@@ -27,6 +27,8 @@ export async function seedSummary(prisma) {
     rfqs,
     supportTickets,
     platformSettings,
+    articles,
+    forumPosts,
   ] = await Promise.all([
     prisma.user.count(),
     prisma.user.count({ where: { role: 'SUPPLIER' } }),
@@ -50,7 +52,46 @@ export async function seedSummary(prisma) {
     prisma.rfq.count(),
     prisma.supportTicket.count({ where: { subject: { startsWith: '[SEED]' } } }),
     prisma.platformSetting.count(),
+    prisma.article.count(),
+    prisma.forumPost.count(),
   ]);
+
+  const [
+    productStatusDist,
+    articleStatusDist,
+    forumStatusDist,
+    kycStatusDist,
+    certStatusDist,
+    harvestStatusDist,
+    liveStatusDist,
+    knowledgeStatusDist,
+    productsAboveL3,
+    flaggedQuestions,
+    flaggedRfqs,
+    aiHandoffTickets,
+  ] = await Promise.all([
+    prisma.product.groupBy({ by: ['status'], _count: { _all: true } }),
+    prisma.article.groupBy({ by: ['status'], _count: { _all: true } }),
+    prisma.forumPost.groupBy({ by: ['status'], _count: { _all: true } }),
+    prisma.userVerification.groupBy({ by: ['verificationStatus'], _count: { _all: true } }),
+    prisma.productCertificate.groupBy({ by: ['status'], _count: { _all: true } }),
+    prisma.productHarvestLot.groupBy({ by: ['status'], _count: { _all: true } }),
+    prisma.liveSession.groupBy({ by: ['status'], _count: { _all: true } }),
+    prisma.knowledgeDocument.groupBy({ by: ['status'], _count: { _all: true } }),
+    prisma.product.count({
+      where: {
+        OR: [{ category: null }, { category: { level: { not: 3 } } }],
+      },
+    }),
+    prisma.productQuestion.count({ where: { OR: [{ isFlagged: true }, { isHidden: true }] } }),
+    prisma.rfq.count({ where: { isFlagged: true } }),
+    prisma.supportTicket.count({ where: { source: 'AI_HANDOFF' } }),
+  ]);
+
+  const toDist = (rows, key = 'status') =>
+    Object.fromEntries(
+      rows.map((r) => [r[key] ?? r.status ?? r.verificationStatus, r._count._all]),
+    );
 
   const summary = {
     users,
@@ -73,6 +114,20 @@ export async function seedSummary(prisma) {
     rfqs,
     supportTickets,
     platformSettings,
+    articles,
+    forumPosts,
+    productsAboveL3,
+    flaggedQuestions,
+    flaggedRfqs,
+    aiHandoffTickets,
+    productStatus: toDist(productStatusDist),
+    articleStatus: toDist(articleStatusDist),
+    forumStatus: toDist(forumStatusDist),
+    kycStatus: toDist(kycStatusDist, 'verificationStatus'),
+    productCertStatus: toDist(certStatusDist),
+    harvestLotStatus: toDist(harvestStatusDist),
+    liveSessionStatus: toDist(liveStatusDist),
+    knowledgeStatus: toDist(knowledgeStatusDist),
   };
 
   logger.info('📊 Seed summary:', summary);
@@ -88,6 +143,34 @@ export async function seedSummary(prisma) {
   if (iotDevices === 0) warnings.push('Tidak ada perangkat IoT');
   if (faqs === 0) warnings.push('Tidak ada FAQ');
   if (platformSettings === 0) warnings.push('Tidak ada platform settings');
+  if (productsAboveL3 > 0) {
+    warnings.push(`${productsAboveL3} produk terpasang di kategori di atas L3 / tanpa kategori`);
+  }
+
+  const requiredProductStatuses = [
+    'ACTIVE',
+    'DRAFT',
+    'INACTIVE',
+    'BLOCKED',
+    'OUT_OF_STOCK',
+    'DELETED',
+  ];
+  for (const st of requiredProductStatuses) {
+    if (!summary.productStatus[st]) warnings.push(`ProductStatus ${st} kosong`);
+  }
+
+  for (const st of ['PUBLISHED', 'DRAFT', 'ARCHIVED']) {
+    if (!summary.articleStatus[st]) warnings.push(`Article ${st} kosong`);
+    if (!summary.forumStatus[st]) warnings.push(`ForumPost ${st} kosong`);
+  }
+
+  for (const st of ['PENDING', 'VERIFIED', 'REJECTED']) {
+    if (!summary.kycStatus[st]) warnings.push(`KYC ${st} kosong`);
+  }
+
+  if (flaggedQuestions === 0) warnings.push('Tidak ada Q&A flagged/hidden');
+  if (flaggedRfqs === 0) warnings.push('Tidak ada RFQ flagged');
+  if (aiHandoffTickets === 0) warnings.push('Tidak ada support AI_HANDOFF');
 
   const suppliersMissingActiveBanner = await prisma.user.count({
     where: {

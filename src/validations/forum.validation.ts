@@ -1,4 +1,8 @@
 import { z } from 'zod';
+import {
+  sanitizeProductDescriptionHtml,
+  stripHtmlToPlain,
+} from '#utils/htmlSanitize.util';
 
 const forumMediaSchema = z.object({
   url: z
@@ -21,13 +25,20 @@ const forumMediaSchema = z.object({
   }),
 });
 
+const forumContentSchema = z
+  .string()
+  .max(20000, 'Konten terlalu panjang')
+  .optional()
+  .default('')
+  .transform((v) => sanitizeProductDescriptionHtml(v) ?? '');
+
 export const createPostSchema = z
   .object({
     title: z
       .string()
       .min(5, 'Judul diskusi minimal 5 karakter')
       .max(150, 'Judul diskusi maksimal 150 karakter'),
-    content: z.string().max(5000, 'Konten terlalu panjang').optional().default(''),
+    content: forumContentSchema,
     categoryId: z.string().uuid('Kategori ID tidak valid').optional(),
     groupId: z.string().uuid('Group ID tidak valid').optional(),
     mediaUrls: z.array(forumMediaSchema).max(10, 'Maksimal 10 media per posting').optional(),
@@ -44,7 +55,7 @@ export const createPostSchema = z
   .refine(
     (data) =>
       data.status === 'DRAFT' ||
-      data.content.trim().length >= 10 ||
+      stripHtmlToPlain(data.content).length >= 10 ||
       (data.mediaUrls != null && data.mediaUrls.length > 0),
     { message: 'Isi diskusi minimal 10 karakter atau lampirkan media' },
   );
@@ -60,7 +71,11 @@ export const updatePostSchema = z.object({
     .min(5, 'Judul diskusi minimal 5 karakter')
     .max(150, 'Judul diskusi maksimal 150 karakter')
     .optional(),
-  content: z.string().max(5000, 'Konten terlalu panjang').optional(),
+  content: z
+    .string()
+    .max(20000, 'Konten terlalu panjang')
+    .optional()
+    .transform((v) => (v === undefined ? undefined : sanitizeProductDescriptionHtml(v) ?? '')),
   categoryId: z.string().uuid('Kategori ID tidak valid').nullable().optional(),
   mediaUrls: z.array(forumMediaSchema).max(10, 'Maksimal 10 media per posting').optional(),
   status: z.enum(['PUBLISHED', 'DRAFT', 'ARCHIVED']).optional(),

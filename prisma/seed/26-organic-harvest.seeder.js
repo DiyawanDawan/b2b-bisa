@@ -86,6 +86,42 @@ export async function seedOrganicHarvest(prisma, users) {
       });
     }
 
+    if (i % 5 === 1) {
+      lots.push({
+        productId: product.id,
+        seasonLabel: 'Sedang panen',
+        expectedHarvestDate: daysFromNow(2),
+        expectedQuantityTon: faker.number.float({ min: 2, max: 9, fractionDigits: 2 }),
+        status: 'HARVESTING',
+        notes: 'Seed: lot sedang dipanen di lapangan.',
+      });
+    }
+
+    if (i % 5 === 2) {
+      lots.push({
+        productId: product.id,
+        seasonLabel: 'Baru dipanen (belum stocked)',
+        expectedHarvestDate: daysAgo(3),
+        expectedQuantityTon: faker.number.float({ min: 2, max: 7, fractionDigits: 2 }),
+        actualHarvestDate: daysAgo(2),
+        actualQuantityTon: faker.number.float({ min: 1.8, max: 6.5, fractionDigits: 2 }),
+        status: 'HARVESTED',
+        notes: 'Seed: menunggu input stok gudang.',
+      });
+    }
+
+    if (i % 7 === 0) {
+      lots.push({
+        productId: product.id,
+        seasonLabel: 'Lot kedaluwarsa',
+        expectedHarvestDate: daysAgo(60),
+        expectedQuantityTon: 3,
+        status: 'EXPIRED',
+        notes: 'Seed: jadwal panen lewat tanpa eksekusi.',
+        archivedAt: daysAgo(50),
+      });
+    }
+
     if (i === 0) {
       lots.push({
         productId: product.id,
