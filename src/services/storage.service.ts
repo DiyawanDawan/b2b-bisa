@@ -5,7 +5,12 @@ import crypto from 'crypto';
 import { GetObjectCommand, DeleteObjectCommand, CopyObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { Readable } from 'stream';
-import { JWT_SECRET, getMediaBaseUrl, buildStorageAssetUrl } from '#utils/env.util';
+import {
+  JWT_SECRET,
+  getMediaBaseUrl,
+  buildStorageAssetUrl,
+  toSecureMediaUrl,
+} from '#utils/env.util';
 import { isLoremFlickrDbPath, loremFlickrDbPathToUrl } from '#utils/loremFlickrMedia.util';
 import { withRetry } from '#utils/retry.util';
 
@@ -194,13 +199,13 @@ export const getPublicUrl = (path: string | null): string | null => {
 
   // External CDN (picsum, legacy full URLs that aren't our R2 API)
   if (isExternalMediaUrl(normalized)) {
-    return normalized;
+    return toSecureMediaUrl(normalized);
   }
 
   const normalizedPath = normalized.replace(/^\//, '');
 
   if (PUBLIC_URL && !isPrivateR2Endpoint(PUBLIC_URL)) {
-    const base = PUBLIC_URL.replace(/\/$/, '');
+    const base = toSecureMediaUrl(PUBLIC_URL).replace(/\/$/, '');
     const bucketSuffix = `/${BUCKET_NAME}`;
     const publicBase = base.endsWith(bucketSuffix) ? base.slice(0, -bucketSuffix.length) : base;
     return `${publicBase}/${normalizedPath}`;

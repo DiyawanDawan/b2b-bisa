@@ -4,6 +4,7 @@ import { AuthRequest } from '#types/index';
 import catchAsync from '#utils/catchAsync';
 import { createdResponse, paginatedResponse, successResponse } from '#utils/response.util';
 import * as storeCertificateService from '#services/supplier-store-certificate.service';
+import { getRequestBaseUrl } from '#utils/publicUrl.util';
 
 export const submitMine = catchAsync(async (req: AuthRequest, res: Response) => {
   const supplierId = req.user!.id;
@@ -18,7 +19,7 @@ export const submitMine = catchAsync(async (req: AuthRequest, res: Response) => 
 
 export const listMine = catchAsync(async (req: AuthRequest, res: Response) => {
   const supplierId = req.user!.id;
-  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  const baseUrl = getRequestBaseUrl(req);
   const result = await storeCertificateService.listOwnerStoreCertificates(
     supplierId,
     req.user!.id,
@@ -40,7 +41,7 @@ export const removeMine = catchAsync(async (req: AuthRequest, res: Response) => 
 
 export const listPublic = catchAsync(async (req: AuthRequest, res: Response) => {
   const result = await storeCertificateService.listPublicStoreCertificates(req.params.id);
-  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  const baseUrl = getRequestBaseUrl(req);
   successResponse(
     res,
     result.map((certificate: (typeof result)[number]) => ({

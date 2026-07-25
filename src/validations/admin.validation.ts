@@ -249,6 +249,19 @@ export const listPaymentChannelsAdminSchema = z.object({
   isActive: queryBoolean,
 });
 
+/** Aktif/nonaktif massal: pilih per id, per grup, atau `all` untuk semua. */
+export const bulkFinanceStatusSchema = z
+  .object({
+    isActive: z.boolean({ message: 'isActive wajib boolean' }),
+    ids: z.array(z.string().uuid('ID tidak valid')).max(200).optional(),
+    group: z.nativeEnum(PaymentMethod).optional(),
+    all: z.boolean().optional(),
+    reason: z.string().trim().max(300).optional(),
+  })
+  .refine((data) => Boolean(data.ids?.length) || Boolean(data.group) || data.all === true, {
+    message: 'Pilih minimal satu item, grup, atau kirim all=true',
+  });
+
 export const createPaymentChannelSchema = z.object({
   name: z.string().trim().min(2).max(120),
   code: z.string().trim().min(2).max(40),

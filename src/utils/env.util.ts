@@ -70,15 +70,68 @@ export const API_PUBLIC_URL = optional('API_PUBLIC_URL');
 export const MEDIA_BASE_URL = optional('MEDIA_BASE_URL');
 export const API_URL = optional('API_URL');
 
-/** Origin untuk URL media: MEDIA_BASE_URL > API_PUBLIC_URL > API_URL > localhost */
+/** CDN opsional (Cloudflare custom domain) — dipakai sebagai kandidat origin media. */
+export const CDN_URL = optional('CDN_URL');
+
+/**
+ * Browser memblokir gambar http:// pada halaman https:// (mixed content).
+ * Set `MEDIA_FORCE_HTTPS=false` hanya untuk lingkungan yang memang http-only.
+ */
+export const MEDIA_FORCE_HTTPS = optional('MEDIA_FORCE_HTTPS', 'true') !== 'false';
+
+const PRIVATE_IPV4 = /^(10\.|127\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|0\.0\.0\.0$)/;
+
+/** Host dev/LAN yang tidak punya sertifikat TLS — biarkan http. */
+export const isLocalMediaHost = (hostname: string): boolean => {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  if (host === 'localhost' || host === '::1' || host.endsWith('.local')) return true;
+  if (host.endsWith('.localhost') || host.endsWith('.internal')) return true;
+  return PRIVATE_IPV4.test(host);
+};
+
+const stripMediaOriginSuffix = (raw: string): string =>
+  raw
+    .trim()
+    .replace(/\/$/, '')
+    .replace(/\/api\/v1$/i, '');
+
+/** Upgrade http → https untuk host publik agar tidak diblokir mixed content. */
+export const toSecureMediaUrl = (raw: string): string => {
+  const value = raw.trim();
+  if (!MEDIA_FORCE_HTTPS || !/^http:\/\//i.test(value)) return value;
+
+  try {
+    if (isLocalMediaHost(new URL(value).hostname)) return value;
+  } catch {
+    return value;
+  }
+
+  return value.replace(/^http:\/\//i, 'https://');
+};
+
+const isBrowserSafeOrigin = (origin: string): boolean => {
+  if (origin.toLowerCase().startsWith('https://')) return true;
+  try {
+    return isLocalMediaHost(new URL(origin).hostname);
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Origin untuk URL media: MEDIA_BASE_URL > API_PUBLIC_URL > API_URL > CDN_URL > localhost.
+ * Kandidat https (atau host lokal) diprioritaskan; sisanya di-upgrade ke https karena
+ * browser memblokir subresource http pada halaman https (admin di office.bisaagri.com).
+ */
 export const getMediaBaseUrl = (): string => {
-  const raw =
-    MEDIA_BASE_URL ||
-    API_PUBLIC_URL ||
-    API_URL ||
-    optional('NGROK_URL') ||
-    `http://localhost:${PORT}`;
-  return raw.replace(/\/$/, '').replace(/\/api\/v1$/i, '');
+  const candidates = [MEDIA_BASE_URL, API_PUBLIC_URL, API_URL, CDN_URL, optional('NGROK_URL')]
+    .filter((value) => value.trim().length > 0)
+    .map(stripMediaOriginSuffix);
+
+  const chosen =
+    candidates.find(isBrowserSafeOrigin) ?? candidates[0] ?? `http://localhost:${PORT}`;
+
+  return toSecureMediaUrl(chosen);
 };
 
 /** URL publik file R2 via proxy backend */

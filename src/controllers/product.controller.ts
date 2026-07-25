@@ -9,6 +9,7 @@ import { ProductStatus, BiomassaType, BiocharGrade, ProductMode } from '#prisma'
 import * as storageService from '#services/storage.service';
 import * as mediaUploadService from '#services/mediaUpload.service';
 import { attachProductMediaUrls } from '#utils/productMedia.util';
+import { getRequestBaseUrl } from '#utils/publicUrl.util';
 import prisma from '#config/prisma';
 
 interface ProductQuery {
@@ -384,7 +385,7 @@ export const getProductById = catchAsync(async (req: AuthRequest, res: Response)
     certificates?: Array<Record<string, unknown> & { id: string }>;
   };
   if (mapped.certificates) {
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const baseUrl = getRequestBaseUrl(req);
     mapped.certificates = mapped.certificates.map((certificate) => ({
       ...certificate,
       documentUrl: `${baseUrl}/api/v1/products/${req.params.id}/certificates/${certificate.id}/document`,

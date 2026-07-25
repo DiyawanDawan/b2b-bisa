@@ -4,6 +4,7 @@ import { AuthRequest } from '#types/index';
 import catchAsync from '#utils/catchAsync';
 import { createdResponse, paginatedResponse, successResponse } from '#utils/response.util';
 import * as certificateService from '#services/product-certificate.service';
+import { getRequestBaseUrl } from '#utils/publicUrl.util';
 
 export const submit = catchAsync(async (req: AuthRequest, res: Response) => {
   const result = await certificateService.submitCertificate(
@@ -36,7 +37,7 @@ export const removeMine = catchAsync(async (req: AuthRequest, res: Response) => 
 
 export const listPublicProduct = catchAsync(async (req: AuthRequest, res: Response) => {
   const result = await certificateService.listPublicProductCertificates(req.params.productId);
-  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  const baseUrl = getRequestBaseUrl(req);
   successResponse(
     res,
     result.map((certificate) => ({
@@ -63,7 +64,7 @@ export const listPublicSupplier = catchAsync(async (req: AuthRequest, res: Respo
     page,
     limit,
   );
-  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  const baseUrl = getRequestBaseUrl(req);
   const rows = result.rows.map((certificate) => ({
     ...certificate,
     documentUrl: `${baseUrl}/api/v1/products/${certificate.productId}/certificates/${certificate.id}/document`,

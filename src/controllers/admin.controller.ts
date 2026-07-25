@@ -718,6 +718,18 @@ export const deletePayoutBank = catchAsync(async (req: AuthRequest, res: Respons
 });
 
 /**
+ * PATCH /api/v1/admin/finance/payout-banks/bulk-status
+ */
+export const bulkUpdatePayoutBankStatus = catchAsync(async (req: AuthRequest, res: Response) => {
+  const result = await bankService.bulkSetPayoutBankStatus(req.user!.id, req.body);
+  return successResponse(
+    res,
+    result,
+    `${result.updated} bank payout ${result.isActive ? 'diaktifkan' : 'dinonaktifkan'}`,
+  );
+});
+
+/**
  * GET /api/v1/admin/finance/payment-channels
  */
 export const listPaymentChannelsAdmin = catchAsync(async (req: AuthRequest, res: Response) => {
@@ -744,6 +756,21 @@ export const updatePaymentChannelAdmin = catchAsync(async (req: AuthRequest, res
   const channel = await bankService.updatePaymentChannel(req.params.id, req.body);
   return successResponse(res, channel, 'Channel pembayaran berhasil diperbarui');
 });
+
+/**
+ * PATCH /api/v1/admin/finance/payment-channels/bulk-status
+ * Kill switch ops: matikan/aktifkan banyak channel sekaligus (mis. gateway down).
+ */
+export const bulkUpdatePaymentChannelStatus = catchAsync(
+  async (req: AuthRequest, res: Response) => {
+    const result = await bankService.bulkSetPaymentChannelStatus(req.user!.id, req.body);
+    return successResponse(
+      res,
+      result,
+      `${result.updated} channel pembayaran ${result.isActive ? 'diaktifkan' : 'dinonaktifkan'}`,
+    );
+  },
+);
 
 /**
  * DELETE /api/v1/admin/finance/payment-channels/:id

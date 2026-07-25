@@ -3,6 +3,7 @@ import { AuthRequest } from '#types/index';
 import catchAsync from '#utils/catchAsync';
 import { successResponse, createdResponse } from '#utils/response.util';
 import * as mediaUploadService from '#services/mediaUpload.service';
+import { getRequestBaseUrl } from '#utils/publicUrl.util';
 
 export const initUpload = catchAsync(async (req: AuthRequest, res: Response) => {
   const result = await mediaUploadService.initUpload({
@@ -21,7 +22,7 @@ export const presignPart = catchAsync(async (req: AuthRequest, res: Response) =>
   // Untuk mode proxy, chunk di-PUT balik ke endpoint API ini, jadi origin
   // harus host API dari request — bukan `MEDIA_BASE_URL` (CDN aset) yang
   // tidak melayani route API dan menyebabkan 404 saat upload chunk.
-  const apiBase = `${req.protocol}://${req.get('host')}`;
+  const apiBase = getRequestBaseUrl(req);
   const result = await mediaUploadService.presignPart(
     req.params.id,
     req.user!.id,

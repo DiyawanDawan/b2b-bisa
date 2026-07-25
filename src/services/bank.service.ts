@@ -2,6 +2,7 @@ import prisma from '#config/prisma';
 import AppError from '#utils/appError';
 import { PaymentMethod, PaymentStatus, Prisma, TransactionType } from '#prisma';
 import { invalidatePayChannels } from '#utils/cache.util';
+import { createAuditLog } from '#services/admin.service';
 
 const toNumber = (v: unknown): number => {
   if (v == null) return 0;
@@ -468,6 +469,108 @@ export const updatePaymentChannel = async (
   });
   await invalidatePayChannels();
   return updated;
+};
+
+export type FinanceBulkStatusPayload = {
+  isActive: boolean;
+  ids?: string[];
+  group?: PaymentMethod;
+  /** Wajib true bila tidak mengirim ids/group — mematikan semua channel sekaligus. */
+  all?: boolean;
+  reason?: string;
+};
+
+const assertBulkSelector = (payload: FinanceBulkStatusPayload): void => {
+  if (payload.ids?.length || payload.group || payload.all) return;
+  throw new AppError('Pilih minimal satu item, grup, atau centang "semua".', 400);
+};
+
+/**
+ * [Admin] Aktif/nonaktif massal channel pembayaran — mis. saat gateway Xendit
+ * bermasalah dan ops perlu menutup semua metode online tanpa deploy.
+ */
+export const bulkSetPaymentChannelStatus = async (
+  adminId: string,
+  payload: FinanceBulkStatusPayload,
+) => {
+  assertBulkSelector(payload);
+
+  const where: Prisma.PaymentChannelWhereInput = {
+    isActive: !payload.isActive,
+    ...(payload.ids?.length ? { id: { in: payload.ids } } : {}),
+    ...(payload.group ? { group: payload.group } : {}),
+  };
+
+  const targets = await prisma.paymentChannel.findMany({
+    where,
+    select: { id: true, name: true, code: true },
+  });
+
+  if (targets.length === 0) {
+    return { updated: 0, isActive: payload.isActive, items: [] as typeof targets };
+  }
+
+  await prisma.paymentChannel.updateMany({
+    where: { id: { in: targets.map((t) => t.id) } },
+    data: { isActive: payload.isActive },
+  });
+  await invalidatePayChannels();
+
+  await createAuditLog({
+    userId: adminId,
+    action: payload.isActive ? 'BULK_ENABLE_PAYMENT_CHANNELS' : 'BULK_DISABLE_PAYMENT_CHANNELS',
+    entity: 'PAYMENT_CHANNEL',
+    newValue: {
+      isActive: payload.isActive,
+      group: payload.group ?? null,
+      codes: targets.map((t) => t.code),
+      ...(payload.reason?.trim() ? { reason: payload.reason.trim() } : {}),
+    },
+  });
+
+  return { updated: targets.length, isActive: payload.isActive, items: targets };
+};
+
+/**
+ * [Admin] Aktif/nonaktif massal bank payout (penarikan supplier).
+ */
+export const bulkSetPayoutBankStatus = async (
+  adminId: string,
+  payload: FinanceBulkStatusPayload,
+) => {
+  assertBulkSelector(payload);
+
+  const where: Prisma.PayoutBankWhereInput = {
+    isActive: !payload.isActive,
+    ...(payload.ids?.length ? { id: { in: payload.ids } } : {}),
+  };
+
+  const targets = await prisma.payoutBank.findMany({
+    where,
+    select: { id: true, name: true, code: true },
+  });
+
+  if (targets.length === 0) {
+    return { updated: 0, isActive: payload.isActive, items: [] as typeof targets };
+  }
+
+  await prisma.payoutBank.updateMany({
+    where: { id: { in: targets.map((t) => t.id) } },
+    data: { isActive: payload.isActive },
+  });
+
+  await createAuditLog({
+    userId: adminId,
+    action: payload.isActive ? 'BULK_ENABLE_PAYOUT_BANKS' : 'BULK_DISABLE_PAYOUT_BANKS',
+    entity: 'PAYOUT_BANK',
+    newValue: {
+      isActive: payload.isActive,
+      codes: targets.map((t) => t.code),
+      ...(payload.reason?.trim() ? { reason: payload.reason.trim() } : {}),
+    },
+  });
+
+  return { updated: targets.length, isActive: payload.isActive, items: targets };
 };
 
 /**

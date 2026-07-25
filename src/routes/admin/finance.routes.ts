@@ -90,6 +90,12 @@ router.post(
   validate(adminValidation.createPayoutBankSchema),
   adminController.createPayoutBank,
 );
+/** Static path harus sebelum `/:id` supaya tidak tertangkap validasi uuid. */
+router.patch(
+  '/payout-banks/bulk-status',
+  validate(adminValidation.bulkFinanceStatusSchema),
+  adminController.bulkUpdatePayoutBankStatus,
+);
 router.patch(
   '/payout-banks/:id',
   validate(adminValidation.financeChannelIdParamSchema, 'params'),
@@ -111,6 +117,11 @@ router.post(
   '/payment-channels',
   validate(adminValidation.createPaymentChannelSchema),
   adminController.createPaymentChannelAdmin,
+);
+router.patch(
+  '/payment-channels/bulk-status',
+  validate(adminValidation.bulkFinanceStatusSchema),
+  adminController.bulkUpdatePaymentChannelStatus,
 );
 router.patch(
   '/payment-channels/:id',
