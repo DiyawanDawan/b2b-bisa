@@ -482,10 +482,203 @@ export const listPaymentChannelsAdmin = async (params?: {
         transactionCount,
         paidVolume: volumeMap.get(ch.id) ?? 0,
         platformAccountCount,
+        uniqueUserCount: userCountMap.get(ch.id) ?? 0,
+        pendingCount: pendingMap.get(ch.id) ?? 0,
+        lastUsedAt: lastUsedMap.get(ch.id) ?? null,
       },
       canDelete: transactionCount === 0 && platformAccountCount === 0,
     };
   });
+};
+
+export type AdminPaymentChannelUsageDetail = {
+  channel: {
+    id: string;
+    name: string;
+    code: string;
+    group: PaymentMethod | null;
+    isActive: boolean;
+  };
+  totals: {
+    transactionCount: number;
+    successCount: number;
+    pendingCount: number;
+    failedCount: number;
+    uniqueUserCount: number;
+    orderCount: number;
+    paidVolume: number;
+    platformAccountCount: number;
+    lastUsedAt: Date | null;
+  };
+  topUsers: {
+    userId: string;
+    fullName: string;
+    email: string;
+    role: string;
+    transactionCount: number;
+    paidVolume: number;
+    lastUsedAt: Date | null;
+  }[];
+  recentTransactions: {
+    id: string;
+    amount: number;
+    status: string;
+    paymentStatus: string | null;
+    orderNumber: string | null;
+    userId: string;
+    userName: string;
+    userEmail: string;
+    createdAt: Date;
+    paidAt: Date | null;
+  }[];
+  platformAccounts: {
+    id: string;
+    accountName: string;
+    branch: string | null;
+    currency: string;
+    isActive: boolean;
+  }[];
+};
+
+/**
+ * [Admin] Detail "siapa yang pakai" satu channel pembayaran — dipakai sebelum
+ * ops menonaktifkan/menghapus channel supaya dampaknya kelihatan.
+ */
+export const getPaymentChannelUsageDetail = async (
+  id: string,
+): Promise<AdminPaymentChannelUsageDetail> => {
+  const channel = await prisma.paymentChannel.findUnique({
+    where: { id },
+    select: { id: true, name: true, code: true, group: true, isActive: true },
+  });
+  if (!channel) throw new AppError('Channel pembayaran tidak ditemukan', 404);
+
+  const where: Prisma.TransactionWhereInput = { paymentChannelId: id };
+
+  const [
+    transactionCount,
+    successCount,
+    pendingCount,
+    failedCount,
+    orderCount,
+    paidAggregate,
+    lastTransaction,
+    userGroups,
+    recentRows,
+    platformAccounts,
+  ] = await Promise.all([
+    prisma.transaction.count({ where }),
+    prisma.transaction.count({ where: { ...where, paymentStatus: PaymentStatus.SUCCESS } }),
+    prisma.transaction.count({ where: { ...where, paymentStatus: PaymentStatus.PENDING } }),
+    prisma.transaction.count({ where: { ...where, paymentStatus: PaymentStatus.FAILED } }),
+    prisma.transaction.count({ where: { ...where, orderId: { not: null } } }),
+    prisma.transaction.aggregate({
+      where: { ...where, paymentStatus: PaymentStatus.SUCCESS },
+      _sum: { amount: true },
+    }),
+    prisma.transaction.findFirst({
+      where,
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    }),
+    prisma.transaction.groupBy({
+      by: ['userId'],
+      where,
+      _count: { _all: true },
+      _max: { createdAt: true },
+      orderBy: { _count: { userId: 'desc' } },
+      take: 8,
+    }),
+    prisma.transaction.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+      select: {
+        id: true,
+        amount: true,
+        status: true,
+        paymentStatus: true,
+        createdAt: true,
+        paidAt: true,
+        userId: true,
+        order: { select: { orderNumber: true } },
+        user: { select: { fullName: true, email: true } },
+      },
+    }),
+    prisma.platformBankAccount.findMany({
+      where: { paymentChannelId: id },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        accountName: true,
+        branch: true,
+        currency: true,
+        isActive: true,
+      },
+    }),
+  ]);
+
+  const uniqueUsers = await prisma.transaction.groupBy({ by: ['userId'], where });
+
+  const topUserIds = userGroups.map((row) => row.userId);
+  const topUserRecords = topUserIds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: topUserIds } },
+        select: { id: true, fullName: true, email: true, role: true },
+      })
+    : [];
+  const topUserMap = new Map(topUserRecords.map((u) => [u.id, u]));
+
+  const topUserVolumes = topUserIds.length
+    ? await prisma.transaction.groupBy({
+        by: ['userId'],
+        where: { ...where, userId: { in: topUserIds }, paymentStatus: PaymentStatus.SUCCESS },
+        _sum: { amount: true },
+      })
+    : [];
+  const volumeByUser = new Map(
+    topUserVolumes.map((row) => [row.userId, toNumber(row._sum.amount)]),
+  );
+
+  return {
+    channel,
+    totals: {
+      transactionCount,
+      successCount,
+      pendingCount,
+      failedCount,
+      uniqueUserCount: uniqueUsers.length,
+      orderCount,
+      paidVolume: toNumber(paidAggregate._sum.amount),
+      platformAccountCount: platformAccounts.length,
+      lastUsedAt: lastTransaction?.createdAt ?? null,
+    },
+    topUsers: userGroups.map((row) => {
+      const user = topUserMap.get(row.userId);
+      return {
+        userId: row.userId,
+        fullName: user?.fullName ?? 'Pengguna terhapus',
+        email: user?.email ?? '',
+        role: user?.role ?? '',
+        transactionCount: row._count._all,
+        paidVolume: volumeByUser.get(row.userId) ?? 0,
+        lastUsedAt: row._max.createdAt ?? null,
+      };
+    }),
+    recentTransactions: recentRows.map((tx) => ({
+      id: tx.id,
+      amount: toNumber(tx.amount),
+      status: tx.status,
+      paymentStatus: tx.paymentStatus,
+      orderNumber: tx.order?.orderNumber ?? null,
+      userId: tx.userId,
+      userName: tx.user?.fullName ?? 'Pengguna terhapus',
+      userEmail: tx.user?.email ?? '',
+      createdAt: tx.createdAt,
+      paidAt: tx.paidAt,
+    })),
+    platformAccounts,
+  };
 };
 
 export const createPaymentChannel = async (data: {

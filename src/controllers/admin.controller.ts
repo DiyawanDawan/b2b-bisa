@@ -751,6 +751,15 @@ export const listPaymentChannelsAdmin = catchAsync(async (req: AuthRequest, res:
 });
 
 /**
+ * GET /api/v1/admin/finance/payment-channels/:id/usage
+ * Siapa yang memakai channel ini — dilihat sebelum nonaktif/hapus.
+ */
+export const getPaymentChannelUsageAdmin = catchAsync(async (req: AuthRequest, res: Response) => {
+  const detail = await bankService.getPaymentChannelUsageDetail(req.params.id);
+  return successResponse(res, detail, 'Detail pemakaian channel berhasil diambil');
+});
+
+/**
  * POST /api/v1/admin/finance/payment-channels
  */
 export const createPaymentChannelAdmin = catchAsync(async (req: AuthRequest, res: Response) => {

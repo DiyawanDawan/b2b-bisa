@@ -118,6 +118,11 @@ router.get(
   validate(adminValidation.listPaymentChannelsAdminSchema, 'query'),
   adminController.listPaymentChannelsAdmin,
 );
+router.get(
+  '/payment-channels/:id/usage',
+  validate(adminValidation.financeChannelIdParamSchema, 'params'),
+  adminController.getPaymentChannelUsageAdmin,
+);
 router.post(
   '/payment-channels',
   validate(adminValidation.createPaymentChannelSchema),
