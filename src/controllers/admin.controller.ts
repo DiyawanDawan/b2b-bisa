@@ -695,6 +695,14 @@ export const listPayoutBanks = catchAsync(async (req: AuthRequest, res: Response
 });
 
 /**
+ * GET /api/v1/admin/finance/payout-banks/:id/usage
+ */
+export const getPayoutBankUsage = catchAsync(async (req: AuthRequest, res: Response) => {
+  const usage = await bankService.getPayoutBankUsageAdmin(req.params.id);
+  return successResponse(res, usage, 'Pemakaian bank payout berhasil diambil');
+});
+
+/**
  * POST /api/v1/admin/finance/payout-banks
  */
 export const createPayoutBank = catchAsync(async (req: AuthRequest, res: Response) => {

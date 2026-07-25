@@ -3,6 +3,7 @@ import AppError from '#utils/appError';
 import { PaymentMethod, PaymentStatus, Prisma, TransactionType } from '#prisma';
 import { invalidatePayChannels, invalidatePayoutBanks } from '#utils/cache.util';
 import { createAuditLog } from '#services/admin.service';
+import { formatPayoutAccountForList } from '#utils/payoutAccount.util';
 
 const toNumber = (v: unknown): number => {
   if (v == null) return 0;
@@ -36,6 +37,8 @@ export type AdminPayoutBankItem = {
   flightTime: string | null;
   logoUrl: string | null;
   isActive: boolean;
+  /** Jumlah rekening payout supplier yang memakai bank ini. */
+  usageCount: number;
   usage: {
     accountCount: number;
     payoutCount: number;
@@ -43,6 +46,26 @@ export type AdminPayoutBankItem = {
     pendingPayoutCount: number;
   };
   canDelete: boolean;
+};
+
+export type AdminPayoutBankUsageUser = {
+  id: string;
+  fullName: string;
+  companyName: string | null;
+  email: string;
+  accountId: string;
+  accountName: string | null;
+  accountNumberMasked: string;
+  isMain: boolean;
+  createdAt: Date;
+};
+
+export type AdminPayoutBankUsage = {
+  bankId: string;
+  bankName: string;
+  bankCode: string;
+  usageCount: number;
+  users: AdminPayoutBankUsageUser[];
 };
 
 /**
@@ -121,6 +144,7 @@ export const listPayoutBanksAdmin = async (params?: {
       flightTime: bank.flightTime,
       logoUrl: bank.logoUrl,
       isActive: bank.isActive,
+      usageCount: accountCount,
       usage: {
         accountCount,
         payoutCount: stats.payoutCount,
@@ -130,6 +154,69 @@ export const listPayoutBanksAdmin = async (params?: {
       canDelete: accountCount === 0 && stats.payoutCount === 0,
     };
   });
+};
+
+/**
+ * [Admin] Siapa saja yang memakai bank payout ini (rekening supplier).
+ */
+export const getPayoutBankUsageAdmin = async (bankId: string): Promise<AdminPayoutBankUsage> => {
+  const bank = await prisma.payoutBank.findUnique({
+    where: { id: bankId },
+    select: { id: true, name: true, code: true },
+  });
+  if (!bank) throw new AppError('Bank tidak ditemukan', 404);
+
+  const accounts = await prisma.userPayoutAccount.findMany({
+    where: { bankId },
+    orderBy: [{ createdAt: 'desc' }],
+    select: {
+      id: true,
+      accountNumber: true,
+      accountName: true,
+      isMain: true,
+      createdAt: true,
+      userId: true,
+      bankId: true,
+      user: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          profile: { select: { companyName: true } },
+        },
+      },
+    },
+  });
+
+  const users: AdminPayoutBankUsageUser[] = accounts.map((account) => {
+    const formatted = formatPayoutAccountForList(
+      {
+        accountNumber: account.accountNumber,
+        accountName: account.accountName,
+      },
+      { userId: account.userId, bankId: account.bankId },
+    );
+
+    return {
+      id: account.user.id,
+      fullName: account.user.fullName,
+      companyName: account.user.profile?.companyName ?? null,
+      email: account.user.email,
+      accountId: account.id,
+      accountName: (formatted.accountName as string | null | undefined) ?? null,
+      accountNumberMasked: formatted.maskedAccountNumber,
+      isMain: account.isMain,
+      createdAt: account.createdAt,
+    };
+  });
+
+  return {
+    bankId: bank.id,
+    bankName: bank.name,
+    bankCode: bank.code,
+    usageCount: users.length,
+    users,
+  };
 };
 
 /**
@@ -286,6 +373,9 @@ export type AdminPaymentChannelItem = {
     transactionCount: number;
     paidVolume: number;
     platformAccountCount: number;
+    uniqueUserCount: number;
+    pendingCount: number;
+    lastUsedAt: Date | null;
   };
   canDelete: boolean;
 };
@@ -316,19 +406,53 @@ export const listPaymentChannelsAdmin = async (params?: {
 
   const channelIds = channels.map((c) => c.id);
   const volumeMap = new Map<string, number>();
+  const userCountMap = new Map<string, number>();
+  const pendingMap = new Map<string, number>();
+  const lastUsedMap = new Map<string, Date>();
 
   if (channelIds.length > 0) {
-    const paidRows = await prisma.transaction.groupBy({
-      by: ['paymentChannelId'],
-      where: {
-        paymentChannelId: { in: channelIds },
-        paymentStatus: PaymentStatus.SUCCESS,
-      },
-      _sum: { amount: true },
-    });
+    const [paidRows, userRows, pendingRows] = await Promise.all([
+      prisma.transaction.groupBy({
+        by: ['paymentChannelId'],
+        where: {
+          paymentChannelId: { in: channelIds },
+          paymentStatus: PaymentStatus.SUCCESS,
+        },
+        _sum: { amount: true },
+      }),
+      // Pemakai unik per channel: distinct (channel, user) lalu dihitung di memori.
+      prisma.transaction.groupBy({
+        by: ['paymentChannelId', 'userId'],
+        where: { paymentChannelId: { in: channelIds } },
+        _max: { createdAt: true },
+      }),
+      prisma.transaction.groupBy({
+        by: ['paymentChannelId'],
+        where: {
+          paymentChannelId: { in: channelIds },
+          paymentStatus: PaymentStatus.PENDING,
+        },
+        _count: { _all: true },
+      }),
+    ]);
+
     for (const row of paidRows) {
       if (row.paymentChannelId) {
         volumeMap.set(row.paymentChannelId, toNumber(row._sum.amount));
+      }
+    }
+    for (const row of userRows) {
+      if (!row.paymentChannelId) continue;
+      userCountMap.set(row.paymentChannelId, (userCountMap.get(row.paymentChannelId) ?? 0) + 1);
+      const last = row._max.createdAt;
+      if (last) {
+        const current = lastUsedMap.get(row.paymentChannelId);
+        if (!current || last > current) lastUsedMap.set(row.paymentChannelId, last);
+      }
+    }
+    for (const row of pendingRows) {
+      if (row.paymentChannelId) {
+        pendingMap.set(row.paymentChannelId, row._count._all);
       }
     }
   }

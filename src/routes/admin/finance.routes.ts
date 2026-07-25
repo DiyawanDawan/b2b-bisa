@@ -96,6 +96,11 @@ router.patch(
   validate(adminValidation.bulkFinanceStatusSchema),
   adminController.bulkUpdatePayoutBankStatus,
 );
+router.get(
+  '/payout-banks/:id/usage',
+  validate(adminValidation.financeChannelIdParamSchema, 'params'),
+  adminController.getPayoutBankUsage,
+);
 router.patch(
   '/payout-banks/:id',
   validate(adminValidation.financeChannelIdParamSchema, 'params'),
