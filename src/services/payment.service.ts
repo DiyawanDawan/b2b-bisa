@@ -15,6 +15,7 @@ import {
 import { SUBSCRIPTION_DURATION_DAYS } from '#utils/env.util';
 import { sealProviderActions } from '#utils/encryption.util';
 import { notifyOrderProcessingById } from '#services/orderNotification.service';
+import { notifyWithdrawalOutcome } from '#services/walletNotification.service';
 import { createShipmentFromPaidOrder } from '#services/bisa-express.service';
 import {
   XenditInvoiceStatus,
@@ -24,6 +25,32 @@ import {
   normalizeXenditWebhookPayload,
 } from '#constants/xendit.constants';
 import { parseCheckoutBatchIdFromExternalId } from '#constants/order.constants';
+
+type PayoutNotifyPayload = {
+  userId: string;
+  transactionId: string;
+  amount: Prisma.Decimal;
+  outcome: 'SUCCESS' | 'FAILED';
+  reason?: string;
+};
+
+const extractPayoutFailureReason = (payload: XenditWebhookPayload, status: string): string => {
+  const nested = payload.data && typeof payload.data === 'object' ? payload.data : null;
+  const raw = nested ?? payload;
+  const record = raw as Record<string, unknown>;
+  const candidates = [
+    record.failure_code,
+    record.failure_reason,
+    record.error_code,
+    record.error_message,
+    (record as { channel_properties?: { failure_code?: string } }).channel_properties?.failure_code,
+  ];
+  for (const c of candidates) {
+    if (typeof c === 'string' && c.trim()) return c.trim();
+  }
+  if (status === XenditPayoutStatus.VOIDED) return 'Payout dibatalkan (voided).';
+  return 'Payout ditolak oleh bank/penyedia pembayaran.';
+};
 
 const tryCreateBisaExpressShipments = (orderIds: string[]) => {
   for (const orderId of orderIds) {
@@ -348,8 +375,10 @@ export const handleXenditPayoutWebhook = async (
     return null;
   }
 
+  let payoutNotify: PayoutNotifyPayload | null = null;
+
   // Wrap entire payout webhook in Serializable transaction for idempotency
-  return prisma.$transaction(
+  const result = await prisma.$transaction(
     async (tx) => {
       const transaction = await tx.transaction.findUnique({
         where: { externalId: externalId },
@@ -370,6 +399,12 @@ export const handleXenditPayoutWebhook = async (
 
       // Status SUCCEEDED: Payout Berhasil
       if (status === XenditPayoutStatus.SUCCEEDED) {
+        payoutNotify = {
+          userId: transaction.userId,
+          transactionId: transaction.id,
+          amount: transaction.amount,
+          outcome: 'SUCCESS',
+        };
         return tx.transaction.update({
           where: { id: transaction.id },
           data: {
@@ -390,6 +425,14 @@ export const handleXenditPayoutWebhook = async (
           data: { status: TransactionStatus.FAILED, paymentStatus: PaymentStatus.FAILED },
         });
 
+        payoutNotify = {
+          userId: transaction.userId,
+          transactionId: transaction.id,
+          amount: transaction.amount,
+          outcome: 'FAILED',
+          reason: extractPayoutFailureReason(payload, status),
+        };
+
         return tx.wallet.update({
           where: { userId: transaction.userId },
           data: {
@@ -405,6 +448,12 @@ export const handleXenditPayoutWebhook = async (
       isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
     },
   );
+
+  if (payoutNotify) {
+    void notifyWithdrawalOutcome(payoutNotify).catch(() => {});
+  }
+
+  return result;
 };
 
 /**

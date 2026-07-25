@@ -122,6 +122,9 @@ enum NotificationType {
   PARTNERSHIP
   BOOKING
   SUPPORT
+  WITHDRAWAL_SUCCESS
+  WITHDRAWAL_FAILED
+  ADMIN_WITHDRAWAL_FAILED
 }
 
 enum SupportTicketStatus {

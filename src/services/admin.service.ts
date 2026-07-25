@@ -22,6 +22,7 @@ import {
 } from '#prisma';
 import { createNotification } from '#services/notification.service';
 import { notifyOrderStatusChange } from '#services/orderNotification.service';
+import { notifyWithdrawalOutcome } from '#services/walletNotification.service';
 import { activeApprovedCertificateWhere } from '#utils/certificate.util';
 import { invalidateCategories, invalidateAuthUser } from '#utils/cache.util';
 import { decryptField, isEncryptedPayload } from '#utils/encryption.util';
@@ -1958,7 +1959,7 @@ export const processPayout = async (
   note: string | undefined,
   adminId: string,
 ) => {
-  return prisma.$transaction(async (tx) => {
+  const updatedTrx = await prisma.$transaction(async (tx) => {
     const trx = await tx.transaction.findUnique({
       where: { id: transactionId },
     });
@@ -1974,7 +1975,7 @@ export const processPayout = async (
 
     // Update Transaction Status
 
-    const updatedTrx = await tx.transaction.update({
+    const updated = await tx.transaction.update({
       where: { id: transactionId },
       data: {
         status:
@@ -2003,8 +2004,22 @@ export const processPayout = async (
       },
     });
 
-    return updatedTrx;
+    return updated;
   });
+
+  // Notify supplier after commit; skip admin fan-out (admin initiated this action)
+  if (updatedTrx.userId) {
+    void notifyWithdrawalOutcome({
+      userId: updatedTrx.userId,
+      transactionId: updatedTrx.id,
+      amount: updatedTrx.amount,
+      outcome: status === PayoutStatus.COMPLETED ? 'SUCCESS' : 'FAILED',
+      reason: note?.trim() || (status === PayoutStatus.FAILED ? 'Ditolak oleh admin.' : undefined),
+      notifyAdmins: false,
+    }).catch(() => {});
+  }
+
+  return updatedTrx;
 };
 
 /**

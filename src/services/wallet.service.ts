@@ -5,6 +5,7 @@ import { Xendit } from 'xendit-node';
 import { withRetry } from '#utils/retry.util';
 import { resolveXenditPayoutSecretKey } from '#utils/env.util';
 import { notifyOrderStatusChange } from '#services/orderNotification.service';
+import { notifyWithdrawalOutcome } from '#services/walletNotification.service';
 import { scheduleSupplyDemandRefresh } from '#services/marketSupplyDemand.service';
 import { revealAccountName, revealAccountNumber } from '#utils/payoutAccount.util';
 import { calculateWithdrawalFee } from '#utils/platformFee.util';
@@ -291,10 +292,16 @@ export const withdrawFunds = async (supplierId: string, data: { amount: number }
       });
     });
 
-    throw new AppError(
-      `Gagal memproses penarikan ke bank: ${error?.message || 'Gangguan sistem Xendit'}`,
-      502,
-    );
+    const failReason = error?.message || 'Gangguan sistem Xendit';
+    void notifyWithdrawalOutcome({
+      userId: supplierId,
+      transactionId: payoutTrx.id,
+      amount: transferAmount,
+      outcome: 'FAILED',
+      reason: failReason,
+    }).catch(() => {});
+
+    throw new AppError(`Gagal memproses penarikan ke bank: ${failReason}`, 502);
   }
 
   return payoutTrx;
