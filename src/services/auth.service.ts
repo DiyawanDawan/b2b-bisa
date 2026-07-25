@@ -210,8 +210,8 @@ export const register = async (userData: {
     });
 
     const otp = await tokenService.generateOtp(user.id, TokenType.EMAIL_VERIFICATION);
-    // Jangan await SMTP — hindari 504 gateway timeout; OTP sudah di DB.
-    emailService.queueOtpEmail(user.email, user.fullName, otp);
+    // Await SMTP (transporter timeouts ~15s) so client is not told "terkirim" when mail fails.
+    await emailService.deliverOtpEmail(user.email, user.fullName, otp);
     return { id: user.id, email: user.email, role: user.role };
   }
 
@@ -244,8 +244,7 @@ export const register = async (userData: {
   }
 
   const otp = await tokenService.generateOtp(user.id, TokenType.EMAIL_VERIFICATION);
-  // Jangan await SMTP — hindari 504 gateway timeout; OTP sudah di DB.
-  emailService.queueOtpEmail(user.email, user.fullName, otp);
+  await emailService.deliverOtpEmail(user.email, user.fullName, otp);
   return { id: user.id, email: user.email, role: user.role };
 };
 
@@ -405,8 +404,7 @@ export const forgotPassword = async (email: string) => {
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) return;
   const otp = await tokenService.generateOtp(user.id, TokenType.RESET_PASSWORD);
-  // Jangan await SMTP — hindari 504 gateway timeout; OTP sudah di DB.
-  emailService.queuePasswordResetEmail(user.email, user.fullName, otp);
+  await emailService.deliverPasswordResetEmail(user.email, user.fullName, otp);
 };
 
 /**
@@ -596,11 +594,11 @@ export const resendOTP = async (email: string, type: ResendOtpType) => {
   if (!user) return;
 
   const otp = await tokenService.generateOtp(user.id, type);
-  // OTP di DB dulu; kirim email async agar HTTP tidak menunggu SMTP (504 ~60s).
+  // Await send so "Kode OTP baru telah dikirim" is truthful; OTP remains in DB if SMTP fails.
   if (type === TokenType.EMAIL_VERIFICATION) {
-    emailService.queueOtpEmail(user.email, user.fullName, otp);
+    await emailService.deliverOtpEmail(user.email, user.fullName, otp);
   } else {
-    emailService.queuePasswordResetEmail(user.email, user.fullName, otp);
+    await emailService.deliverPasswordResetEmail(user.email, user.fullName, otp);
   }
 };
 

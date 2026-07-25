@@ -90,6 +90,7 @@ import chatbotRoutes from '#routes/chatbot';
 import articlesRoutes from '#routes/articles';
 import adminRoutes from '#routes/admin/index';
 import systemRoutes from '#routes/system';
+import { getSmtpStatus } from '#services/email.service';
 import mediaUploadRoutes from '#routes/mediaUploads';
 import notificationsRoutes from '#routes/notifications';
 import marketRoutes from '#routes/market';
@@ -152,12 +153,18 @@ app.use(globalLimiter);
 // Health Check
 app.get('/health', async (req: Request, res: Response) => {
   const redisOk = REDIS_ENABLED ? await pingRedis() : null;
+  const smtp = getSmtpStatus();
   return successResponse(
     res,
     {
       status: 'OK',
       timestamp: new Date().toISOString(),
       redis: REDIS_ENABLED ? (redisOk ? 'connected' : 'degraded') : 'disabled',
+      smtp: {
+        configured: smtp.configured,
+        host: smtp.host,
+        from: smtp.from,
+      },
     },
     'Health check berhasil',
   );

@@ -18,9 +18,34 @@ import {
   EMAIL_FROM,
   EMAIL_SENDER_NAME,
   CLIENT_HOST,
+  NODE_ENV,
 } from '#utils/env.util';
 
 const HAS_SMTP = !!(EMAIL_SMTP_HOST && EMAIL_SMTP_USER && EMAIL_SMTP_PASS);
+
+/** Gmail (and most SMTP providers) reject From that doesn't match the authenticated user. */
+const resolvedFromAddress = (): string => {
+  const from = (EMAIL_FROM || '').trim();
+  const smtpUser = (EMAIL_SMTP_USER || '').trim();
+  if (from && from !== 'noreply@bisa.id') return from;
+  if (smtpUser) return smtpUser;
+  return from || 'noreply@bisa.id';
+};
+
+if (!HAS_SMTP) {
+  logger.error(
+    'SMTP not configured: set EMAIL_SMTP_HOST, EMAIL_SMTP_USER, EMAIL_SMTP_PASS (and preferably EMAIL_FROM). OTP emails will fail.',
+  );
+} else {
+  logger.info('SMTP configured', {
+    host: EMAIL_SMTP_HOST,
+    port: EMAIL_SMTP_PORT,
+    secure: EMAIL_SMTP_SECURE,
+    user: EMAIL_SMTP_USER,
+    from: resolvedFromAddress(),
+    env: NODE_ENV,
+  });
+}
 
 const transporter = nodemailer.createTransport({
   host: EMAIL_SMTP_HOST,
@@ -30,12 +55,23 @@ const transporter = nodemailer.createTransport({
     user: EMAIL_SMTP_USER,
     pass: EMAIL_SMTP_PASS,
   },
-  requireTLS: true,
+  // STARTTLS (587): requireTLS helps. Implicit TLS (465): secure=true is enough;
+  // requireTLS can confuse some providers, so only enable it for non-secure ports.
+  ...(EMAIL_SMTP_SECURE ? {} : { requireTLS: true }),
   // Nodemailer defaults (connect 2m / socket 10m) outlast the mobile client's
   // 30s HTTP timeout, turning a slow SMTP hop into "permintaan waktu habis".
   connectionTimeout: 10_000,
   greetingTimeout: 10_000,
   socketTimeout: 15_000,
+});
+
+/** Public status for /health — never includes secrets. */
+export const getSmtpStatus = () => ({
+  configured: HAS_SMTP,
+  host: HAS_SMTP ? EMAIL_SMTP_HOST : null,
+  port: HAS_SMTP ? EMAIL_SMTP_PORT : null,
+  secure: EMAIL_SMTP_SECURE,
+  from: HAS_SMTP ? resolvedFromAddress() : null,
 });
 
 async function sendSMTP(from: string, to: string, subject: string, html: string) {
@@ -65,16 +101,24 @@ export const sendMail = async (
   html: string,
   from: string | null = null,
 ) => {
-  const fromAddress = from || `"${EMAIL_SENDER_NAME}" <${EMAIL_FROM}>`;
+  const fromAddress = from || `"${EMAIL_SENDER_NAME}" <${resolvedFromAddress()}>`;
   try {
     if (HAS_SMTP) {
       return await sendSMTP(fromAddress, to, subject, html);
     } else {
-      throw new Error('No email service configured');
+      throw new Error(
+        'No email service configured (EMAIL_SMTP_HOST / EMAIL_SMTP_USER / EMAIL_SMTP_PASS)',
+      );
     }
   } catch (_err: any) {
-    logger.error('Failed to send email:', { error: _err.message, to, subject });
-    throw new AppError('Gagal mengirim email', 500);
+    logger.error('Failed to send email:', {
+      error: _err.message,
+      to,
+      subject,
+      from: fromAddress,
+      smtpConfigured: HAS_SMTP,
+    });
+    throw new AppError('Gagal mengirim email OTP. Silakan coba lagi.', 502);
   }
 };
 
@@ -130,20 +174,37 @@ export const sendOtpEmail = async (email: string, fullName: string, code: string
 };
 
 /**
- * Fire-and-forget OTP / reset mail so auth HTTP handlers never wait on SMTP.
- * OTP must already be persisted; failures are logged only.
+ * Send OTP / reset mail and surface failures to the HTTP layer.
+ * Prefer this over fire-and-forget: mobile was showing "OTP terkirim" while SMTP failed.
+ * Timeouts on the transporter keep this under ~15s (below typical gateway/client limits).
+ * OTP should already be persisted before calling so a failed send can still be recovered from DB / resend.
  */
-const queueMail = (label: string, task: () => Promise<unknown>) => {
-  void task().catch((error: unknown) => {
+export const deliverOtpEmail = async (email: string, fullName: string, code: string) => {
+  await sendOtpEmail(email, fullName, code);
+};
+
+export const deliverPasswordResetEmail = async (email: string, fullName: string, code: string) => {
+  await sendPasswordResetEmail(email, fullName, code);
+};
+
+/**
+ * @deprecated Prefer deliverOtpEmail — kept for non-auth callers that must not block.
+ * Failures are logged only; HTTP already returned success.
+ */
+export const queueOtpEmail = (email: string, fullName: string, code: string) => {
+  void sendOtpEmail(email, fullName, code).catch((error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
-    logger.error(`${label} failed (OTP already persisted):`, { error: message });
+    logger.error('queueOtpEmail failed (OTP already persisted):', { error: message, email });
   });
 };
 
-export const queueOtpEmail = (email: string, fullName: string, code: string) => {
-  queueMail('queueOtpEmail', () => sendOtpEmail(email, fullName, code));
-};
-
+/** @deprecated Prefer deliverPasswordResetEmail */
 export const queuePasswordResetEmail = (email: string, fullName: string, code: string) => {
-  queueMail('queuePasswordResetEmail', () => sendPasswordResetEmail(email, fullName, code));
+  void sendPasswordResetEmail(email, fullName, code).catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error('queuePasswordResetEmail failed (OTP already persisted):', {
+      error: message,
+      email,
+    });
+  });
 };
