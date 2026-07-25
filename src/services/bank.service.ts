@@ -1,7 +1,7 @@
 import prisma from '#config/prisma';
 import AppError from '#utils/appError';
 import { PaymentMethod, PaymentStatus, Prisma, TransactionType } from '#prisma';
-import { invalidatePayChannels } from '#utils/cache.util';
+import { invalidatePayChannels, invalidatePayoutBanks } from '#utils/cache.util';
 import { createAuditLog } from '#services/admin.service';
 
 const toNumber = (v: unknown): number => {
@@ -154,7 +154,7 @@ export const createBank = async (data: {
   const nameTaken = await prisma.payoutBank.findUnique({ where: { name: data.name.trim() } });
   if (nameTaken) throw new AppError('Nama bank sudah ada', 400);
 
-  return prisma.payoutBank.create({
+  const created = await prisma.payoutBank.create({
     data: {
       code,
       name: data.name.trim(),
@@ -168,6 +168,8 @@ export const createBank = async (data: {
       isActive: data.isActive ?? true,
     },
   });
+  await invalidatePayoutBanks();
+  return created;
 };
 
 /**
@@ -202,7 +204,7 @@ export const updateBank = async (
     if (clash) throw new AppError('Nama bank sudah dipakai bank lain', 400);
   }
 
-  return prisma.payoutBank.update({
+  const updated = await prisma.payoutBank.update({
     where: { id },
     data: {
       ...(data.name !== undefined ? { name: data.name.trim() } : {}),
@@ -221,6 +223,8 @@ export const updateBank = async (
         : {}),
     },
   });
+  await invalidatePayoutBanks();
+  return updated;
 };
 
 /**
@@ -256,7 +260,9 @@ export const deleteBank = async (id: string) => {
     );
   }
 
-  return prisma.payoutBank.delete({ where: { id } });
+  const deleted = await prisma.payoutBank.delete({ where: { id } });
+  await invalidatePayoutBanks();
+  return deleted;
 };
 
 export type AdminPaymentChannelItem = {
@@ -558,6 +564,7 @@ export const bulkSetPayoutBankStatus = async (
     where: { id: { in: targets.map((t) => t.id) } },
     data: { isActive: payload.isActive },
   });
+  await invalidatePayoutBanks();
 
   await createAuditLog({
     userId: adminId,

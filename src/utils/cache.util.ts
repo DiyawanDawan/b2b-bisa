@@ -168,6 +168,7 @@ export const invalidateSysSupport = () => invalidateByPrefix('sys:support');
 export const invalidatePolicies = () => invalidateByPrefix('policy:');
 export const invalidateFaqs = () => invalidateByPrefix('faq:');
 export const invalidatePayChannels = () => invalidateByPrefix('pay:channels');
+export const invalidatePayoutBanks = () => invalidateByPrefix('pay:banks');
 export const invalidateShippingConfig = async () => {
   await invalidateByPrefix('ship:couriers');
   await invalidateByPrefix('ship:vehicles');
