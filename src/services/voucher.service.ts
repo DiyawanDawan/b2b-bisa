@@ -1,14 +1,28 @@
 import prisma from '#config/prisma';
 import AppError from '#utils/appError';
-import { Prisma, VoucherScope, VoucherType } from '#prisma';
+import { Prisma, ProductMode, VoucherScope, VoucherType } from '#prisma';
 
 const roundIdr = (v: Prisma.Decimal) => new Prisma.Decimal(Math.round(Number(v)));
+
+export type VoucherCartLine = {
+  productId: string;
+  sellerId: string;
+  categoryId?: string | null;
+  productMode?: ProductMode | null;
+  lineSubtotal: Prisma.Decimal;
+};
 
 export type VoucherValidationInput = {
   code: string;
   userId: string;
   subtotal: Prisma.Decimal;
   sellerIds?: string[];
+  cartLines?: VoucherCartLine[];
+  /**
+   * Saat true dan cartLines tidak dikirim, sistem membaca keranjang user untuk
+   * memvalidasi voucher bertarget kategori/produk/jenis produk (dipakai endpoint preview mobile).
+   */
+  fallbackToUserCart?: boolean;
 };
 
 export type VoucherValidationResult = {
@@ -17,6 +31,8 @@ export type VoucherValidationResult = {
   type: VoucherType;
   discountAmount: Prisma.Decimal;
   message: string;
+  eligibleSubtotal: Prisma.Decimal;
+  eligibleSellerSubtotals: Map<string, Prisma.Decimal>;
 };
 
 const assertVoucherActive = (voucher: {
@@ -39,6 +55,89 @@ const assertVoucherActive = (voucher: {
   }
 };
 
+const filterEligibleCartLines = (
+  voucher: {
+    scope: VoucherScope;
+    supplierId: string | null;
+    categoryId: string | null;
+    productId: string | null;
+    productMode: ProductMode | null;
+  },
+  cartLines: VoucherCartLine[],
+): VoucherCartLine[] => {
+  switch (voucher.scope) {
+    case VoucherScope.PLATFORM:
+      return cartLines;
+    case VoucherScope.SUPPLIER:
+      if (!voucher.supplierId) return [];
+      return cartLines.filter((line) => line.sellerId === voucher.supplierId);
+    case VoucherScope.CATEGORY:
+      if (!voucher.categoryId) return [];
+      return cartLines.filter((line) => line.categoryId === voucher.categoryId);
+    case VoucherScope.PRODUCT:
+      if (!voucher.productId) return [];
+      return cartLines.filter((line) => line.productId === voucher.productId);
+    case VoucherScope.PRODUCT_MODE:
+      if (!voucher.productMode) return [];
+      return cartLines.filter((line) => line.productMode === voucher.productMode);
+    default:
+      return cartLines;
+  }
+};
+
+const sumSellerSubtotals = (lines: VoucherCartLine[]): Map<string, Prisma.Decimal> => {
+  const map = new Map<string, Prisma.Decimal>();
+  for (const line of lines) {
+    const prev = map.get(line.sellerId) ?? new Prisma.Decimal(0);
+    map.set(line.sellerId, prev.add(line.lineSubtotal));
+  }
+  return map;
+};
+
+const sumLines = (lines: VoucherCartLine[]): Prisma.Decimal =>
+  lines.reduce((acc, line) => acc.add(line.lineSubtotal), new Prisma.Decimal(0));
+
+/** Bangun cart lines dari keranjang user (fallback preview). */
+const loadCartLinesForUser = async (userId: string): Promise<VoucherCartLine[]> => {
+  const rows = await prisma.cartItem.findMany({
+    where: { userId },
+    select: {
+      quantity: true,
+      product: {
+        select: {
+          id: true,
+          userId: true,
+          categoryId: true,
+          productMode: true,
+          pricePerUnit: true,
+        },
+      },
+    },
+  });
+  return rows.map((row) => ({
+    productId: row.product.id,
+    sellerId: row.product.userId,
+    categoryId: row.product.categoryId,
+    productMode: row.product.productMode,
+    lineSubtotal: row.quantity.mul(row.product.pricePerUnit),
+  }));
+};
+
+const scopeRejectMessage = (scope: VoucherScope): string => {
+  switch (scope) {
+    case VoucherScope.SUPPLIER:
+      return 'Kode promo tidak berlaku untuk toko ini.';
+    case VoucherScope.CATEGORY:
+      return 'Kode promo tidak berlaku untuk kategori produk di keranjang.';
+    case VoucherScope.PRODUCT:
+      return 'Kode promo tidak berlaku untuk produk di keranjang.';
+    case VoucherScope.PRODUCT_MODE:
+      return 'Kode promo tidak berlaku untuk jenis produk di keranjang.';
+    default:
+      return 'Kode promo tidak berlaku untuk pesanan ini.';
+  }
+};
+
 export const validateVoucherForCheckout = async (
   input: VoucherValidationInput,
 ): Promise<VoucherValidationResult> => {
@@ -52,18 +151,50 @@ export const validateVoucherForCheckout = async (
 
   assertVoucherActive(voucher);
 
-  if (input.subtotal.lt(voucher.minOrderAmount)) {
+  const needsCartLines =
+    voucher.scope === VoucherScope.CATEGORY ||
+    voucher.scope === VoucherScope.PRODUCT ||
+    voucher.scope === VoucherScope.PRODUCT_MODE ||
+    (voucher.scope === VoucherScope.SUPPLIER && Boolean(input.cartLines?.length));
+
+  let eligibleSubtotal = input.subtotal;
+  let eligibleSellerSubtotals = new Map<string, Prisma.Decimal>();
+
+  let cartLines = input.cartLines;
+  if ((!cartLines || cartLines.length === 0) && needsCartLines && input.fallbackToUserCart) {
+    cartLines = await loadCartLinesForUser(input.userId);
+  }
+
+  if (cartLines && cartLines.length > 0) {
+    const eligibleLines = filterEligibleCartLines(voucher, cartLines);
+    if (eligibleLines.length === 0) {
+      throw new AppError(scopeRejectMessage(voucher.scope), 400);
+    }
+    eligibleSubtotal = sumLines(eligibleLines);
+    eligibleSellerSubtotals = sumSellerSubtotals(eligibleLines);
+  } else if (voucher.scope === VoucherScope.SUPPLIER && voucher.supplierId) {
+    const sellers = input.sellerIds ?? [];
+    if (!sellers.includes(voucher.supplierId)) {
+      throw new AppError(scopeRejectMessage(VoucherScope.SUPPLIER), 400);
+    }
+    eligibleSellerSubtotals.set(voucher.supplierId, input.subtotal);
+  } else if (needsCartLines) {
+    throw new AppError(
+      'Detail keranjang diperlukan untuk memvalidasi kode promo ini.',
+      400,
+    );
+  } else if (input.sellerIds?.length) {
+    const share = input.subtotal.div(input.sellerIds.length);
+    for (const sellerId of input.sellerIds) {
+      eligibleSellerSubtotals.set(sellerId, share);
+    }
+  }
+
+  if (eligibleSubtotal.lt(voucher.minOrderAmount)) {
     throw new AppError(
       `Minimal belanja ${Number(voucher.minOrderAmount).toLocaleString('id-ID')} untuk kode ini.`,
       400,
     );
-  }
-
-  if (voucher.scope === VoucherScope.SUPPLIER && voucher.supplierId) {
-    const sellers = input.sellerIds ?? [];
-    if (!sellers.includes(voucher.supplierId)) {
-      throw new AppError('Kode promo tidak berlaku untuk toko ini.', 400);
-    }
   }
 
   const userUsage = await prisma.voucherRedemption.count({
@@ -75,14 +206,14 @@ export const validateVoucherForCheckout = async (
 
   let discount = new Prisma.Decimal(0);
   if (voucher.type === VoucherType.PERCENT) {
-    discount = input.subtotal.mul(voucher.value).div(100);
+    discount = eligibleSubtotal.mul(voucher.value).div(100);
     if (voucher.maxDiscount) {
       discount = Prisma.Decimal.min(discount, voucher.maxDiscount);
     }
   } else {
     discount = voucher.value;
   }
-  discount = roundIdr(Prisma.Decimal.min(discount, input.subtotal));
+  discount = roundIdr(Prisma.Decimal.min(discount, eligibleSubtotal));
 
   if (discount.lte(0)) {
     throw new AppError('Kode promo tidak memberikan diskon untuk pesanan ini.', 400);
@@ -94,16 +225,18 @@ export const validateVoucherForCheckout = async (
     type: voucher.type,
     discountAmount: discount,
     message: `Diskon ${Number(discount).toLocaleString('id-ID')} diterapkan.`,
+    eligibleSubtotal,
+    eligibleSellerSubtotals,
   };
 };
 
-/** Distribusi diskon proporsional per seller berdasarkan subtotal. */
+/** Distribusi diskon proporsional per seller berdasarkan subtotal eligible. */
 export const allocateVoucherDiscount = (
   sellerSubtotal: Prisma.Decimal,
   totalSubtotal: Prisma.Decimal,
   totalDiscount: Prisma.Decimal,
 ): Prisma.Decimal => {
-  if (totalSubtotal.lte(0) || totalDiscount.lte(0)) {
+  if (totalSubtotal.lte(0) || totalDiscount.lte(0) || sellerSubtotal.lte(0)) {
     return new Prisma.Decimal(0);
   }
   return roundIdr(sellerSubtotal.div(totalSubtotal).mul(totalDiscount));
@@ -136,12 +269,15 @@ export const validateVoucherPreview = async (
   code: string,
   subtotal: number,
   sellerIds?: string[],
+  cartLines?: VoucherCartLine[],
 ) => {
   const result = await validateVoucherForCheckout({
     code,
     userId,
     subtotal: new Prisma.Decimal(subtotal),
     sellerIds,
+    cartLines,
+    fallbackToUserCart: true,
   });
   return {
     code: result.code,
@@ -159,6 +295,9 @@ export type CreateVoucherAdminInput = {
   maxDiscount?: number | null;
   scope?: VoucherScope;
   supplierId?: string | null;
+  categoryId?: string | null;
+  productId?: string | null;
+  productMode?: ProductMode | null;
   usageLimit?: number | null;
   usagePerUser?: number;
   startsAt?: Date | null;
@@ -187,9 +326,25 @@ export type ListVouchersAdminQuery = {
 };
 
 const voucherAdminInclude = {
-  supplier: { select: { id: true, fullName: true, email: true } },
+  supplier: {
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+      profile: { select: { companyName: true } },
+    },
+  },
+  category: { select: { id: true, name: true, productMode: true } },
+  product: { select: { id: true, name: true, productMode: true } },
   _count: { select: { redemptions: true } },
 } as const;
+
+const clearTargetingFields = (scope: VoucherScope) => ({
+  supplierId: scope === VoucherScope.SUPPLIER ? undefined : null,
+  categoryId: scope === VoucherScope.CATEGORY ? undefined : null,
+  productId: scope === VoucherScope.PRODUCT ? undefined : null,
+  productMode: scope === VoucherScope.PRODUCT_MODE ? undefined : null,
+});
 
 const buildPeriodWhere = (period: ListVouchersAdminQuery['period']): Prisma.VoucherWhereInput => {
   const now = new Date();
@@ -210,15 +365,19 @@ const buildPeriodWhere = (period: ListVouchersAdminQuery['period']): Prisma.Vouc
   return {};
 };
 
-export const createVoucherAdmin = async (input: CreateVoucherAdminInput) => {
-  const code = input.code.trim().toUpperCase();
-  const scope = input.scope ?? VoucherScope.PLATFORM;
+const assertTargetingRefs = async (input: {
+  scope: VoucherScope;
+  supplierId?: string | null;
+  categoryId?: string | null;
+  productId?: string | null;
+  productMode?: ProductMode | null;
+}) => {
+  const { scope } = input;
 
-  if (scope === VoucherScope.SUPPLIER && !input.supplierId) {
-    throw new AppError('supplierId wajib untuk voucher SUPPLIER.', 400);
-  }
-
-  if (input.supplierId) {
+  if (scope === VoucherScope.SUPPLIER) {
+    if (!input.supplierId) {
+      throw new AppError('supplierId wajib untuk voucher SUPPLIER.', 400);
+    }
     const supplier = await prisma.user.findFirst({
       where: { id: input.supplierId, role: 'SUPPLIER' },
       select: { id: true },
@@ -226,8 +385,51 @@ export const createVoucherAdmin = async (input: CreateVoucherAdminInput) => {
     if (!supplier) throw new AppError('Supplier tidak ditemukan.', 404);
   }
 
+  if (scope === VoucherScope.CATEGORY) {
+    if (!input.categoryId) {
+      throw new AppError('categoryId wajib untuk voucher CATEGORY.', 400);
+    }
+    const category = await prisma.category.findUnique({
+      where: { id: input.categoryId },
+      select: { id: true },
+    });
+    if (!category) throw new AppError('Kategori tidak ditemukan.', 404);
+  }
+
+  if (scope === VoucherScope.PRODUCT) {
+    if (!input.productId) {
+      throw new AppError('productId wajib untuk voucher PRODUCT.', 400);
+    }
+    const product = await prisma.product.findUnique({
+      where: { id: input.productId },
+      select: { id: true },
+    });
+    if (!product) throw new AppError('Produk tidak ditemukan.', 404);
+  }
+
+  if (scope === VoucherScope.PRODUCT_MODE) {
+    if (!input.productMode) {
+      throw new AppError('productMode wajib untuk voucher PRODUCT_MODE.', 400);
+    }
+  }
+};
+
+export const createVoucherAdmin = async (input: CreateVoucherAdminInput) => {
+  const code = input.code.trim().toUpperCase();
+  const scope = input.scope ?? VoucherScope.PLATFORM;
+
+  await assertTargetingRefs({
+    scope,
+    supplierId: input.supplierId,
+    categoryId: input.categoryId,
+    productId: input.productId,
+    productMode: input.productMode,
+  });
+
   const existing = await prisma.voucher.findUnique({ where: { code } });
   if (existing) throw new AppError('Kode voucher sudah dipakai.', 409);
+
+  const cleared = clearTargetingFields(scope);
 
   return prisma.voucher.create({
     data: {
@@ -237,7 +439,15 @@ export const createVoucherAdmin = async (input: CreateVoucherAdminInput) => {
       minOrderAmount: new Prisma.Decimal(input.minOrderAmount ?? 0),
       maxDiscount: input.maxDiscount != null ? new Prisma.Decimal(input.maxDiscount) : null,
       scope,
-      supplierId: scope === VoucherScope.SUPPLIER ? input.supplierId : null,
+      supplierId:
+        scope === VoucherScope.SUPPLIER ? input.supplierId! : (cleared.supplierId ?? null),
+      categoryId:
+        scope === VoucherScope.CATEGORY ? input.categoryId! : (cleared.categoryId ?? null),
+      productId: scope === VoucherScope.PRODUCT ? input.productId! : (cleared.productId ?? null),
+      productMode:
+        scope === VoucherScope.PRODUCT_MODE
+          ? input.productMode!
+          : (cleared.productMode ?? null),
       usageLimit: input.usageLimit ?? null,
       usagePerUser: input.usagePerUser ?? 1,
       startsAt: input.startsAt ?? null,
@@ -263,6 +473,9 @@ export const listVouchersAdmin = async (query: ListVouchersAdminQuery = {}) => {
             { code: { contains: search } },
             { supplier: { fullName: { contains: search } } },
             { supplier: { email: { contains: search } } },
+            { supplier: { profile: { companyName: { contains: search } } } },
+            { category: { name: { contains: search } } },
+            { product: { name: { contains: search } } },
           ],
         }
       : {}),

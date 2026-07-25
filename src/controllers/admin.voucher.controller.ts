@@ -41,6 +41,9 @@ export const createVoucher = catchAsync(async (req: AuthRequest, res: Response) 
     maxDiscount: body.maxDiscount,
     scope: (body.scope as VoucherScope) ?? VoucherScope.PLATFORM,
     supplierId: body.supplierId,
+    categoryId: body.categoryId,
+    productId: body.productId,
+    productMode: body.productMode,
     usageLimit: body.usageLimit,
     usagePerUser: body.usagePerUser,
     startsAt: body.startsAt,
@@ -53,7 +56,15 @@ export const createVoucher = catchAsync(async (req: AuthRequest, res: Response) 
     action: 'CREATE_VOUCHER',
     entity: 'VOUCHER',
     entityId: item.id,
-    newValue: { code: item.code, type: item.type, scope: item.scope },
+    newValue: {
+      code: item.code,
+      type: item.type,
+      scope: item.scope,
+      supplierId: item.supplierId,
+      categoryId: item.categoryId,
+      productId: item.productId,
+      productMode: item.productMode,
+    },
   });
 
   successResponse(res, item, 'Voucher berhasil dibuat.', 201);

@@ -7,6 +7,7 @@ import {
   assertSampleCheckoutShape,
   directCheckoutProductSelect,
   resolveCheckoutUnitPrice,
+  type DirectCheckoutProductRow,
 } from '#utils/productOrderRules';
 import { assertBuyerCommerceReady } from '#utils/readiness.util';
 import {
@@ -1165,6 +1166,40 @@ const computeGroupedSubtotals = (
   return { subtotals, grandSubtotal: grand };
 };
 
+const buildVoucherCartLines = (
+  items: Array<{ productId: string; quantity: number }>,
+  productMap: Map<string, DirectCheckoutProductRow>,
+  orderType: 'STANDARD' | 'SAMPLE',
+) =>
+  items.map((it) => {
+    const p = productMap.get(it.productId)!;
+    const qty = new Prisma.Decimal(it.quantity);
+    const unitPrice = resolveCheckoutUnitPrice(p, orderType);
+    return {
+      productId: p.id,
+      sellerId: p.userId,
+      categoryId: p.categoryId ?? null,
+      productMode: p.productMode ?? null,
+      lineSubtotal: qty.mul(unitPrice),
+    };
+  });
+
+const allocateSellerVoucherDiscount = (
+  voucherCtx: Awaited<ReturnType<typeof validateVoucherForCheckout>>,
+  sellerId: string,
+  sellerSubtotal: Prisma.Decimal,
+  grandSubtotal: Prisma.Decimal,
+) => {
+  if (voucherCtx.eligibleSellerSubtotals.size > 0) {
+    return allocateVoucherDiscount(
+      voucherCtx.eligibleSellerSubtotals.get(sellerId) ?? new Prisma.Decimal(0),
+      voucherCtx.eligibleSubtotal,
+      voucherCtx.discountAmount,
+    );
+  }
+  return allocateVoucherDiscount(sellerSubtotal, grandSubtotal, voucherCtx.discountAmount);
+};
+
 export const createDirectOrderFromCart = async (
   buyerId: string,
   data: {
@@ -1289,6 +1324,7 @@ export const createDirectOrderFromCart = async (
         userId: buyerId,
         subtotal: grandSubtotal,
         sellerIds: [...grouped.keys()],
+        cartLines: buildVoucherCartLines(data.items, productMap, orderType),
       })
     : null;
 
@@ -1335,10 +1371,11 @@ export const createDirectOrderFromCart = async (
 
         const sellerLogistics = logisticsBySeller.get(sellerId);
         const sellerDiscount = voucherCtx
-          ? allocateVoucherDiscount(
+          ? allocateSellerVoucherDiscount(
+              voucherCtx,
+              sellerId,
               sellerSubtotals.get(sellerId) ?? subtotal,
               grandSubtotal,
-              voucherCtx.discountAmount,
             )
           : new Prisma.Decimal(0);
         const adjustedSubtotal = subtotal.sub(sellerDiscount);
@@ -1593,6 +1630,7 @@ export const previewDirectOrderFromCart = async (
         userId: buyerId,
         subtotal: grandSubtotal,
         sellerIds: [...grouped.keys()],
+        cartLines: buildVoucherCartLines(data.items, productMap, orderType),
       })
     : null;
   if (voucherCtx) voucherDiscount = voucherCtx.discountAmount;
@@ -1613,10 +1651,11 @@ export const previewDirectOrderFromCart = async (
     }
     const sellerLogistics = logisticsBySeller.get(sellerId);
     const sellerDiscount = voucherCtx
-      ? allocateVoucherDiscount(
+      ? allocateSellerVoucherDiscount(
+          voucherCtx,
+          sellerId,
           sellerSubtotals.get(sellerId) ?? sellerSubtotal,
           grandSubtotal,
-          voucherCtx.discountAmount,
         )
       : new Prisma.Decimal(0);
     const adjustedSubtotal = sellerSubtotal.sub(sellerDiscount);

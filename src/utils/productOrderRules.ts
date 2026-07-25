@@ -5,6 +5,7 @@ import AppError from '#utils/appError';
 export type DirectCheckoutProductRow = {
   id: string;
   userId: string;
+  categoryId?: string | null;
   name: string;
   stock: Prisma.Decimal;
   minOrder: Prisma.Decimal;
@@ -22,6 +23,7 @@ export type DirectCheckoutProductRow = {
 export const directCheckoutProductSelect = {
   id: true,
   userId: true,
+  categoryId: true,
   name: true,
   stock: true,
   minOrder: true,

@@ -288,7 +288,11 @@ export type VerificationStatus = (typeof VerificationStatus)[keyof typeof Verifi
 export const VoucherScope = {
   PLATFORM: 'PLATFORM',
   SUPPLIER: 'SUPPLIER',
+  CATEGORY: 'CATEGORY',
+  PRODUCT: 'PRODUCT',
+  PRODUCT_MODE: 'PRODUCT_MODE',
 } as const;
+export type VoucherScope = (typeof VoucherScope)[keyof typeof VoucherScope];
 
 export const VoucherType = {
   PERCENT: 'PERCENT',

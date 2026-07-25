@@ -576,7 +576,11 @@ export const listUsers = async (params: {
   if (status) where.status = status;
   if (tier) where.tier = tier;
   if (search) {
-    where.OR = [{ email: { startsWith: search } }, { fullName: { startsWith: search } }];
+    where.OR = [
+      { email: { contains: search } },
+      { fullName: { contains: search } },
+      { profile: { companyName: { contains: search } } },
+    ];
   }
 
   const [users, total] = await Promise.all([
@@ -597,6 +601,7 @@ export const listUsers = async (params: {
         isEmailVerified: true,
         isPhoneVerified: true,
         avatarUrl: true,
+        profile: { select: { companyName: true } },
       },
     }),
     prisma.user.count({ where }),
@@ -604,6 +609,7 @@ export const listUsers = async (params: {
 
   const mappedUsers = users.map((user) => ({
     ...user,
+    companyName: user.profile?.companyName ?? null,
     avatarUrl: storageService.toMediaResponsePath(user.avatarUrl),
   }));
 
@@ -828,14 +834,16 @@ export const listAllProducts = async (params: {
   limit: number;
   status?: ProductStatus;
   search?: string;
+  userId?: string;
 }) => {
-  const { page, limit, status, search } = params;
+  const { page, limit, status, search, userId } = params;
   const skip = (page - 1) * limit;
 
   const where: Record<string, unknown> = {};
   if (status) where.status = status;
+  if (userId) where.userId = userId;
   if (search) {
-    where.name = { startsWith: search };
+    where.name = { contains: search };
   }
 
   const [products, total] = await Promise.all([
@@ -845,8 +853,8 @@ export const listAllProducts = async (params: {
       take: limit,
       orderBy: { createdAt: 'desc' },
       include: {
-        user: { select: { fullName: true, email: true } },
-        category: { select: { name: true } },
+        user: { select: { id: true, fullName: true, email: true } },
+        category: { select: { id: true, name: true } },
         // For fallback thumbnail resolution (and to provide richer data if needed later).
         images: { select: { url: true } },
       },

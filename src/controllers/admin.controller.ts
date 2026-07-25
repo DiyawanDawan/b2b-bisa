@@ -200,12 +200,13 @@ export const getKYCQueue = catchAsync(async (req: AuthRequest, res: Response) =>
  * GET /api/v1/admin/products
  */
 export const listAllProducts = catchAsync(async (req: AuthRequest, res: Response) => {
-  const { page = 1, limit = 10, status, search } = req.query;
+  const { page = 1, limit = 10, status, search, userId } = req.query;
   const result = await adminService.listAllProducts({
     page: Number(page),
     limit: Number(limit),
     status: status as ProductStatus,
     search: search as string,
+    userId: typeof userId === 'string' ? userId : undefined,
   });
   return paginatedResponse(
     res,

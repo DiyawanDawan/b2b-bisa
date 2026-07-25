@@ -249,6 +249,9 @@ enum VoucherType {
 enum VoucherScope {
   PLATFORM
   SUPPLIER
+  CATEGORY
+  PRODUCT
+  PRODUCT_MODE
 }
 
 enum RfqStatus {
@@ -679,6 +682,7 @@ model Category {
   articles    Article[]
   forumPosts  ForumPost[]
   rfqs        Rfq[]
+  vouchers    Voucher[]
 
   @@index([name])
   @@index([categoryType])
@@ -793,6 +797,7 @@ model Product {
   harvestLots   ProductHarvestLot[]
   bookings      Booking[]
   certificates  ProductCertificate[]
+  vouchers      Voucher[]
 
   @@index([userId])
   @@index([categoryId])
@@ -1166,6 +1171,9 @@ model Voucher {
   maxDiscount    Decimal?     @db.Decimal(15, 2) @map("max_discount")
   scope          VoucherScope @default(PLATFORM) @map("scope")
   supplierId     String?      @map("supplier_id")
+  categoryId     String?      @map("category_id")
+  productId      String?      @map("product_id")
+  productMode    ProductMode? @map("product_mode")
   usageLimit     Int?         @map("usage_limit")
   usagePerUser   Int          @default(1) @map("usage_per_user")
   usageCount     Int          @default(0) @map("usage_count")
@@ -1176,10 +1184,15 @@ model Voucher {
   updatedAt      DateTime     @updatedAt @map("updated_at")
 
   supplier    User?               @relation("SupplierVouchers", fields: [supplierId], references: [id], onDelete: SetNull)
+  category    Category?           @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  product     Product?            @relation(fields: [productId], references: [id], onDelete: SetNull)
   redemptions VoucherRedemption[]
 
   @@index([isActive, expiresAt])
   @@index([supplierId])
+  @@index([categoryId])
+  @@index([productId])
+  @@index([productMode])
   @@map("vouchers")
 }
 

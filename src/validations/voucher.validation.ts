@@ -5,6 +5,17 @@ export const validateVoucherSchema = z.object({
   code: z.string().min(2).max(50),
   subtotal: z.coerce.number().positive(),
   sellerIds: z.array(z.string().uuid()).optional(),
+  cartLines: z
+    .array(
+      z.object({
+        productId: z.string().uuid(),
+        sellerId: z.string().uuid(),
+        categoryId: z.string().uuid().optional().nullable(),
+        productMode: z.enum(['BIOMASS_MATERIAL', 'ORGANIC_PRODUCE']).optional().nullable(),
+        lineSubtotal: z.coerce.number().nonnegative(),
+      }),
+    )
+    .optional(),
 });
 
 export const listVouchersAdminSchema = z.object({
@@ -16,6 +27,14 @@ export const listVouchersAdminSchema = z.object({
   period: z.enum(['active_now', 'upcoming', 'expired']).optional(),
 });
 
+const voucherScopeEnum = z.enum([
+  'PLATFORM',
+  'SUPPLIER',
+  'CATEGORY',
+  'PRODUCT',
+  'PRODUCT_MODE',
+]);
+
 export const createVoucherAdminSchema = z
   .object({
     code: z.string().min(2).max(50),
@@ -23,8 +42,11 @@ export const createVoucherAdminSchema = z
     value: z.coerce.number().positive(),
     minOrderAmount: z.coerce.number().nonnegative().default(0),
     maxDiscount: z.coerce.number().positive().optional().nullable(),
-    scope: z.enum(['PLATFORM', 'SUPPLIER']).default('PLATFORM'),
+    scope: voucherScopeEnum.default('PLATFORM'),
     supplierId: z.string().uuid().optional().nullable(),
+    categoryId: z.string().uuid().optional().nullable(),
+    productId: z.string().uuid().optional().nullable(),
+    productMode: z.enum(['BIOMASS_MATERIAL', 'ORGANIC_PRODUCE']).optional().nullable(),
     usageLimit: z.coerce.number().int().positive().optional().nullable(),
     usagePerUser: z.coerce.number().int().positive().default(1),
     startsAt: z.coerce.date().optional().nullable(),
@@ -37,6 +59,27 @@ export const createVoucherAdminSchema = z
         code: z.ZodIssueCode.custom,
         message: 'supplierId wajib untuk voucher SUPPLIER',
         path: ['supplierId'],
+      });
+    }
+    if (data.scope === 'CATEGORY' && !data.categoryId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'categoryId wajib untuk voucher CATEGORY',
+        path: ['categoryId'],
+      });
+    }
+    if (data.scope === 'PRODUCT' && !data.productId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'productId wajib untuk voucher PRODUCT',
+        path: ['productId'],
+      });
+    }
+    if (data.scope === 'PRODUCT_MODE' && !data.productMode) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'productMode wajib untuk voucher PRODUCT_MODE',
+        path: ['productMode'],
       });
     }
     if (data.type === 'PERCENT' && data.value > 100) {
