@@ -1,4 +1,3 @@
-import crypto from 'crypto';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -218,8 +217,6 @@ export const ENCRYPTION_KEY = optional('ENCRYPTION_KEY');
 /** Optional secondary key for rotation window (v2 ciphertext prefix). */
 export const ENCRYPTION_KEY_V2 = optional('ENCRYPTION_KEY_V2');
 
-const DEV_FALLBACK_KEY = crypto.createHash('sha256').update('bisa-dev-encryption-key').digest();
-
 const parseKeyMaterial = (raw: string): Buffer => {
   const trimmed = raw.trim();
   if (/^[0-9a-fA-F]{64}$/.test(trimmed)) {
@@ -235,18 +232,12 @@ const parseKeyMaterial = (raw: string): Buffer => {
 const resolveKeyForVersion = (version: string): Buffer => {
   if (version === '2') {
     if (ENCRYPTION_KEY_V2) return parseKeyMaterial(ENCRYPTION_KEY_V2);
-    if (NODE_ENV === 'production') {
-      throw new Error('ENCRYPTION_KEY_V2 is required to decrypt v2 payloads in production.');
-    }
+    throw new Error('ENCRYPTION_KEY_V2 is required to decrypt v2 payloads.');
   }
 
   if (ENCRYPTION_KEY) return parseKeyMaterial(ENCRYPTION_KEY);
 
-  if (NODE_ENV === 'production') {
-    throw new Error('ENCRYPTION_KEY must be set in production (32-byte hex or base64).');
-  }
-
-  return DEV_FALLBACK_KEY;
+  throw new Error('ENCRYPTION_KEY must be set (32-byte hex or base64).');
 };
 
 export const getEncryptionKeyBuffer = (): Buffer => resolveKeyForVersion('1');
