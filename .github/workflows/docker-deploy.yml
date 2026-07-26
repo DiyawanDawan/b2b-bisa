@@ -456,6 +456,8 @@ jobs:
               || echo "ℹ️ No failed partnership migration to roll back (ok)"
             docker exec bisa-app npx prisma migrate resolve --rolled-back 20260726180000_add_company_profile \
               || echo "ℹ️ No failed company_profile migration to roll back (ok)"
+            docker exec bisa-app npx prisma migrate resolve --rolled-back 20260726185000_company_profile \
+              || echo "ℹ️ No failed company_profile v2 migration to roll back (ok)"
             docker exec bisa-app npx prisma migrate deploy
             echo "✅ Database migrations successfully applied!"
             docker exec bisa-app npx prisma migrate status || true
@@ -922,6 +924,8 @@ jobs:
               || echo "ℹ️ No failed partnership migration to roll back (ok)"
             docker exec bisa-app npx prisma migrate resolve --rolled-back 20260726180000_add_company_profile \
               || echo "ℹ️ No failed company_profile migration to roll back (ok)"
+            docker exec bisa-app npx prisma migrate resolve --rolled-back 20260726185000_company_profile \
+              || echo "ℹ️ No failed company_profile v2 migration to roll back (ok)"
             docker exec bisa-app npx prisma migrate deploy
             echo "✅ Database migrations successfully applied!"
 
@@ -1420,6 +1424,8 @@ jobs:
               || echo "ℹ️ No failed partnership migration to roll back (ok)"
             docker exec bisa-app npx prisma migrate resolve --rolled-back 20260726180000_add_company_profile \
               || echo "ℹ️ No failed company_profile migration to roll back (ok)"
+            docker exec bisa-app npx prisma migrate resolve --rolled-back 20260726185000_company_profile \
+              || echo "ℹ️ No failed company_profile v2 migration to roll back (ok)"
             docker exec bisa-app npx prisma migrate deploy
             echo "✅ Database migrations successfully applied!"
 
