@@ -37,10 +37,11 @@ async function seedDeviceTelemetry(prisma, device, { readingCount = 8, withAlert
 export async function seedIoT(prisma, users) {
   logger.info('🌱 [06] Seeding IoT Devices, Telemetry & AI...');
 
-  await prisma.iotAlert.deleteMany({});
-  await prisma.iotReading.deleteMany({});
-  await prisma.iotDevice.deleteMany({});
-  await prisma.aIPrediction.deleteMany({});
+  const existingIoT = await prisma.iotDevice.count();
+  if (existingIoT > 0) {
+    logger.info('   ↳ IoT already seeded, skipping (data tidak dihapus)...');
+    return;
+  }
 
   if (!users?.allSuppliers?.length) {
     logger.warn('⚠️ [06] Tidak ada supplier — IoT dilewati.');

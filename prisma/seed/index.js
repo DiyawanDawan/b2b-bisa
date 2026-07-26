@@ -32,6 +32,7 @@ import { seedEngagement } from './30-engagement.seeder.js';
 import { seedSupport } from './31-support.seeder.js';
 import { seedSupplierExtras } from './32-supplier-extras.seeder.js';
 import { seedPlatformSettings } from './29-platform-settings.seeder.js';
+import { seedMediaUploadSessions } from './33-media-upload.seeder.js';
 
 async function main() {
   logger.info('🚀 Memulai proses FULL Seeding Database BISA B2B...');
@@ -82,6 +83,7 @@ async function main() {
     await seedSupport(prisma, users);
     await seedSupplierExtras(prisma, users);
     await seedPlatformSettings(prisma);
+    await seedMediaUploadSessions(prisma, users);
 
     await seedSummary(prisma);
 

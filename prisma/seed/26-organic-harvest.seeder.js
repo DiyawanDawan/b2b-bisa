@@ -19,8 +19,11 @@ const daysAgo = (days) => {
 export async function seedOrganicHarvest(prisma, users) {
   logger.info('🌱 [26] Seeding organic harvest lots & syncing availability...');
 
-  await prisma.booking.deleteMany({});
-  await prisma.productHarvestLot.deleteMany({});
+  const existingHarvest = await prisma.productHarvestLot.count();
+  if (existingHarvest > 0) {
+    logger.info('   ↳ Organic harvest already seeded, skipping (data tidak dihapus)...');
+    return;
+  }
 
   const demoSupplierIds = [users?.siti?.id, users?.green?.id].filter(Boolean);
 

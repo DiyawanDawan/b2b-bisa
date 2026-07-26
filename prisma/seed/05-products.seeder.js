@@ -254,20 +254,12 @@ export async function seedProducts(prisma, users) {
     logger.warn('   ↳ PEXELS_API_KEY / PIXABAY_API_KEY kosong — fallback loremflickr path.');
   }
 
-  // CLEANUP - Delete in correct order (respect FK constraints)
-  await prisma.booking.deleteMany({});
-  await prisma.productHarvestLot.deleteMany({});
-  await prisma.cartItem.deleteMany({});
-  await prisma.productQuestion.deleteMany({});
-  await prisma.productLike.deleteMany({});
-  await prisma.orderItem.deleteMany({});
-  await prisma.negotiation.deleteMany({});
-  await prisma.review.deleteMany({});
-  await prisma.productImage.deleteMany({});
-  await prisma.productVideo.deleteMany({});
-  await prisma.productSpec.deleteMany({});
-  await prisma.productTechnicalSpec.deleteMany({});
-  await prisma.product.deleteMany({});
+  // IDEMPOTENT: cek apakah produk seed sudah ada, jika iya lewati
+  const existingProducts = await prisma.product.count();
+  if (existingProducts > 0) {
+    logger.info('   ↳ Products already seeded, skipping (data tidak dihapus)...');
+    return { productIds: [], images: [], specs: [] };
+  }
 
   const { byBiomassType, organicByName } = await loadL3Leaves(prisma);
 

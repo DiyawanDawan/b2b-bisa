@@ -4,7 +4,13 @@ import { faker } from '@faker-js/faker/locale/id_ID';
 export async function seedBookings(prisma, users) {
   logger.info('🌱 [27] Seeding bookings (pre-harvest)...');
 
-  await prisma.booking.deleteMany({ where: { bookingNumber: { startsWith: 'BKG-SEED-' } } });
+  const existingSeedBookings = await prisma.booking.count({
+    where: { bookingNumber: { startsWith: 'BKG-SEED-' } },
+  });
+  if (existingSeedBookings > 0) {
+    logger.info('   ↳ Bookings already seeded, skipping (data tidak dihapus)...');
+    return 0;
+  }
 
   const buyer = users?.hendra ?? users?.allBuyers?.[0];
   const supplier = users?.siti ?? users?.allSuppliers?.[0];

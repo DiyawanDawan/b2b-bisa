@@ -34,7 +34,11 @@ const FAQS = [
 export async function seedFaqs(prisma) {
   logger.info('🌱 [16] Seeding FAQ (Help Center)...');
 
-  await prisma.faq.deleteMany({});
+  const existingFaqs = await prisma.faq.count();
+  if (existingFaqs > 0) {
+    logger.info('   ↳ FAQs already seeded, skipping (data tidak dihapus)...');
+    return;
+  }
 
   for (const faq of FAQS) {
     await prisma.faq.create({ data: faq });

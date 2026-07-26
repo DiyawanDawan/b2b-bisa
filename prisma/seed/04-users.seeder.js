@@ -4,7 +4,7 @@ import { faker } from '@faker-js/faker/locale/id_ID';
 import { avatarSeedPath } from '../../src/utils/loremFlickrMedia.util.ts';
 import { encryptField } from '../../src/utils/encryption.util.ts';
 import { sealAccountName, sealAccountNumber } from '../../src/utils/payoutAccount.util.ts';
-import { sealAddress, sealAddressPhone } from '../../src/utils/piiField.util.ts';
+import { sealAddress, sealAddressPhone, sealDocumentFile, sealDocumentTitle } from '../../src/utils/piiField.util.ts';
 
 export async function seedUsers(prisma) {
   logger.info('🌱 [04] Seeding BISA Elite Users (PRO Tiers)...');
@@ -207,24 +207,21 @@ export async function seedUsers(prisma) {
     }
 
     // 6c. User Documents
-    await prisma.userDocument.createMany({
-      data: [
-        {
+    const docData = [
+      { title: 'KTP_Verification.pdf', fileUrl: 'https://bisa.es/docs/identity.pdf', fileType: 'IDENTITY', fileSize: '1.2 MB' },
+      { title: 'Tax_ID_NPWP.pdf', fileUrl: 'https://bisa.es/docs/tax.pdf', fileType: 'TAX_REPORT', fileSize: '0.8 MB' },
+    ];
+    for (const doc of docData) {
+      await prisma.userDocument.create({
+        data: {
           userId: user.id,
-          title: 'KTP_Verification.pdf',
-          fileUrl: 'https://bisa.es/docs/identity.pdf',
-          fileType: 'IDENTITY',
-          fileSize: '1.2 MB',
+          title: sealDocumentTitle(doc.title),
+          fileUrl: sealDocumentFile(doc.fileUrl),
+          fileType: doc.fileType,
+          fileSize: doc.fileSize,
         },
-        {
-          userId: user.id,
-          title: 'Tax_ID_NPWP.pdf',
-          fileUrl: 'https://bisa.es/docs/tax.pdf',
-          fileType: 'TAX_REPORT',
-          fileSize: '0.8 MB',
-        },
-      ],
-    });
+      });
+    }
 
     // 6d. Tokens (Sample)
     await prisma.token.create({

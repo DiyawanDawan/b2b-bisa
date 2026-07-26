@@ -101,7 +101,11 @@ export async function seedBisaExpress(prisma) {
   logger.info(`[24] Service rules: ${serviceRuleSeeds.length} layanan`);
 
   // Coverage 100% dari GIS provinces — tidak tulis keyword manual
-  await prisma.bisaExpressCoverage.deleteMany({});
+  const existingCoverage = await prisma.bisaExpressCoverage.count();
+  if (existingCoverage > 0) {
+    logger.info('[24]   ↳ BISA Express coverage already seeded, skipping (data tidak dihapus)...');
+    return;
+  }
   const provinces = await prisma.province.findMany({
     select: { id: true, name: true },
     orderBy: { name: 'asc' },

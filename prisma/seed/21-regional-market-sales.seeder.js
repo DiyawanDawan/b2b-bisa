@@ -159,7 +159,7 @@ function loadCommoditySeedPriceKgMap() {
     }
     return map;
   } catch (error) {
-    console.warn('[SEED 21] Gagal membaca market_seed_bundles.json:', error?.message ?? error);
+    logger.warn('[SEED 21] Gagal membaca market_seed_bundles.json:', error?.message ?? error);
     return new Map();
   }
 }

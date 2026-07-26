@@ -4,11 +4,13 @@ import { faker } from '@faker-js/faker/locale/id_ID';
 export async function seedAnalytics(prisma) {
   logger.info('🌱 [07] Seeding Waste Data (market trends di 11-market.seeder.js)...');
 
-  await prisma.wasteData.deleteMany({
-    where: {
-      NOT: { source: { contains: 'BPS' } },
-    },
+  const existingWasteData = await prisma.wasteData.count({
+    where: { NOT: { source: { contains: 'BPS' } } },
   });
+  if (existingWasteData > 0) {
+    logger.info('   ↳ Waste data already seeded, skipping (data tidak dihapus)...');
+    return;
+  }
 
   const biomassaTypes = ['SEKAM_PADI', 'TONGKOL_JAGUNG', 'TEMPURUNG_KELAPA', 'BIOCHAR'];
   for (let i = 0; i < 6; i++) {
@@ -26,5 +28,5 @@ export async function seedAnalytics(prisma) {
     });
   }
 
-  console.log('✅ [07] 10+ Analytics seeded.');
+  logger.info('✅ [07] 10+ Analytics seeded.');
 }

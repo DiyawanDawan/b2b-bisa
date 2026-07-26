@@ -39,8 +39,11 @@ export async function seedCommunity(prisma, users) {
 
   const hasForumGroups = typeof prisma.forumGroup?.findMany === 'function';
 
-  await prisma.article.deleteMany({});
-  await prisma.forumPost.deleteMany({});
+  const existingArticles = await prisma.article.count();
+  if (existingArticles > 0) {
+    logger.info('   ↳ Community content already seeded, skipping (data tidak dihapus)...');
+    return;
+  }
 
   const { admin, allSuppliers, allBuyers } = users;
   if (!admin || !allSuppliers || allSuppliers.length === 0) return;

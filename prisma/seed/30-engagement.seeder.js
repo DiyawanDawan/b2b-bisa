@@ -16,13 +16,11 @@ async function findL3Leaf(prisma, where) {
 export async function seedEngagement(prisma, users) {
   logger.info('🌱 [30] Seeding engagement (Q&A, RFQ, cart, vouchers, likes, follows)...');
 
-  await prisma.voucherRedemption.deleteMany({});
-  await prisma.rfqResponse.deleteMany({});
-  await prisma.rfq.deleteMany({});
-  await prisma.cartItem.deleteMany({});
-  await prisma.productQuestion.deleteMany({});
-  await prisma.productLike.deleteMany({});
-  await prisma.userFollow.deleteMany({});
+  const existingEngagement = await prisma.voucherRedemption.count();
+  if (existingEngagement > 0) {
+    logger.info('   ↳ Engagement data already seeded, skipping (data tidak dihapus)...');
+    return;
+  }
 
   const buyer = users?.hendra ?? users?.allBuyers?.[0];
   const admin = users?.admin;
@@ -198,7 +196,7 @@ export async function seedEngagement(prisma, users) {
         buyerId: buyer.id,
         title: def.title,
         productMode: def.productMode,
-        biomassaType: def.biomassaType || null,
+        biomassaType: def.biomassaType || undefined,
         categoryId: def.categoryId || null,
         quantity: def.quantity,
         specifications: 'Spesifikasi demo seed — kualitas premium, sertifikat jika ada.',

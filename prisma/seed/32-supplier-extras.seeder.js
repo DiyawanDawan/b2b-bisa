@@ -4,13 +4,13 @@ import logger from '../../src/config/logger.js';
 export async function seedSupplierExtras(prisma, users) {
   logger.info('🌱 [32] Seeding supplier extras (API key, referral, live, knowledge, devices)...');
 
-  await prisma.liveSessionComment.deleteMany({});
-  await prisma.liveSession.deleteMany({ where: { title: { startsWith: '[SEED]' } } });
-  await prisma.referralReward.deleteMany({});
-  await prisma.supplierApiKey.deleteMany({ where: { keyPrefix: 'bisa_seed' } });
-  await prisma.knowledgeDocument.deleteMany({ where: { title: { startsWith: '[SEED]' } } });
-  await prisma.userDevice.deleteMany({ where: { fcmToken: { startsWith: 'SEED_FCM_' } } });
-  await prisma.userSavedPayment.deleteMany({});
+  const existingExtras = await prisma.liveSession.count({
+    where: { title: { startsWith: '[SEED]' } },
+  });
+  if (existingExtras > 0) {
+    logger.info('   ↳ Supplier extras already seeded, skipping (data tidak dihapus)...');
+    return;
+  }
 
   const supplier = users?.siti ?? users?.allSuppliers?.[0];
   const buyer = users?.hendra ?? users?.allBuyers?.[0];

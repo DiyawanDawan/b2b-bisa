@@ -76,8 +76,11 @@ export async function seedForumGroups(prisma) {
     return [];
   }
 
-  await prisma.forumGroupMember.deleteMany({});
-  await prisma.forumGroup.deleteMany({});
+  const existingGroups = await prisma.forumGroup.count();
+  if (existingGroups > 0) {
+    logger.info('   ↳ Forum groups already seeded, skipping (data tidak dihapus)...');
+    return [];
+  }
 
   const groups = [];
   logger.info(

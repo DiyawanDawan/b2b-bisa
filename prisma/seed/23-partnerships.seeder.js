@@ -105,7 +105,11 @@ export async function seedPartnerships(prisma) {
   const s1 = extraSuppliers[1];
   const s2 = extraSuppliers[2];
 
-  await prisma.buyerSupplierPartnership.deleteMany({});
+  const existingPartnerships = await prisma.buyerSupplierPartnership.count();
+  if (existingPartnerships > 0) {
+    logger.info('   ↳ Partnerships already seeded, skipping (data tidak dihapus)...');
+    return;
+  }
 
   const now = new Date();
   /** @type {Array<Record<string, unknown>>} */

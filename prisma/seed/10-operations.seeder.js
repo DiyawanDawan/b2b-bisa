@@ -4,8 +4,16 @@ import { seedReviewsAndDeliveryProofs } from './22-reviews-delivery.seeder.js';
 export async function seedOperations(prisma, users) {
   logger.info('🌱 [10] Seeding Complex Operations (Negotiations, Reviews, Logs)...');
 
-  await prisma.notification.deleteMany({});
-  await prisma.auditLog.deleteMany({});
+  if (!users) {
+    logger.warn('⚠️ [10] Users tidak tersedia, lewati seed operations.');
+    return;
+  }
+
+  const existingNotifications = await prisma.notification.count();
+  if (existingNotifications > 0) {
+    logger.info('   ↳ Notifications & audit logs already seeded, skipping (data tidak dihapus)...');
+    return;
+  }
 
   const { hendra, siti } = users;
   const orders = await prisma.order.findMany({

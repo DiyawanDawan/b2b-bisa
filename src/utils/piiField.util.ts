@@ -146,3 +146,25 @@ export const revealShipmentFields = <T extends ShipmentContactPii>(shipment: T):
     podReceivedBy: revealShipmentContact(shipment.podReceivedBy) as string | null,
   }),
 });
+
+/** UserDocument.fileUrl — random IV AES-256-GCM. */
+export const sealDocumentFile = (value: string | null | undefined): string | null | undefined => {
+  if (value == null || value === '') return value;
+  return encryptField(value);
+};
+
+export const revealDocumentFile = (value: string | null | undefined): string | null | undefined => {
+  if (value == null || value === '') return value;
+  return decryptField(value);
+};
+
+/** UserDocument.title — random IV AES-256-GCM. */
+export const sealDocumentTitle = (value: string | null | undefined): string | null | undefined => {
+  if (value == null || value === '') return value;
+  return encryptField(value);
+};
+
+export const revealDocumentTitle = (value: string | null | undefined): string | null | undefined => {
+  if (value == null || value === '') return value;
+  return decryptField(value);
+};

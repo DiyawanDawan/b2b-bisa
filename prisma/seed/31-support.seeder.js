@@ -3,12 +3,13 @@ import logger from '../../src/config/logger.js';
 export async function seedSupport(prisma, users) {
   logger.info('🌱 [31] Seeding support tickets...');
 
-  await prisma.supportMessage.deleteMany({
-    where: { ticket: { subject: { startsWith: '[SEED]' } } },
-  });
-  await prisma.supportTicket.deleteMany({
+  const existingSeedTickets = await prisma.supportTicket.count({
     where: { subject: { startsWith: '[SEED]' } },
   });
+  if (existingSeedTickets > 0) {
+    logger.info('   ↳ Support tickets already seeded, skipping (data tidak dihapus)...');
+    return 0;
+  }
 
   const buyer = users?.hendra ?? users?.allBuyers?.[0];
   const supplier = users?.siti ?? users?.allSuppliers?.[0];

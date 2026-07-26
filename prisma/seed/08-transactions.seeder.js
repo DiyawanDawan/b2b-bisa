@@ -3,8 +3,17 @@ import logger from '../../src/config/logger.js';
 export async function seedTransactions(prisma, users) {
   logger.info('🌱 [08] Seeding Standalone Transactions (langganan PRO & riwayat dompet)...');
 
-  // Hanya hapus transaksi tanpa order — order diurus seeder [15]
-  await prisma.transaction.deleteMany({ where: { orderId: null } });
+  if (!users) {
+    logger.warn('⚠️ [08] Users tidak tersedia, lewati seed transaksi.');
+    return;
+  }
+
+  // IDEMPOTENT: cek apakah transaksi standalone sudah ada
+  const existingTx = await prisma.transaction.count({ where: { orderId: null } });
+  if (existingTx > 0) {
+    logger.info('   ↳ Standalone transactions already seeded, skipping (data tidak dihapus)...');
+    return;
+  }
 
   const { hendra, siti, green } = users;
   if (siti) {

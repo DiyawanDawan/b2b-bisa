@@ -24,10 +24,15 @@ export const seedMarket = async (prisma) => {
   const bundle = loadBundle();
   const trends = bundle.commodities ?? [];
 
-  // Hapus trend faker lama (Trend Concrete Kendal, dll.)
-  await prisma.marketTrend.deleteMany({
+  // IDEMPOTENT: hapus khusus data faker lama, sisanya gunakan findFirst + update/create
+  const oldFakerTrends = await prisma.marketTrend.count({
     where: { label: { startsWith: 'Trend ' } },
   });
+  if (oldFakerTrends > 0) {
+    await prisma.marketTrend.deleteMany({
+      where: { label: { startsWith: 'Trend ' } },
+    });
+  }
 
   for (const t of trends) {
     const category = TrendCategory[t.category] ?? TrendCategory.BIOMASSA;
@@ -54,22 +59,26 @@ export const seedMarket = async (prisma) => {
   // Volume panen / limbah biomassa untuk analitik GIS
   const harvestRows = bundle.harvestWaste ?? [];
   if (harvestRows.length > 0) {
-    await prisma.wasteData.deleteMany({
+    const existingBpsData = await prisma.wasteData.count({
       where: { source: { contains: 'BPS' } },
     });
-    for (const row of harvestRows) {
-      await prisma.wasteData.create({
-        data: {
-          province: row.province,
-          regency: row.regency,
-          biomassaType: row.biomassaType,
-          volumeTon: row.volumeTon,
-          year: row.year,
-          source: row.source,
-        },
-      });
+    if (existingBpsData > 0) {
+      logger.info('   ↳ BPS waste data already seeded, skipping...');
+    } else {
+      for (const row of harvestRows) {
+        await prisma.wasteData.create({
+          data: {
+            province: row.province,
+            regency: row.regency,
+            biomassaType: row.biomassaType,
+            volumeTon: row.volumeTon,
+            year: row.year,
+            source: row.source,
+          },
+        });
+      }
+      logger.info(`   ↳ ${harvestRows.length} baris data panen/limbah biomassa`);
     }
-    logger.info(`   ↳ ${harvestRows.length} baris data panen/limbah biomassa`);
   }
 
   logger.info(

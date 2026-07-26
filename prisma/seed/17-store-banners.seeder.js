@@ -39,6 +39,62 @@ const BANNER_PRESETS = {
 
 const PRESET_KEYS = Object.keys(BANNER_PRESETS);
 
+const STOCK_IMAGES = {
+  harvest: [
+    'https://images.pexels.com/photos/2252584/pexels-photo-2252584.jpeg?w=1200&h=400&fit=crop',
+    'https://images.pexels.com/photos/2131784/pexels-photo-2131784.jpeg?w=1200&h=400&fit=crop',
+    'https://cdn.pixabay.com/photo/2014/09/27/18/13/harvest-463454_1280.jpg',
+    'https://cdn.pixabay.com/photo/2016/11/23/15/48/harvest-1853663_1280.jpg',
+    'https://images.pexels.com/photos/2098735/pexels-photo-2098735.jpeg?w=1200&h=400&fit=crop',
+  ],
+  biochar: [
+    'https://cdn.pixabay.com/photo/2017/06/05/16/24/charcoal-2374429_1280.jpg',
+    'https://cdn.pixabay.com/photo/2018/04/01/12/46/charcoal-3280929_1280.jpg',
+    'https://images.pexels.com/photos/5925532/pexels-photo-5925532.jpeg?w=1200&h=400&fit=crop',
+    'https://images.pexels.com/photos/11035476/pexels-photo-11035476.jpeg?w=1200&h=400&fit=crop',
+  ],
+  iot: [
+    'https://images.pexels.com/photos/8386440/pexels-photo-8386440.jpeg?w=1200&h=400&fit=crop',
+    'https://images.pexels.com/photos/4370386/pexels-photo-4370386.jpeg?w=1200&h=400&fit=crop',
+    'https://cdn.pixabay.com/photo/2018/05/08/08/44/smart-farming-3382514_1280.jpg',
+    'https://images.pexels.com/photos/11817121/pexels-photo-11817121.jpeg?w=1200&h=400&fit=crop',
+  ],
+  promo: [
+    'https://images.pexels.com/photos/5632371/pexels-photo-5632371.jpeg?w=1200&h=400&fit=crop',
+    'https://cdn.pixabay.com/photo/2015/11/07/11/17/sale-1030999_1280.jpg',
+    'https://images.pexels.com/photos/264636/pexels-photo-264636.jpeg?w=1200&h=400&fit=crop',
+  ],
+  green: [
+    'https://cdn.pixabay.com/photo/2015/06/22/14/25/forest-817993_1280.jpg',
+    'https://images.pexels.com/photos/13313296/pexels-photo-13313296.jpeg?w=1200&h=400&fit=crop',
+    'https://cdn.pixabay.com/photo/2017/08/01/08/29/people-2563491_1280.jpg',
+    'https://images.pexels.com/photos/1072824/pexels-photo-1072824.jpeg?w=1200&h=400&fit=crop',
+  ],
+  organic: [
+    'https://images.pexels.com/photos/1656666/pexels-photo-1656666.jpeg?w=1200&h=400&fit=crop',
+    'https://cdn.pixabay.com/photo/2015/02/13/14/39/vegetables-635519_1280.jpg',
+    'https://images.pexels.com/photos/533360/pexels-photo-533360.jpeg?w=1200&h=400&fit=crop',
+    'https://cdn.pixabay.com/photo/2017/09/16/19/21/vegetables-2756421_1280.jpg',
+  ],
+  store: [
+    'https://images.pexels.com/photos/264537/pexels-photo-264537.jpeg?w=1200&h=400&fit=crop',
+    'https://cdn.pixabay.com/photo/2016/10/22/17/06/grocery-store-1761152_1280.jpg',
+    'https://images.pexels.com/photos/3962285/pexels-photo-3962285.jpeg?w=1200&h=400&fit=crop',
+  ],
+  biomass: [
+    'https://cdn.pixabay.com/photo/2019/03/05/15/09/wood-pellets-4036449_1280.jpg',
+    'https://images.pexels.com/photos/4508754/pexels-photo-4508754.jpeg?w=1200&h=400&fit=crop',
+    'https://cdn.pixabay.com/photo/2018/07/09/19/10/biomass-3526900_1280.jpg',
+    'https://images.pexels.com/photos/4254160/pexels-photo-4254160.jpeg?w=1200&h=400&fit=crop',
+  ],
+};
+
+function pickStockImage(presetKey) {
+  const pool = STOCK_IMAGES[presetKey];
+  if (!pool || pool.length === 0) return null;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
 function bannerFallbackUrl(lock, sortOrder) {
   const seed = encodeURIComponent(`bisa-store-${lock}-${sortOrder}`);
   return `https://picsum.photos/seed/${seed}/1200/400`;
@@ -57,10 +113,11 @@ function resolveLocalBannerAsset(sortOrder) {
   return null;
 }
 
-async function resolveBannerImageRef(supplierId, sortOrder) {
+async function resolveBannerImageRef(supplierId, sortOrder, presetKey) {
   const assetPath = resolveLocalBannerAsset(sortOrder);
   if (!assetPath) {
-    return bannerFallbackUrl(`${supplierId.slice(0, 8)}-${sortOrder}`, sortOrder);
+    const stockImage = Math.random() < 0.35 ? pickStockImage(presetKey) : null;
+    return stockImage ?? bannerFallbackUrl(`${supplierId.slice(0, 8)}-${sortOrder}`, sortOrder);
   }
 
   const buffer = fs.readFileSync(assetPath);
@@ -122,7 +179,11 @@ function defaultBannerPlan(supplierIndex) {
 export async function seedStoreBanners(prisma, users) {
   logger.info('🌱 [17] Seeding Store Banners (upload R2 + path relatif di DB)...');
 
-  await prisma.storeBanner.deleteMany({});
+  const existingBanners = await prisma.storeBanner.count();
+  if (existingBanners > 0) {
+    logger.info('   ↳ Store banners already seeded, skipping (data tidak dihapus)...');
+    return;
+  }
 
   const suppliers = await prisma.user.findMany({
     where: { role: 'SUPPLIER' },
@@ -145,7 +206,7 @@ export async function seedStoreBanners(prisma, users) {
     for (let sortOrder = 0; sortOrder < plan.length; sortOrder++) {
       const item = plan[sortOrder];
       const preset = BANNER_PRESETS[item.preset] ?? BANNER_PRESETS.store;
-      const imageRef = await resolveBannerImageRef(supplier.id, sortOrder);
+      const imageRef = await resolveBannerImageRef(supplier.id, sortOrder, item.preset);
 
       if (!imageRef.startsWith('http')) uploaded++;
 
@@ -176,7 +237,7 @@ export async function seedStoreBanners(prisma, users) {
     );
 
     for (const supplier of suppliersWithoutActiveBanner) {
-      const imageRef = await resolveBannerImageRef(supplier.id, 99);
+      const imageRef = await resolveBannerImageRef(supplier.id, 99, 'store');
       if (!imageRef.startsWith('http')) uploaded++;
 
       await prisma.storeBanner.create({

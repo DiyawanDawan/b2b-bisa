@@ -58,7 +58,13 @@ function buildOrderFinancials(subtotal) {
   const logisticsFee = 150000;
   const vatAmount = subtotal * 0.11;
   const totalAmount = subtotal + platformFee + logisticsFee + vatAmount;
-  return { subtotal, platformFee, logisticsFee, vatAmount, totalAmount };
+  const feeBreakdownSnapshot = {
+    platformFee: { type: 'PERCENTAGE', rate: 0.03, amount: platformFee },
+    logisticsFee: { type: 'FIXED', amount: logisticsFee },
+    vat: { type: 'PERCENTAGE', rate: 0.11, amount: vatAmount },
+    totalFees: platformFee + logisticsFee + vatAmount,
+  };
+  return { subtotal, platformFee, logisticsFee, vatAmount, totalAmount, feeBreakdownSnapshot };
 }
 
 async function buildAddressSnapshot(prisma, buyer) {
@@ -140,14 +146,12 @@ export async function seedOrdersAndNegotiations(prisma, users) {
     return { orderCount: 0, negotiationCount: 0 };
   }
 
-  // Bersihkan data lama (urutan FK)
-  await prisma.chatMessage.deleteMany({});
-  await prisma.review.deleteMany({});
-  await prisma.shipmentTracking.deleteMany({});
-  await prisma.transaction.deleteMany({ where: { orderId: { not: null } } });
-  await prisma.orderItem.deleteMany({});
-  await prisma.negotiation.deleteMany({});
-  await prisma.order.deleteMany({});
+  // IDEMPOTENT: cek apakah order seed sudah ada, jika iya lewati
+  const existingOrders = await prisma.order.count();
+  if (existingOrders > 0) {
+    logger.info('   ↳ Orders & negotiations already seeded, skipping (data tidak dihapus)...');
+    return { orderCount: existingOrders, negotiationCount: 0 };
+  }
 
   const buyerPool = [hendra, ...allBuyers.filter((b) => b.id !== hendra.id)];
   const sellerProducts = [
@@ -187,6 +191,7 @@ export async function seedOrdersAndNegotiations(prisma, users) {
           status,
           subtotal: fin.subtotal,
           platformFee: fin.platformFee,
+          feeBreakdownSnapshot: fin.feeBreakdownSnapshot,
           logisticsFee: fin.logisticsFee,
           vatAmount: fin.vatAmount,
           totalAmount: fin.totalAmount,
@@ -230,6 +235,15 @@ export async function seedOrdersAndNegotiations(prisma, users) {
                     status: 'OPEN',
                   },
                 },
+              }
+            : {}),
+          ...(status === 'COMPLETED' || status === 'SHIPPED'
+            ? {
+                isDigitalSigned: true,
+                buyerSignedAt: new Date(Date.now() - 3 * 86400000),
+                buyerSignHash: `${orderNumber}-buyer-sign`,
+                sellerSignedAt: new Date(),
+                sellerSignHash: `${orderNumber}-seller-sign`,
               }
             : {}),
         },

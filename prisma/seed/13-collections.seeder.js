@@ -3,8 +3,11 @@ import logger from '../../src/config/logger.js';
 export async function seedCollections(prisma) {
   logger.info('🌱 [13] Seeding Product Collections (Bundling & Strategies)...');
 
-  await prisma.productCollectionItem.deleteMany({});
-  await prisma.productCollection.deleteMany({});
+  const existingCollections = await prisma.productCollection.count();
+  if (existingCollections > 0) {
+    logger.info('   ↳ Collections already seeded, skipping (data tidak dihapus)...');
+    return;
+  }
 
   const collections = [
     {
@@ -102,6 +105,18 @@ export async function seedCollections(prisma) {
           data: { collectionId: collection.id, productId: sekam.id, order: 1 },
         });
       }
+    }
+
+    const firstItem = await prisma.productCollectionItem.findFirst({
+      where: { collectionId: collection.id },
+      orderBy: { order: 'asc' },
+      include: { product: { select: { thumbnailUrl: true } } },
+    });
+    if (firstItem?.product?.thumbnailUrl) {
+      await prisma.productCollection.update({
+        where: { id: collection.id },
+        data: { thumbnailUrl: firstItem.product.thumbnailUrl },
+      });
     }
   }
 

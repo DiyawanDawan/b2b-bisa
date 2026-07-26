@@ -288,24 +288,6 @@ async function findUserIdByEmail(prisma, email) {
 /**
  * Hapus hanya postingan yang terikat grup (beserta komentar & vote-nya).
  */
-async function clearGroupForumContent(prisma) {
-  const groupPosts = await prisma.forumPost.findMany({
-    where: { groupId: { not: null } },
-    select: { id: true },
-  });
-  const postIds = groupPosts.map((p) => p.id);
-  if (postIds.length === 0) return 0;
-
-  await prisma.forumVote.deleteMany({
-    where: {
-      OR: [{ postId: { in: postIds } }, { comment: { postId: { in: postIds } } }],
-    },
-  });
-  await prisma.forumComment.deleteMany({ where: { postId: { in: postIds } } });
-  await prisma.forumPost.deleteMany({ where: { id: { in: postIds } } });
-  return postIds.length;
-}
-
 /**
  * Seed postingan + komentar (+ reply) untuk semua ForumGroup publik.
  * Aman dijalankan ulang: menghapus konten grup lama dulu, tidak menyentuh post global.
@@ -330,9 +312,13 @@ export async function seedForumGroupPosts(prisma) {
     return { posts: 0, comments: 0 };
   }
 
-  const removed = await clearGroupForumContent(prisma);
-  if (removed > 0) {
-    logger.info(`   ↺ Menghapus ${removed} postingan grup lama + komentarnya`);
+  // IDEMPOTENT: cek apakah grup post sudah ada, jika iya lewati
+  const existingGroupPosts = await prisma.forumPost.count({
+    where: { groupId: { not: null } },
+  });
+  if (existingGroupPosts > 0) {
+    logger.info('   ↳ Forum group posts already seeded, skipping (data tidak dihapus)...');
+    return { posts: 0, comments: 0 };
   }
 
   const forumCats = await prisma.category.findMany({
