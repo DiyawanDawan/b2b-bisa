@@ -210,9 +210,12 @@ export const register = async (userData: {
     });
 
     const otp = await tokenService.generateOtp(user.id, TokenType.EMAIL_VERIFICATION);
-    // Await SMTP (transporter timeouts ~15s) so client is not told "terkirim" when mail fails.
-    await emailService.deliverOtpEmail(user.email, user.fullName, otp);
-    return { id: user.id, email: user.email, role: user.role };
+    emailService.deliverOtpEmail(user.email, user.fullName, otp).catch((mailErr) => {
+      if (process.env.NODE_ENV !== 'test') {
+        console.warn('[Auth] Gagal mengirim email OTP (register-reuse):', (mailErr as Error).message);
+      }
+    });
+    return { id: user.id, email: user.email, fullName: user.fullName, role: user.role, createdAt: user.createdAt };
   }
 
   if (existingByEmail) throw new AppError('Email atau nomor telepon sudah terdaftar', 400);
@@ -244,8 +247,12 @@ export const register = async (userData: {
   }
 
   const otp = await tokenService.generateOtp(user.id, TokenType.EMAIL_VERIFICATION);
-  await emailService.deliverOtpEmail(user.email, user.fullName, otp);
-  return { id: user.id, email: user.email, role: user.role };
+  emailService.deliverOtpEmail(user.email, user.fullName, otp).catch((mailErr) => {
+    if (process.env.NODE_ENV !== 'test') {
+      console.warn('[Auth] Gagal mengirim email OTP (register):', (mailErr as Error).message);
+    }
+  });
+  return { id: user.id, email: user.email, fullName: user.fullName, role: user.role, createdAt: user.createdAt };
 };
 
 // ─── Verify OTP ──────────────────────────────────────────
@@ -404,7 +411,11 @@ export const forgotPassword = async (email: string) => {
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) return;
   const otp = await tokenService.generateOtp(user.id, TokenType.RESET_PASSWORD);
-  await emailService.deliverPasswordResetEmail(user.email, user.fullName, otp);
+  emailService.deliverPasswordResetEmail(user.email, user.fullName, otp).catch((mailErr) => {
+    if (process.env.NODE_ENV !== 'test') {
+      console.warn('[Auth] Gagal mengirim email reset password:', (mailErr as Error).message);
+    }
+  });
 };
 
 /**
@@ -594,11 +605,18 @@ export const resendOTP = async (email: string, type: ResendOtpType) => {
   if (!user) return;
 
   const otp = await tokenService.generateOtp(user.id, type);
-  // Await send so "Kode OTP baru telah dikirim" is truthful; OTP remains in DB if SMTP fails.
   if (type === TokenType.EMAIL_VERIFICATION) {
-    await emailService.deliverOtpEmail(user.email, user.fullName, otp);
+    emailService.deliverOtpEmail(user.email, user.fullName, otp).catch((mailErr) => {
+      if (process.env.NODE_ENV !== 'test') {
+        console.warn('[Auth] Gagal mengirim ulang email OTP:', (mailErr as Error).message);
+      }
+    });
   } else {
-    await emailService.deliverPasswordResetEmail(user.email, user.fullName, otp);
+    emailService.deliverPasswordResetEmail(user.email, user.fullName, otp).catch((mailErr) => {
+      if (process.env.NODE_ENV !== 'test') {
+        console.warn('[Auth] Gagal mengirim ulang email reset:', (mailErr as Error).message);
+      }
+    });
   }
 };
 
