@@ -89,8 +89,13 @@ export const encryptFieldDeterministic = (
 export const decryptField = (payload: string): string => {
   if (!payload || !isEncryptedPayload(payload)) return payload;
   const version = getPayloadVersion(payload) ?? '1';
-  const key = getEncryptionKeyBufferForVersion(version);
-  return decryptWithKey(payload, key);
+  try {
+    const key = getEncryptionKeyBufferForVersion(version);
+    return decryptWithKey(payload, key);
+  } catch (err) {
+    console.warn(`[encryption] Gagal dekrip v${version}: ${(err as Error).message}. Pastikan ENCRYPTION_KEY sinkron antara env.`);
+    return '';
+  }
 };
 
 export const decryptFieldDeterministic = (payload: string, _context: string): string =>
@@ -109,6 +114,7 @@ export const reencryptField = (
     return payload;
   }
   const plain = isEncryptedPayload(payload) ? decryptField(payload) : payload;
+  if (!plain) return payload; // decryption failed, keep original
   return sealWithRandomIv(plain, targetVersion);
 };
 
@@ -134,6 +140,7 @@ export const reencryptJsonValue = (
   if (typeof stored === 'string' && isEncryptedPayload(stored)) {
     if (getPayloadVersion(stored) === targetVersion) return stored;
     const plain = decryptField(stored);
+    if (!plain) return stored; // decryption failed, keep original
     return sealWithRandomIv(plain, targetVersion);
   }
   return sealWithRandomIv(JSON.stringify(stored), targetVersion);
@@ -143,7 +150,13 @@ export const decryptJsonValue = (stored: unknown): unknown | null => {
   if (stored == null) return null;
   if (typeof stored === 'string') {
     if (isEncryptedPayload(stored)) {
-      return JSON.parse(decryptField(stored));
+      const decrypted = decryptField(stored);
+      if (!decrypted) return null;
+      try {
+        return JSON.parse(decrypted);
+      } catch {
+        return null;
+      }
     }
     try {
       return JSON.parse(stored);
