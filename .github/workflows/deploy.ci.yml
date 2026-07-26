@@ -103,6 +103,9 @@ jobs:
           USER_ID_RAJA_ONGKIR=${{ secrets.USER_ID_RAJA_ONGKIR }}
           SECRET_KEY_RAJA_ONGKIR=${{ secrets.SECRET_KEY_RAJA_ONGKIR }}
           SHIPPING_COST_API_KEY=${{ secrets.SHIPPING_COST_API_KEY }}
+          ZEPTOMAIL_FROM_ADDRESS=${{ secrets.ZEPTOMAIL_FROM_ADDRESS }}
+          ZEPTOMAIL_TOKEN=${{ secrets.ZEPTOMAIL_TOKEN }}
+          ZEPTOMAIL_URL=${{ secrets.ZEPTOMAIL_URL }}
           EOF
 
       - name: Build application

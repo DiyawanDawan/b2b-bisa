@@ -323,6 +323,9 @@ jobs:
                         RAJAONGKIR_BASE_URL=${{ secrets.RAJAONGKIR_BASE_URL }}
                         RAJAONGKIR_DEFAULT_COURIERS=${{ secrets.RAJAONGKIR_DEFAULT_COURIERS }}
                         RAG_ENABLED=${{ secrets.RAG_ENABLED || 'true' }}
+                        ZEPTOMAIL_FROM_ADDRESS=${{ secrets.ZEPTOMAIL_FROM_ADDRESS }}
+                        ZEPTOMAIL_TOKEN=${{ secrets.ZEPTOMAIL_TOKEN }}
+                        ZEPTOMAIL_URL=${{ secrets.ZEPTOMAIL_URL }}
             ENVEOF
             chmod 600 .env
             # Normalize accidental double keys from older broken sed patches
