@@ -29,6 +29,12 @@ router.get(
   adminController.listCategories,
 );
 
+router.get(
+  '/categories/tree',
+  validate(adminValidation.listCategoriesQuerySchema, 'query'),
+  adminController.getCategoryTree,
+);
+
 /**
  * POST /api/v1/admin/products/categories
  */

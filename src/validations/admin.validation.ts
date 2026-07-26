@@ -138,6 +138,8 @@ export const categorySchema = z
     categoryType: z.nativeEnum(CATEGORY_TYPE, { message: 'Tipe kategori tidak valid' }),
     productMode: z.nativeEnum(ProductMode).nullable().optional(),
     biomassaType: z.nativeEnum(BiomassaType).nullable().optional(),
+    parentId: z.string().uuid().nullable().optional(),
+    level: z.number().int().min(1).max(3).optional(),
   })
   .superRefine((data, ctx) => {
     if (data.categoryType === CATEGORY_TYPE.PRODUK) {

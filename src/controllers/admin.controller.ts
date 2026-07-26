@@ -503,6 +503,15 @@ export const listCategories = catchAsync(async (req: AuthRequest, res: Response)
   successResponse(res, result, 'Data kategori berhasil diambil');
 });
 
+export const getCategoryTree = catchAsync(async (req: AuthRequest, res: Response) => {
+  const { categoryType, productMode } = req.query as {
+    categoryType?: CATEGORY_TYPE;
+    productMode?: ProductMode;
+  };
+  const result = await adminService.getCategoryTree({ categoryType, productMode });
+  successResponse(res, result, 'Tree kategori berhasil diambil');
+});
+
 /**
  * POST /api/v1/admin/products/categories
  */
@@ -514,6 +523,7 @@ export const createCategory = catchAsync(async (req: AuthRequest, res: Response)
       categoryType: CATEGORY_TYPE;
       productMode?: ProductMode | null;
       biomassaType?: BiomassaType | null;
+      parentId?: string | null;
     },
   );
 
@@ -542,6 +552,7 @@ export const updateCategory = catchAsync(async (req: AuthRequest, res: Response)
       categoryType?: CATEGORY_TYPE;
       productMode?: ProductMode | null;
       biomassaType?: BiomassaType | null;
+      parentId?: string | null;
     },
   );
 

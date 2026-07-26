@@ -1631,13 +1631,33 @@ export const deletePlatformFee = async (id: string) => {
 };
 /**
  * Categories management — productMode memisahkan rak Biomassa vs Hasil Tani.
+ * Auto-calculates level from parentId when provided.
  */
+async function resolveCategoryParent(prismaClient: typeof prisma, parentId?: string | null) {
+  if (!parentId) return { parentId: null, level: 1 };
+  const parent = await prismaClient.category.findUnique({
+    where: { id: parentId },
+    select: { id: true, level: true, productMode: true, biomassaType: true, categoryType: true },
+  });
+  if (!parent) throw new AppError('Parent kategori tidak ditemukan', 404);
+  if (parent.level >= 3) throw new AppError('Tidak bisa menambah sub-kategori di level 3 (maksimal kedalaman 3)', 400);
+  return {
+    parentId: parent.id,
+    level: parent.level + 1,
+    inheritProductMode: parent.productMode,
+    inheritBiomassaType: parent.biomassaType,
+    inheritCategoryType: parent.categoryType,
+  };
+}
+
 function normalizeCategoryPayload(data: {
   name?: string;
   description?: string;
   categoryType?: CATEGORY_TYPE;
   productMode?: ProductMode | null;
   biomassaType?: BiomassaType | null;
+  parentId?: string | null;
+  level?: number;
 }) {
   const categoryType = data.categoryType;
   const isProduk = categoryType === CATEGORY_TYPE.PRODUK;
@@ -1651,6 +1671,8 @@ function normalizeCategoryPayload(data: {
     ...(categoryType !== undefined && { categoryType }),
     productMode,
     biomassaType,
+    ...(data.parentId !== undefined && { parentId: data.parentId }),
+    ...(data.level !== undefined && { level: data.level }),
   };
 }
 
@@ -1678,9 +1700,11 @@ export const listCategories = async (params?: {
       categoryType: true,
       productMode: true,
       biomassaType: true,
+      level: true,
+      parentId: true,
       isActive: true,
       createdAt: true,
-      _count: { select: { products: true, articles: true, forumPosts: true } },
+      _count: { select: { products: true, articles: true, forumPosts: true, children: true } },
     },
   });
 };
@@ -1692,9 +1716,11 @@ const categorySelect = {
   categoryType: true,
   productMode: true,
   biomassaType: true,
+  level: true,
+  parentId: true,
   isActive: true,
   createdAt: true,
-  _count: { select: { products: true, articles: true, forumPosts: true } },
+  _count: { select: { products: true, articles: true, forumPosts: true, children: true } },
 } as const;
 
 export const createCategory = async (data: {
@@ -1703,15 +1729,18 @@ export const createCategory = async (data: {
   categoryType: CATEGORY_TYPE;
   productMode?: ProductMode | null;
   biomassaType?: BiomassaType | null;
+  parentId?: string | null;
 }) => {
-  const payload = normalizeCategoryPayload(data);
+  const parent = await resolveCategoryParent(prisma, data.parentId);
   const created = await prisma.category.create({
     data: {
-      name: payload.name!,
-      description: payload.description,
-      categoryType: payload.categoryType!,
-      productMode: payload.productMode,
-      biomassaType: payload.biomassaType,
+      name: data.name,
+      description: data.description,
+      categoryType: parent.inheritCategoryType ?? data.categoryType,
+      productMode: parent.inheritProductMode ?? (data.productMode ?? null),
+      biomassaType: parent.inheritBiomassaType ?? (data.biomassaType ?? null),
+      parentId: parent.parentId,
+      level: parent.level,
     },
     select: categorySelect,
   });
@@ -1727,10 +1756,17 @@ export const updateCategory = async (
     categoryType?: CATEGORY_TYPE;
     productMode?: ProductMode | null;
     biomassaType?: BiomassaType | null;
+    parentId?: string | null;
   },
 ) => {
   const existing = await prisma.category.findUnique({ where: { id } });
   if (!existing) throw new AppError('Kategori tidak ditemukan', 404);
+
+  let parentUpdate: { parentId?: string | null; level?: number } = {};
+  if (data.parentId !== undefined) {
+    const parent = await resolveCategoryParent(prisma, data.parentId);
+    parentUpdate = { parentId: parent.parentId, level: parent.level };
+  }
 
   const payload = normalizeCategoryPayload({
     ...data,
@@ -1741,11 +1777,38 @@ export const updateCategory = async (
 
   const updated = await prisma.category.update({
     where: { id },
-    data: payload,
+    data: { ...payload, ...parentUpdate },
     select: categorySelect,
   });
   void invalidateCategories();
   return updated;
+};
+
+export const getCategoryTree = async (params?: {
+  categoryType?: CATEGORY_TYPE;
+  productMode?: ProductMode;
+}) => {
+  const items = await prisma.category.findMany({
+    where: {
+      isActive: true,
+      ...(params?.categoryType && { categoryType: params.categoryType }),
+      ...(params?.productMode && { productMode: params.productMode }),
+    },
+    orderBy: { name: 'asc' },
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      categoryType: true,
+      productMode: true,
+      biomassaType: true,
+      level: true,
+      parentId: true,
+      isActive: true,
+      _count: { select: { children: true, products: true } },
+    },
+  });
+  return items;
 };
 
 /**
