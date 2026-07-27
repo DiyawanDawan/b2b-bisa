@@ -3,8 +3,10 @@ import {
   CHROMA_COLLECTION,
   CHROMA_DATABASE,
   CHROMA_TENANT_ID,
+  GOOGLE_GEMINI_API_KEY,
   RAG_ENABLED,
 } from '#utils/env.util';
+import fetch from 'node-fetch';
 
 type ChromaClientLike = {
   getOrCreateCollection: (args: { name: string }) => Promise<ChromaCollectionLike>;
@@ -14,9 +16,15 @@ type ChromaCollectionLike = {
   add: (args: {
     ids: string[];
     documents: string[];
+    embeddings?: number[][];
     metadatas?: Record<string, string | number | boolean>[];
   }) => Promise<void>;
-  query: (args: { queryTexts: string[]; nResults: number; include?: string[] }) => Promise<{
+  query: (args: {
+    queryTexts?: string[];
+    queryEmbeddings?: number[][];
+    nResults: number;
+    include?: string[];
+  }) => Promise<{
     documents?: (string[] | null)[];
     metadatas?: (Record<string, unknown>[] | null)[];
     distances?: (number[] | null)[];
@@ -44,6 +52,61 @@ export const getChromaConfigIssue = (): string | null => {
 };
 
 export const isChromaConfigured = (): boolean => getChromaConfigIssue() === null;
+
+/**
+ * Generate 768-dim embedding vectors via Google Gemini text-embedding-004,
+ * or fallback to deterministic normalized Hashing Vectorizer if Gemini key is absent.
+ * This prevents ChromaDB from throwing `ChromaValueError: No embedding function found for collection`.
+ */
+const generateFallbackVector = (text: string, dim = 768): number[] => {
+  const vec = new Array(dim).fill(0);
+  const words = text.toLowerCase().split(/\s+/);
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i];
+    let hash = 0;
+    for (let j = 0; j < word.length; j++) {
+      hash = (hash << 5) - hash + word.charCodeAt(j);
+      hash |= 0;
+    }
+    const idx = Math.abs(hash) % dim;
+    vec[idx] += 1;
+  }
+  const norm = Math.sqrt(vec.reduce((sum, v) => sum + v * v, 0)) || 1;
+  return vec.map((v) => v / norm);
+};
+
+export const generateEmbeddings = async (texts: string[]): Promise<number[][]> => {
+  if (GOOGLE_GEMINI_API_KEY && GOOGLE_GEMINI_API_KEY.trim().length > 0) {
+    try {
+      const requests = texts.map((text) => ({
+        model: 'models/text-embedding-004',
+        content: { parts: [{ text }] },
+      }));
+
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:batchEmbedContents?key=${GOOGLE_GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requests }),
+        },
+      );
+
+      if (response.ok) {
+        const data = (await response.json()) as {
+          embeddings?: { values: number[] }[];
+        };
+        if (data.embeddings && data.embeddings.length === texts.length) {
+          return data.embeddings.map((e) => e.values);
+        }
+      }
+    } catch (err) {
+      console.warn('[CHROMA] Gemini embedding API failed, using fallback vectorizer:', err);
+    }
+  }
+
+  return texts.map((t) => generateFallbackVector(t, 768));
+};
 
 /** Runtime import — avoids chromadb package typings that pull missing @hey-api/client-fetch. */
 const loadCloudClient = async (): Promise<CloudClientCtor> => {
@@ -103,7 +166,7 @@ export const indexDocumentChunks = async (input: {
     throw new Error('Tidak ada teks yang bisa di-index.');
   }
 
-  const batchSize = 50;
+  const batchSize = 20;
   try {
     for (let offset = 0; offset < input.chunks.length; offset += batchSize) {
       const slice = input.chunks.slice(offset, offset + batchSize);
@@ -113,9 +176,14 @@ export const indexDocumentChunks = async (input: {
         title: input.title,
         chunkIndex: offset + idx,
       }));
+
+      // Directly generate vector embeddings to bypass client-side missing default-embed error
+      const embeddings = await generateEmbeddings(slice);
+
       await collection.add({
         ids,
         documents: slice,
+        embeddings,
         metadatas,
       });
     }
@@ -153,8 +221,10 @@ export const queryKnowledge = async (
   if (!collection) return [];
 
   const topK = options.topK ?? 5;
+  const [queryEmbedding] = await generateEmbeddings([question]);
+
   const result = await collection.query({
-    queryTexts: [question],
+    queryEmbeddings: [queryEmbedding],
     nResults: topK,
     include: ['documents', 'metadatas', 'distances'],
   });
