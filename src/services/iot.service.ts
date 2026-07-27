@@ -18,6 +18,8 @@ import {
 } from '#prisma';
 import { IOT_ONLINE_TIMEOUT_MS, IOT_COOLDOWN_MS } from '#utils/env.util';
 import { createPaymentRequest } from '#config/xendit';
+import { buildXenditChannelProperties } from '#utils/paymentMethod.util';
+import { translateXenditError } from '#utils/xenditError.util';
 
 const CURRENT_STATUS_WINDOW_MS = 30 * 60 * 1000;
 const DEVICE_SECRET_BYTES = 32;
@@ -534,6 +536,11 @@ export const initiateSubscription = async (
     );
   }
 
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { fullName: true, phone: true },
+  });
+
   const amount = Number(feeSetting.amount);
   const externalId = `SUB-${userId.substring(0, 8)}-${Date.now()}`;
 
@@ -550,7 +557,15 @@ export const initiateSubscription = async (
     },
   });
 
-  // 3. Create Xendit Payment Request (In-App)
+  // 3. Build channel properties per group (VA / QRIS / EWALLET)
+  const channelProperties = buildXenditChannelProperties({
+    methodGroup: paymentMethod.type,
+    customerName: user?.fullName || 'BISA Supplier',
+    mobileNumber: user?.phone,
+    channelCode: paymentMethod.channel,
+  });
+
+  // 4. Create Xendit Payment Request (In-App)
   try {
     const xenditResponse = await createPaymentRequest({
       reference_id: externalId,
@@ -558,6 +573,7 @@ export const initiateSubscription = async (
       currency: 'IDR',
       channel_code: paymentMethod.channel,
       method: paymentMethod.type,
+      channel_properties: channelProperties,
       description: 'Langganan BISA IoT PRO - 30 Hari',
       metadata: { userId, transactionId: transaction.id },
     });
@@ -575,13 +591,12 @@ export const initiateSubscription = async (
       paymentData: xenditResponse,
     };
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
     // Fail the transaction if Xendit fails
     await prisma.transaction.update({
       where: { id: transaction.id },
       data: { status: TransactionStatus.FAILED, paymentStatus: PaymentStatus.FAILED },
     });
-    throw new AppError(`Gagal membuat permintaan pembayaran Xendit: ${message}`, 500);
+    throw translateXenditError(error, 'membuat permintaan pembayaran langganan IoT PRO');
   }
 };
 

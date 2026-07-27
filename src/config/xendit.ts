@@ -23,7 +23,7 @@ import {
 } from '#xendit/refund/models';
 import type { CreatePayoutRequest, GetPayouts200ResponseDataInner } from '#xendit/payout/models';
 import { PaymentMethod } from '#prisma';
-import { mapMethodToXenditType } from '#utils/paymentMethod.util';
+import { buildXenditChannelProperties, mapMethodToXenditType } from '#utils/paymentMethod.util';
 import { roundIdrAmount } from '#utils/currency.util';
 
 dotenv.config();
@@ -83,6 +83,12 @@ export const createPaymentRequest = async (params: {
   metadata?: Record<string, unknown>;
 }): Promise<XenditPaymentRequest> => {
   const xenditType = mapMethodToXenditType(params.method);
+  const channelProps =
+    params.channel_properties ??
+    buildXenditChannelProperties({
+      methodGroup: params.method,
+      channelCode: params.channel_code,
+    });
 
   const paymentMethod: PaymentMethodParameters = {
     type: xenditType,
@@ -94,22 +100,22 @@ export const createPaymentRequest = async (params: {
   if (xenditType === 'VIRTUAL_ACCOUNT') {
     paymentMethod.virtualAccount = {
       channelCode: params.channel_code as unknown as VirtualAccountChannelCode,
-      channelProperties: params.channel_properties as unknown as VirtualAccountChannelProperties,
+      channelProperties: channelProps as unknown as VirtualAccountChannelProperties,
     };
   } else if (xenditType === 'QR_CODE') {
     paymentMethod.qrCode = {
       channelCode: params.channel_code as unknown as QRCodeChannelCode,
-      channelProperties: params.channel_properties as unknown as QRCodeChannelProperties,
+      channelProperties: channelProps as unknown as QRCodeChannelProperties,
     };
   } else if (xenditType === 'EWALLET') {
     paymentMethod.ewallet = {
       channelCode: params.channel_code as unknown as EWalletChannelCode,
-      channelProperties: params.channel_properties as unknown as EWalletChannelProperties,
+      channelProperties: channelProps as unknown as EWalletChannelProperties,
     };
   } else if (xenditType === 'OVER_THE_COUNTER') {
     paymentMethod.overTheCounter = {
       channelCode: params.channel_code as unknown as OverTheCounterChannelCode,
-      channelProperties: params.channel_properties as unknown as OverTheCounterChannelProperties,
+      channelProperties: channelProps as unknown as OverTheCounterChannelProperties,
     };
   }
 

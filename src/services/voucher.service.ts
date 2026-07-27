@@ -642,6 +642,13 @@ export const listAvailableVouchers = async (userId: string) => {
     take: 30,
   });
 
-  // Filter yang belum mencapai batas pemakaian
-  return vouchers.filter((v) => v.usageLimit === null || v.usageCount < v.usageLimit);
+  // Filter yang belum mencapai batas pemakaian dan pastikan bidang Decimal dikonversi ke Number untuk safety JSON
+  return vouchers
+    .filter((v) => v.usageLimit === null || v.usageCount < v.usageLimit)
+    .map((v) => ({
+      ...v,
+      value: Number(v.value),
+      minOrderAmount: v.minOrderAmount != null ? Number(v.minOrderAmount) : null,
+      maxDiscount: v.maxDiscount != null ? Number(v.maxDiscount) : null,
+    }));
 };
