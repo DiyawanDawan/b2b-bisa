@@ -39,7 +39,18 @@ CREATE TABLE IF NOT EXISTS `iot_subscription_durations` (
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- AlterTable (already applied via db push)
-ALTER TABLE `users` ADD INDEX IF NOT EXISTS `users_referral_code_idx` (`referral_code`);
+SET @idx_exists := (
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'users'
+    AND INDEX_NAME = 'users_referral_code_idx'
+);
+SET @sql := IF(
+  @idx_exists = 0,
+  'CREATE INDEX `users_referral_code_idx` ON `users`(`referral_code`)',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 -- AlterTable store_banners default
 ALTER TABLE `store_banners` MODIFY COLUMN `moderation_status` ENUM('PENDING','APPROVED','REJECTED') NOT NULL DEFAULT 'PENDING';

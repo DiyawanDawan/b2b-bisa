@@ -23,6 +23,11 @@ export const supplierIdParamSchema = z.object({
   id: z.string().uuid(),
 });
 
+export const supplierStoreCertificateParamSchema = z.object({
+  id: z.string().uuid(),
+  certificateId: z.string().uuid(),
+});
+
 export const listPublicSupplierCertificatesSchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().min(1).max(50).default(20),

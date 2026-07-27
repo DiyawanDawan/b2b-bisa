@@ -50,8 +50,7 @@ router.get(
 router.get(
   '/:id/store-certificates/:certificateId/document',
   optionalAuth,
-  validate(certificateValidation.supplierIdParamSchema, 'params'),
-  validate(certificateValidation.certificateIdParamSchema, 'params'),
+  validate(certificateValidation.supplierStoreCertificateParamSchema, 'params'),
   storeCertificateController.openPublicDocument,
 );
 

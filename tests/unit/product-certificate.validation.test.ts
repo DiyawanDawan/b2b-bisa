@@ -1,5 +1,6 @@
 import {
   reviewCertificateSchema,
+  supplierStoreCertificateParamSchema,
   submitCertificateSchema,
 } from '../../src/validations/product-certificate.validation';
 import { assertMimeAllowedForFolder } from '../../src/utils/mediaUpload.util';
@@ -34,6 +35,15 @@ describe('product certificate validation', () => {
       issuedAt: '2025-07-20',
       expiresAt: '2027-07-20',
     });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts supplier store certificate document params together', () => {
+    const result = supplierStoreCertificateParamSchema.safeParse({
+      id: '0ca753cd-bcef-4717-aa42-db9b4c5f46fc',
+      certificateId: 'e68c1154-97ac-4b8f-950c-aaf312aa71bd',
+    });
+
     expect(result.success).toBe(true);
   });
 
