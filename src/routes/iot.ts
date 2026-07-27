@@ -24,6 +24,8 @@ router.use(requireAuth);
 /**
  * 🔓 AUTHENTICATED (not necessarily PRO)
  */
+router.get('/plans', iotController.getSubscriptionPlans);
+
 router.post(
   '/subscribe',
   requireRole(UserRole.SUPPLIER),

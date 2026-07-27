@@ -15,6 +15,7 @@ import {
   UserRole,
   Prisma,
   DeviceStatus,
+  FeeCalculationType,
 } from '#prisma';
 import { IOT_ONLINE_TIMEOUT_MS, IOT_COOLDOWN_MS } from '#utils/env.util';
 import { createPaymentRequest } from '#config/xendit';
@@ -518,31 +519,382 @@ export const deleteDevice = async (deviceId: string, userId: string) => {
 };
 
 /**
+ * Initial seed for IotSubscriptionDuration (durasi & diskon dari database, bukan hardcode)
+ */
+const getPlanCodeAliases = (code: string): string[] => {
+  const aliases = [code];
+  if (code === 'buy_hardware') aliases.push('buy');
+  else if (code === 'buy') aliases.push('buy_hardware');
+  if (code === 'software_only') aliases.push('software');
+  else if (code === 'software') aliases.push('software_only');
+  return aliases;
+};
+
+export const getSubscriptionPlans = async () => {
+  const dbPlans = await prisma.iotSubscriptionPlan.findMany({
+    where: { isActive: true },
+    orderBy: { sortOrder: 'asc' },
+  });
+
+  const dbDurations = await prisma.iotSubscriptionDuration.findMany({
+    where: { isActive: true },
+    orderBy: { sortOrder: 'asc' },
+  });
+
+  const plans = dbPlans.map((p) => ({
+    id: p.code,
+    title: p.title,
+    monthlyRate: Number(p.monthlyRate),
+    hardwarePrice: Number(p.hardwarePrice),
+    unit: p.unit,
+    tag: p.tag,
+    desc: p.description,
+    icon: p.icon,
+  }));
+
+  const durations = dbDurations.map((d) => {
+    const val = Number(d.discountValue);
+    const rate =
+      d.discountType === FeeCalculationType.PERCENTAGE
+        ? val > 1
+          ? val / 100
+          : val
+        : Number(d.discountRate);
+    return {
+      id: d.id,
+      months: d.months,
+      label: d.label,
+      discountType: d.discountType,
+      discountValue: val,
+      discountRate: rate,
+      discountLabel: d.discountLabel,
+    };
+  });
+
+  // Build Dynamic Comparison Table 100% from Database featuresJson
+  const featureKeysMap = new Map<string, { label: string; row: Record<string, unknown> }>();
+
+  for (const p of dbPlans) {
+    const rawFeatures = (Array.isArray(p.featuresJson) ? p.featuresJson : []) as Array<{
+      key: string;
+      label: string;
+      text?: string | null;
+      ok?: boolean | null;
+    }>;
+
+    for (const f of rawFeatures) {
+      if (!f.key || !f.label) continue;
+
+      if (!featureKeysMap.has(f.key)) {
+        featureKeysMap.set(f.key, {
+          label: f.label,
+          row: { label: f.label },
+        });
+      }
+
+      const item = featureKeysMap.get(f.key)!;
+      const aliases = getPlanCodeAliases(p.code);
+      for (const alias of aliases) {
+        if (f.text !== undefined && f.text !== null) {
+          item.row[alias] = f.text;
+        }
+        item.row[`${alias}_ok`] = f.ok ?? null;
+      }
+    }
+  }
+
+  const dynamicComparisonTable = Array.from(featureKeysMap.values()).map((v) => v.row);
+
+  return {
+    plans,
+    durations,
+    comparisonTable: dynamicComparisonTable,
+  };
+};
+
+export const calculateSubscriptionAmount = async (
+  planType?: string,
+  durationMonths = 1,
+): Promise<number> => {
+  const months = Math.max(1, Math.min(36, durationMonths));
+
+  const planCodeMap: Record<string, string> = {
+    buy: 'buy_hardware',
+    software: 'software_only',
+  };
+  const searchCode = planCodeMap[planType || ''] || planType || 'software_only';
+
+  let targetPlan = await prisma.iotSubscriptionPlan
+    .findFirst({
+      where: {
+        OR: [{ code: searchCode }, { code: planType || '' }],
+        isActive: true,
+      },
+    })
+    .catch(() => null);
+
+  if (!targetPlan) {
+    targetPlan = await prisma.iotSubscriptionPlan.findFirst({
+      where: { isActive: true },
+      orderBy: { sortOrder: 'asc' },
+    });
+  }
+
+  if (!targetPlan) {
+    throw new AppError('Rencana langganan IoT belum dikonfigurasi di sistem.', 404);
+  }
+
+  const durationConfig = await prisma.iotSubscriptionDuration.findFirst({
+    where: { months, isActive: true },
+  });
+
+  const hardwareCost = Number(targetPlan.hardwarePrice);
+  const monthlySoftwareRate = Number(targetPlan.monthlyRate);
+  const softwareSubtotal = monthlySoftwareRate * months;
+
+  let discountAmount = 0;
+
+  const applyDurationDiscount = (config: typeof durationConfig) => {
+    if (!config) return 0;
+    const dType = config.discountType;
+    const dVal = Number(config.discountValue);
+    if (dType === FeeCalculationType.FIXED || (dType as string) === 'FIXED') {
+      return Math.min(softwareSubtotal, dVal);
+    } else {
+      const rate = dVal > 1 ? dVal / 100 : Number(config.discountRate) || dVal;
+      return Math.round(softwareSubtotal * rate);
+    }
+  };
+
+  if (durationConfig) {
+    discountAmount = applyDurationDiscount(durationConfig);
+  } else {
+    const closestDuration = await prisma.iotSubscriptionDuration.findFirst({
+      where: { months: { lte: months }, isActive: true },
+      orderBy: { months: 'desc' },
+    });
+    if (closestDuration) {
+      discountAmount = applyDurationDiscount(closestDuration);
+    }
+  }
+
+  const discountedSoftware = Math.max(0, softwareSubtotal - discountAmount);
+  return hardwareCost + discountedSoftware;
+};
+
+// =========================================================
+// ADMIN CRUD SERVICES FOR SUBSCRIPTION PLANS & DURATIONS
+// =========================================================
+
+export const adminListSubscriptionPlans = async () => {
+  const plans = await prisma.iotSubscriptionPlan.findMany({
+    orderBy: { sortOrder: 'asc' },
+  });
+  return plans.map((p) => ({
+    ...p,
+    monthlyRate: Number(p.monthlyRate),
+    hardwarePrice: Number(p.hardwarePrice),
+  }));
+};
+
+export const adminCreateSubscriptionPlan = async (data: {
+  code: string;
+  title: string;
+  monthlyRate: number;
+  hardwarePrice?: number;
+  unit?: string;
+  tag?: string;
+  description: string;
+  icon?: string;
+  sortOrder?: number;
+  isActive?: boolean;
+  featuresJson?: unknown;
+}) => {
+  const existing = await prisma.iotSubscriptionPlan.findUnique({
+    where: { code: data.code },
+  });
+  if (existing) throw new AppError(`Kode paket '${data.code}' sudah digunakan.`, 409);
+
+  return prisma.iotSubscriptionPlan.create({
+    data: {
+      code: data.code.trim().toLowerCase(),
+      title: data.title.trim(),
+      monthlyRate: new Prisma.Decimal(data.monthlyRate ?? 0),
+      hardwarePrice: new Prisma.Decimal(data.hardwarePrice ?? 0),
+      unit: data.unit?.trim() || '/ bulan',
+      tag: data.tag?.trim() || null,
+      description: data.description.trim(),
+      icon: data.icon?.trim() || 'cpu',
+      sortOrder: data.sortOrder ?? 0,
+      isActive: data.isActive ?? true,
+      featuresJson: (data.featuresJson as Prisma.InputJsonValue) ?? Prisma.JsonNull,
+    },
+  });
+};
+
+export const adminUpdateSubscriptionPlan = async (
+  planId: string,
+  data: {
+    code?: string;
+    title?: string;
+    monthlyRate?: number;
+    hardwarePrice?: number;
+    unit?: string;
+    tag?: string;
+    description?: string;
+    icon?: string;
+    sortOrder?: number;
+    isActive?: boolean;
+    featuresJson?: unknown;
+  },
+) => {
+  const plan = await prisma.iotSubscriptionPlan.findUnique({ where: { id: planId } });
+  if (!plan) throw new AppError('Paket langganan tidak ditemukan.', 404);
+
+  return prisma.iotSubscriptionPlan.update({
+    where: { id: planId },
+    data: {
+      ...(data.code ? { code: data.code.trim().toLowerCase() } : {}),
+      ...(data.title ? { title: data.title.trim() } : {}),
+      ...(data.monthlyRate !== undefined
+        ? { monthlyRate: new Prisma.Decimal(data.monthlyRate) }
+        : {}),
+      ...(data.hardwarePrice !== undefined
+        ? { hardwarePrice: new Prisma.Decimal(data.hardwarePrice) }
+        : {}),
+      ...(data.unit !== undefined ? { unit: data.unit.trim() } : {}),
+      ...(data.tag !== undefined ? { tag: data.tag ? data.tag.trim() : null } : {}),
+      ...(data.description ? { description: data.description.trim() } : {}),
+      ...(data.icon ? { icon: data.icon.trim() } : {}),
+      ...(data.sortOrder !== undefined ? { sortOrder: data.sortOrder } : {}),
+      ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
+      ...(data.featuresJson !== undefined
+        ? { featuresJson: data.featuresJson as Prisma.InputJsonValue }
+        : {}),
+    },
+  });
+};
+
+export const adminDeleteSubscriptionPlan = async (planId: string) => {
+  const plan = await prisma.iotSubscriptionPlan.findUnique({ where: { id: planId } });
+  if (!plan) throw new AppError('Paket langganan tidak ditemukan.', 404);
+
+  return prisma.iotSubscriptionPlan.delete({ where: { id: planId } });
+};
+
+export const adminListSubscriptionDurations = async () => {
+  const dbDurations = await prisma.iotSubscriptionDuration.findMany({
+    orderBy: { sortOrder: 'asc' },
+  });
+
+  return dbDurations.map((d) => ({
+    ...d,
+    discountValue: Number(d.discountValue),
+    discountRate: Number(d.discountRate),
+  }));
+};
+
+export const adminCreateSubscriptionDuration = async (data: {
+  months: number;
+  label: string;
+  discountType?: FeeCalculationType;
+  discountValue?: number;
+  discountLabel?: string;
+  sortOrder?: number;
+  isActive?: boolean;
+}) => {
+  const existing = await prisma.iotSubscriptionDuration.findUnique({
+    where: { months: data.months },
+  });
+  if (existing) throw new AppError(`Opsi durasi untuk ${data.months} bulan sudah terdaftar.`, 409);
+
+  const dType = data.discountType || FeeCalculationType.PERCENTAGE;
+  const dVal = data.discountValue ?? 0;
+  const dRate = dType === FeeCalculationType.PERCENTAGE ? (dVal > 1 ? dVal / 100 : dVal) : 0;
+
+  return prisma.iotSubscriptionDuration.create({
+    data: {
+      months: data.months,
+      label: data.label.trim(),
+      discountType: dType,
+      discountValue: new Prisma.Decimal(dVal),
+      discountRate: new Prisma.Decimal(dRate),
+      discountLabel: data.discountLabel ? data.discountLabel.trim() : null,
+      sortOrder: data.sortOrder ?? 0,
+      isActive: data.isActive ?? true,
+    },
+  });
+};
+
+export const adminUpdateSubscriptionDuration = async (
+  durationId: string,
+  data: {
+    months?: number;
+    label?: string;
+    discountType?: FeeCalculationType;
+    discountValue?: number;
+    discountLabel?: string;
+    sortOrder?: number;
+    isActive?: boolean;
+  },
+) => {
+  const duration = await prisma.iotSubscriptionDuration.findUnique({
+    where: { id: durationId },
+  });
+  if (!duration) throw new AppError('Opsi durasi langganan tidak ditemukan.', 404);
+
+  const dType = data.discountType || duration.discountType;
+  const dVal =
+    data.discountValue !== undefined ? data.discountValue : Number(duration.discountValue);
+  const dRate = dType === FeeCalculationType.PERCENTAGE ? (dVal > 1 ? dVal / 100 : dVal) : 0;
+
+  return prisma.iotSubscriptionDuration.update({
+    where: { id: durationId },
+    data: {
+      ...(data.months !== undefined ? { months: data.months } : {}),
+      ...(data.label ? { label: data.label.trim() } : {}),
+      ...(data.discountType ? { discountType: data.discountType } : {}),
+      ...(data.discountValue !== undefined
+        ? {
+            discountValue: new Prisma.Decimal(dVal),
+            discountRate: new Prisma.Decimal(dRate),
+          }
+        : {}),
+      ...(data.discountLabel !== undefined
+        ? { discountLabel: data.discountLabel ? data.discountLabel.trim() : null }
+        : {}),
+      ...(data.sortOrder !== undefined ? { sortOrder: data.sortOrder } : {}),
+      ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
+    },
+  });
+};
+
+export const adminDeleteSubscriptionDuration = async (durationId: string) => {
+  const duration = await prisma.iotSubscriptionDuration.findUnique({
+    where: { id: durationId },
+  });
+  if (!duration) throw new AppError('Opsi durasi langganan tidak ditemukan.', 404);
+
+  return prisma.iotSubscriptionDuration.delete({ where: { id: durationId } });
+};
+
+/**
  * Initiate IoT PRO Subscription via Xendit
  */
 export const initiateSubscription = async (
   userId: string,
   paymentMethod: { type: PaymentMethod; channel: string },
+  options: { planType?: string; durationMonths?: number } = {},
 ) => {
-  // 1. Get Subscription Fee
-  const feeSetting = await prisma.platformFeeSetting.findUnique({
-    where: { name: PlatformFeeType.SUBSCRIPTION },
-  });
-
-  if (!feeSetting || !feeSetting.isActive) {
-    throw new AppError(
-      'Konfigurasi biaya langganan IoT PRO tidak ditemukan atau tidak aktif.',
-      500,
-    );
-  }
+  const durationMonths = options.durationMonths ? Math.max(1, options.durationMonths) : 1;
+  const planType = options.planType || 'software_only';
+  const amount = await calculateSubscriptionAmount(planType, durationMonths);
+  const externalId = `SUB-${userId.substring(0, 8)}-${Date.now()}`;
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { fullName: true, phone: true },
   });
-
-  const amount = Number(feeSetting.amount);
-  const externalId = `SUB-${userId.substring(0, 8)}-${Date.now()}`;
 
   // 2. Create Pending Transaction
   const transaction = await prisma.transaction.create({
@@ -565,6 +917,13 @@ export const initiateSubscription = async (
     channelCode: paymentMethod.channel,
   });
 
+  const planDesc =
+    planType === 'rental'
+      ? `Sewa IoT & PRO (${durationMonths} Bln)`
+      : planType === 'buy_hardware'
+        ? `Beli Perangkat IoT + PRO (${durationMonths} Bln)`
+        : `Langganan BISA IoT PRO (${durationMonths} Bln)`;
+
   // 4. Create Xendit Payment Request (In-App)
   try {
     const xenditResponse = await createPaymentRequest({
@@ -574,8 +933,8 @@ export const initiateSubscription = async (
       channel_code: paymentMethod.channel,
       method: paymentMethod.type,
       channel_properties: channelProperties,
-      description: 'Langganan BISA IoT PRO - 30 Hari',
-      metadata: { userId, transactionId: transaction.id },
+      description: planDesc,
+      metadata: { userId, transactionId: transaction.id, planType, durationMonths },
     });
 
     // Update transaction with provider action (VA number / QR string)

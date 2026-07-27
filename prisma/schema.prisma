@@ -2321,6 +2321,42 @@ model PlatformFeeSetting {
   @@map("platform_fee_settings")
 }
 
+model IotSubscriptionPlan {
+  id              String   @id @default(uuid())
+  code            String   @unique @map("code") // e.g. "rental", "buy_hardware", "software_only"
+  title           String   @map("title")
+  monthlyRate     Decimal  @db.Decimal(15, 2) @default(0) @map("monthly_rate")
+  hardwarePrice   Decimal  @db.Decimal(15, 2) @default(0) @map("hardware_price")
+  unit            String   @map("unit")
+  tag             String?  @map("tag")
+  description     String   @db.Text @map("description")
+  icon            String   @default("cpu") @map("icon")
+  isActive        Boolean  @default(true) @map("is_active")
+  sortOrder       Int      @default(0) @map("sort_order")
+  featuresJson    Json?    @map("features_json") // Menyimpan data matriks perbandingan fitur
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("iot_subscription_plans")
+}
+
+/// Opsi durasi langganan IoT PRO (dikelola admin, bukan hardcode)
+model IotSubscriptionDuration {
+  id            String             @id @default(uuid())
+  months        Int                @unique @map("months")           // e.g. 1, 3, 6, 12
+  label         String             @map("label")                    // e.g. "1 Bulan"
+  discountType  FeeCalculationType @default(PERCENTAGE) @map("discount_type") // PERCENTAGE atau FIXED
+  discountValue Decimal            @db.Decimal(15, 2) @default(0) @map("discount_value") // e.g. 5 (untuk 5%) atau 50000 (untuk Rp 50.000)
+  discountRate  Decimal            @db.Decimal(5, 4) @default(0) @map("discount_rate") // Deprecated helper: e.g. 0.05, 0.10, 0.15
+  discountLabel String?            @map("discount_label")           // e.g. "Hemat 5%" atau "Hemat Rp 50rb"
+  isActive      Boolean            @default(true) @map("is_active")
+  sortOrder     Int                @default(0) @map("sort_order")
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+
+  @@map("iot_subscription_durations")
+}
+
 
 model PaymentChannel {
   id                            String            @id @default(uuid())

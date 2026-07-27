@@ -35,11 +35,139 @@ async function seedDeviceTelemetry(prisma, device, { readingCount = 8, withAlert
 }
 
 export async function seedIoT(prisma, users) {
-  logger.info('🌱 [06] Seeding IoT Devices, Telemetry & AI...');
+  logger.info('🌱 [06] Seeding IoT Devices, Telemetry, Plans & Durations...');
+
+  // Seed Initial Subscription Plans & Durations if empty
+  const planCount = await prisma.iotSubscriptionPlan.count();
+  if (planCount === 0) {
+    const initialPlans = [
+      {
+        code: 'rental',
+        title: 'Sewa Perangkat IoT + Software PRO',
+        monthlyRate: 150000,
+        hardwarePrice: 0,
+        unit: '/ bulan',
+        tag: 'Rekomendasi',
+        description:
+          'Termasuk perangkat IoT fisik disewakan & akses penuh aplikasi PRO. Tanpa deposit.',
+        icon: 'cpu',
+        sortOrder: 1,
+        featuresJson: [
+          { key: 'ownership', label: 'Kepemilikan Alat IoT', text: 'Pinjam / Sewa', ok: null },
+          { key: 'device_cost', label: 'Biaya Perangkat', text: 'Rp 0 (termasuk sewa)', ok: null },
+          { key: 'software_cost', label: 'Biaya Software/Bln', text: 'Rp 150.000', ok: null },
+          { key: 'pro_access', label: 'Akses Fitur PRO', text: null, ok: true },
+          { key: 'multi_discount', label: 'Diskon Multi-Bulan', text: null, ok: true },
+          { key: 'temp_monitor', label: 'Monitoring Suhu Real-time', text: null, ok: true },
+          { key: 'auto_alert', label: 'Alert Otomatis', text: null, ok: true },
+          { key: 'no_deposit', label: 'Tanpa Deposit', text: null, ok: true },
+          { key: 'return_cancel', label: 'Alat Kembali Jika Berhenti', text: null, ok: true },
+          { key: 'long_invest', label: 'Investasi Jangka Panjang', text: null, ok: false },
+        ],
+      },
+      {
+        code: 'buy_hardware',
+        title: 'Beli Alat Fisik + Langganan Software',
+        monthlyRate: 99000,
+        hardwarePrice: 3000000,
+        unit: ' (1x Bayar) + Rp 99.000/bln',
+        tag: 'Hak Milik',
+        description:
+          'Perangkat IoT jadi hak milik pribadi + biaya langganan bulanan software lebih hemat.',
+        icon: 'shoppingBag',
+        sortOrder: 2,
+        featuresJson: [
+          { key: 'ownership', label: 'Kepemilikan Alat IoT', text: 'Hak Milik Pribadi', ok: null },
+          { key: 'device_cost', label: 'Biaya Perangkat', text: 'Rp 3.000.000 (1x)', ok: null },
+          { key: 'software_cost', label: 'Biaya Software/Bln', text: 'Rp 99.000', ok: null },
+          { key: 'pro_access', label: 'Akses Fitur PRO', text: null, ok: true },
+          { key: 'multi_discount', label: 'Diskon Multi-Bulan', text: null, ok: true },
+          { key: 'temp_monitor', label: 'Monitoring Suhu Real-time', text: null, ok: true },
+          { key: 'auto_alert', label: 'Alert Otomatis', text: null, ok: true },
+          { key: 'no_deposit', label: 'Tanpa Deposit', text: null, ok: false },
+          { key: 'return_cancel', label: 'Alat Kembali Jika Berhenti', text: null, ok: false },
+          { key: 'long_invest', label: 'Investasi Jangka Panjang', text: null, ok: true },
+        ],
+      },
+      {
+        code: 'software_only',
+        title: 'Langganan Software PRO Saja',
+        monthlyRate: 99000,
+        hardwarePrice: 0,
+        unit: '/ bulan',
+        tag: 'Software Only',
+        description: 'Khusus bagi mitra/pengguna yang sudah memiliki alat IoT fisik terpasang.',
+        icon: 'sparkles',
+        sortOrder: 3,
+        featuresJson: [
+          { key: 'ownership', label: 'Kepemilikan Alat IoT', text: '—', ok: false },
+          { key: 'device_cost', label: 'Biaya Perangkat', text: 'Sudah punya alat', ok: null },
+          { key: 'software_cost', label: 'Biaya Software/Bln', text: 'Rp 99.000', ok: null },
+          { key: 'pro_access', label: 'Akses Fitur PRO', text: null, ok: true },
+          { key: 'multi_discount', label: 'Diskon Multi-Bulan', text: null, ok: true },
+          { key: 'temp_monitor', label: 'Monitoring Suhu Real-time', text: null, ok: true },
+          { key: 'auto_alert', label: 'Alert Otomatis', text: null, ok: true },
+          { key: 'no_deposit', label: 'Tanpa Deposit', text: null, ok: false },
+          { key: 'return_cancel', label: 'Alat Kembali Jika Berhenti', text: null, ok: false },
+          { key: 'long_invest', label: 'Investasi Jangka Panjang', text: null, ok: false },
+        ],
+      },
+    ];
+
+    for (const p of initialPlans) {
+      await prisma.iotSubscriptionPlan.create({ data: p });
+    }
+  }
+
+  const durationCount = await prisma.iotSubscriptionDuration.count();
+  if (durationCount === 0) {
+    const initialDurations = [
+      {
+        months: 1,
+        label: '1 Bulan',
+        discountType: 'PERCENTAGE',
+        discountValue: 0,
+        discountRate: 0,
+        discountLabel: null,
+        sortOrder: 1,
+      },
+      {
+        months: 3,
+        label: '3 Bulan',
+        discountType: 'PERCENTAGE',
+        discountValue: 5,
+        discountRate: 0.05,
+        discountLabel: 'Hemat 5%',
+        sortOrder: 2,
+      },
+      {
+        months: 6,
+        label: '6 Bulan',
+        discountType: 'PERCENTAGE',
+        discountValue: 10,
+        discountRate: 0.1,
+        discountLabel: 'Hemat 10%',
+        sortOrder: 3,
+      },
+      {
+        months: 12,
+        label: '12 Bulan',
+        discountType: 'PERCENTAGE',
+        discountValue: 15,
+        discountRate: 0.15,
+        discountLabel: 'Hemat 15%',
+        sortOrder: 4,
+      },
+    ];
+
+    for (const d of initialDurations) {
+      await prisma.iotSubscriptionDuration.create({ data: d });
+    }
+  }
 
   const existingIoT = await prisma.iotDevice.count();
   if (existingIoT > 0) {
-    logger.info('   ↳ IoT already seeded, skipping (data tidak dihapus)...');
+    logger.info('   ↳ IoT Devices already seeded, skipping device creation...');
     return;
   }
 

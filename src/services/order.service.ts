@@ -35,7 +35,11 @@ import { createNotification } from '#services/notification.service';
 import * as rajaOngkirService from '#services/rajaongkir.service';
 import * as bisaExpressService from '#services/bisa-express.service';
 import { BISA_EXPRESS_COURIER_CODE } from '#constants/bisa-express.constants';
-import { getSupplierShippingOrigin, persistOrderShipping } from '#services/order-shipping.service';
+import {
+  getSupplierShippingOrigin,
+  updateSupplierShippingOrigin,
+  persistOrderShipping,
+} from '#services/order-shipping.service';
 import type { LogisticsSnapshotMeta, ShippingSelectionInput } from '#types/order-shipping';
 import { notifyOrderStatusChange } from '#services/orderNotification.service';
 import { scheduleSupplyDemandRefresh } from '#services/marketSupplyDemand.service';
@@ -477,21 +481,34 @@ export const resolveSellerShippingOrigin = async (
   ].filter((q): q is string => !!q && q.length >= 2);
 
   for (const query of queries) {
-    const results = await rajaOngkirService.searchDomesticDestinations({
-      search: query,
-      limit: 8,
-    });
-    if (results.length > 0) {
-      const first = results[0];
-      const originId = Number(first.id);
-      if (!Number.isNaN(originId)) {
-        return {
-          snapshot,
-          originId,
-          originLabel: first.label ?? query,
-          resolvedFrom: 'auto_search' as const,
-        };
+    try {
+      const results = await rajaOngkirService.searchDomesticDestinations({
+        search: query,
+        limit: 8,
+      });
+      if (results.length > 0) {
+        const first = results[0];
+        const originId = Number(first.id);
+        if (!Number.isNaN(originId)) {
+          // Persist auto-resolved originId so subsequent checkouts don't re-search
+          try {
+            await updateSupplierShippingOrigin(sellerId, {
+              originId,
+              originLabel: first.label ?? query,
+            });
+          } catch {
+            // Non-fatal: persist gagal (e.g. ADMIN role not allowed), tetap lanjut
+          }
+          return {
+            snapshot,
+            originId,
+            originLabel: first.label ?? query,
+            resolvedFrom: 'auto_search' as const,
+          };
+        }
       }
+    } catch {
+      // Coba query berikutnya jika RajaOngkir API rate-limit atau error.
     }
   }
 

@@ -1,8 +1,103 @@
 import crypto from 'node:crypto';
 import logger from '../../src/config/logger.js';
+import { searchDomesticDestinations } from '../../src/services/rajaongkir.service.ts';
+
+/**
+ * Backfill rajaongkirOriginId untuk semua supplier yang belum punya data asal pengiriman.
+ * Dipanggil setiap kali seed untuk memastikan tidak ada supplier yang menyebabkan error checkout 400.
+ */
+async function backfillSupplierShippingOrigins(prisma) {
+  logger.info('   🔧 [32] Backfill rajaongkirOriginId untuk supplier yang belum punya data...');
+
+  const suppliersWithoutOrigin = await prisma.userProfile.findMany({
+    where: {
+      rajaongkirOriginId: null,
+      user: { role: 'SUPPLIER' },
+    },
+    select: { userId: true, user: { select: { regency: true, province: true } } },
+  });
+
+  // Also find suppliers with no profile at all
+  const suppliersWithoutProfile = await prisma.user.findMany({
+    where: {
+      role: 'SUPPLIER',
+      profile: null,
+    },
+    select: { id: true, regency: true, province: true },
+  });
+
+  const toBackfill = [
+    ...suppliersWithoutOrigin.map((p) => ({
+      id: p.userId,
+      regency: p.user.regency,
+      province: p.user.province,
+    })),
+    ...suppliersWithoutProfile.map((u) => ({ id: u.id, regency: u.regency, province: u.province })),
+  ];
+
+  let fixed = 0;
+  for (const s of toBackfill) {
+    const queries = [
+      s.regency && s.province ? `${s.regency}, ${s.province}` : null,
+      s.regency,
+      s.province,
+    ].filter((q) => !!q && q.length >= 3);
+
+    let resolved = false;
+    for (const query of queries) {
+      try {
+        const results = await searchDomesticDestinations({ search: query, limit: 5 });
+        if (results.length > 0) {
+          const originId = Number(results[0].id);
+          if (!Number.isNaN(originId) && originId > 0) {
+            await prisma.userProfile.upsert({
+              where: { userId: s.id },
+              create: {
+                userId: s.id,
+                rajaongkirOriginId: originId,
+                rajaongkirOriginLabel: results[0].label ?? query,
+              },
+              update: {
+                rajaongkirOriginId: originId,
+                rajaongkirOriginLabel: results[0].label ?? query,
+              },
+            });
+            fixed++;
+            resolved = true;
+            break;
+          }
+        }
+      } catch {
+        // Coba query berikutnya jika RajaOngkir API gagal.
+      }
+    }
+
+    if (!resolved) {
+      // Fallback: pastikan UserProfile exist agar checkout tidak crash karena profile null
+      await prisma.userProfile.upsert({
+        where: { userId: s.id },
+        create: { userId: s.id },
+        update: {},
+      });
+    }
+  }
+
+  if (fixed > 0) {
+    logger.info(`   ✅ [32] Backfill: ${fixed} supplier berhasil diisi rajaongkirOriginId.`);
+  } else if (toBackfill.length > 0) {
+    logger.warn(
+      `   ⚠️ [32] ${toBackfill.length} supplier masih belum bisa resolve asal pengiriman (RajaOngkir API unavailable?).`,
+    );
+  } else {
+    logger.info('   ✅ [32] Semua supplier sudah punya rajaongkirOriginId.');
+  }
+}
 
 export async function seedSupplierExtras(prisma, users) {
   logger.info('🌱 [32] Seeding supplier extras (API key, referral, live, knowledge, devices)...');
+
+  // Always backfill shipping origins — idempotent, safe to re-run
+  await backfillSupplierShippingOrigins(prisma);
 
   const existingExtras = await prisma.liveSession.count({
     where: { title: { startsWith: '[SEED]' } },

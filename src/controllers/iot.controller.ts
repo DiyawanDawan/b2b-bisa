@@ -102,6 +102,14 @@ export const updateDevice = catchAsync(async (req: AuthRequest, res: Response) =
 });
 
 /**
+ * Get dynamic IoT PRO Subscription Plans & Features Comparison
+ */
+export const getSubscriptionPlans = catchAsync(async (_req: Request, res: Response) => {
+  const plansData = await iotService.getSubscriptionPlans();
+  return successResponse(res, plansData, 'Konfigurasi paket langganan IoT berhasil dimuat.');
+});
+
+/**
  * Get status summary for all devices (Online/Offline/Alerts)
  */
 export const getDeviceStatusSummary = catchAsync(async (req: AuthRequest, res: Response) => {
@@ -147,11 +155,18 @@ export const deleteDevice = catchAsync(async (req: AuthRequest, res: Response) =
  * Initiate IoT PRO Subscription (In-App Xendit)
  */
 export const subscribe = catchAsync(async (req: AuthRequest, res: Response) => {
-  const { channel_code, method } = req.body;
-  const result = await iotService.initiateSubscription(req.user!.id, {
-    type: method,
-    channel: channel_code,
-  });
+  const { channel_code, method, plan_type, duration_months } = req.body;
+  const result = await iotService.initiateSubscription(
+    req.user!.id,
+    {
+      type: method,
+      channel: channel_code,
+    },
+    {
+      planType: plan_type,
+      durationMonths: duration_months ? Number(duration_months) : 1,
+    },
+  );
   successResponse(res, result, 'Instruksi pembayaran langganan PRO berhasil dibuat');
 });
 
@@ -328,3 +343,59 @@ export const adminDeleteDevice = catchAsync(async (req: AuthRequest, res: Respon
   await iotService.adminDeleteDevice(deviceId);
   successResponse(res, null, 'Perangkat IoT berhasil dihapus');
 });
+
+// =========================================================
+// ADMIN CRUD CONTROLLERS FOR SUBSCRIPTION PLANS & DURATIONS
+// =========================================================
+
+export const adminListSubscriptionPlans = catchAsync(async (_req: AuthRequest, res: Response) => {
+  const plans = await iotService.adminListSubscriptionPlans();
+  return successResponse(res, plans, 'Daftar paket langganan IoT (admin) berhasil dimuat.');
+});
+
+export const adminCreateSubscriptionPlan = catchAsync(async (req: AuthRequest, res: Response) => {
+  const newPlan = await iotService.adminCreateSubscriptionPlan(req.body);
+  return successResponse(res, newPlan, 'Paket langganan IoT berhasil dibuat.', 201);
+});
+
+export const adminUpdateSubscriptionPlan = catchAsync(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params;
+  const updated = await iotService.adminUpdateSubscriptionPlan(id, req.body);
+  return successResponse(res, updated, 'Paket langganan IoT berhasil diperbarui.');
+});
+
+export const adminDeleteSubscriptionPlan = catchAsync(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params;
+  await iotService.adminDeleteSubscriptionPlan(id);
+  return successResponse(res, null, 'Paket langganan IoT berhasil dihapus.');
+});
+
+export const adminListSubscriptionDurations = catchAsync(
+  async (_req: AuthRequest, res: Response) => {
+    const durations = await iotService.adminListSubscriptionDurations();
+    return successResponse(res, durations, 'Daftar durasi langganan (admin) berhasil dimuat.');
+  },
+);
+
+export const adminCreateSubscriptionDuration = catchAsync(
+  async (req: AuthRequest, res: Response) => {
+    const newDuration = await iotService.adminCreateSubscriptionDuration(req.body);
+    return successResponse(res, newDuration, 'Opsi durasi langganan berhasil dibuat.', 201);
+  },
+);
+
+export const adminUpdateSubscriptionDuration = catchAsync(
+  async (req: AuthRequest, res: Response) => {
+    const { id } = req.params;
+    const updated = await iotService.adminUpdateSubscriptionDuration(id, req.body);
+    return successResponse(res, updated, 'Opsi durasi langganan berhasil diperbarui.');
+  },
+);
+
+export const adminDeleteSubscriptionDuration = catchAsync(
+  async (req: AuthRequest, res: Response) => {
+    const { id } = req.params;
+    await iotService.adminDeleteSubscriptionDuration(id);
+    return successResponse(res, null, 'Opsi durasi langganan berhasil dihapus.');
+  },
+);

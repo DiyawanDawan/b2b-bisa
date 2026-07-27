@@ -531,8 +531,13 @@ export const handleXenditPaymentRequestWebhook = async (
                 ? user.subscriptionExpiresAt
                 : new Date();
 
+            const rawMonths =
+              payload.data?.metadata?.durationMonths ?? payload.metadata?.durationMonths;
+            const months = typeof rawMonths === 'number' && rawMonths > 0 ? rawMonths : 1;
+            const daysToAdd = months * SUBSCRIPTION_DURATION_DAYS;
+
             const nextExpiry = new Date(baseDate);
-            nextExpiry.setDate(nextExpiry.getDate() + SUBSCRIPTION_DURATION_DAYS);
+            nextExpiry.setDate(nextExpiry.getDate() + daysToAdd);
 
             await tx.user.update({
               where: { id: user.id },
@@ -541,7 +546,9 @@ export const handleXenditPaymentRequestWebhook = async (
                 subscriptionExpiresAt: nextExpiry,
               },
             });
-            console.log(`[SUBSCRIPTION] User ${user.email} upgraded to PRO until ${nextExpiry}`);
+            console.log(
+              `[SUBSCRIPTION] User ${user.email} upgraded to PRO for ${months} month(s) until ${nextExpiry}`,
+            );
           }
         }
 

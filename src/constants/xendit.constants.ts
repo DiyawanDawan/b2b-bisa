@@ -36,6 +36,7 @@ export interface XenditWebhookPayload {
   updated?: string;
   currency?: string;
   event?: string;
+  metadata?: Record<string, unknown>;
   data?: {
     id?: string;
     external_id?: string;
@@ -44,6 +45,7 @@ export interface XenditWebhookPayload {
     amount?: number;
     currency?: string;
     payment_request_id?: string;
+    metadata?: Record<string, unknown>;
   };
 }
 
