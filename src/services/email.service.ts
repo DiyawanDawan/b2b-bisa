@@ -161,10 +161,7 @@ export const sendMail = async (
     throw new Error('No email service configured (ZEPTOMAIL_TOKEN or EMAIL_SMTP_*)');
   } catch (_err: any) {
     const zeptoDetail =
-      _err?.error?.message ||
-      _err?.response?.data?.message ||
-      _err?.message ||
-      String(_err);
+      _err?.error?.message || _err?.response?.data?.message || _err?.message || String(_err);
     logger.error('Failed to send email:', {
       error: zeptoDetail,
       to,

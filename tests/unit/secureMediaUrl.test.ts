@@ -2,9 +2,9 @@ import { isLocalMediaHost, toSecureMediaUrl } from '#utils/env.util';
 
 describe('toSecureMediaUrl', () => {
   it('upgrades http to https for public hosts', () => {
-    expect(toSecureMediaUrl('http://103.193.178.163/api/v1/storage/assets/store-banners/a.webp')).toBe(
-      'https://103.193.178.163/api/v1/storage/assets/store-banners/a.webp',
-    );
+    expect(
+      toSecureMediaUrl('http://103.193.178.163/api/v1/storage/assets/store-banners/a.webp'),
+    ).toBe('https://103.193.178.163/api/v1/storage/assets/store-banners/a.webp');
     expect(toSecureMediaUrl('http://cdn.bisaagri.com/products/a.webp')).toBe(
       'https://cdn.bisaagri.com/products/a.webp',
     );

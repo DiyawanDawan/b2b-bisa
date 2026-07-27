@@ -14,16 +14,16 @@ This executes `prisma db seed` → `tsx prisma/seed/index.js` only. Do not invok
 
 From `package.json` (scoped re-runs, not a full DB reset):
 
-| Script | Purpose |
-|--------|---------|
-| `npm run seed:forum-groups` | Forum groups |
-| `npm run seed:forum-group-posts` | Forum group posts |
-| `npm run seed:reviews` | Reviews / delivery |
-| `npm run seed:organic-harvest` | Organic harvest |
-| `npm run seed:bookings` | Bookings |
-| `npm run seed:partnerships` | Partnerships |
-| `npm run seed:bisa-express` | BISA Express |
-| `npm run seed:vouchers` | Vouchers |
+| Script                           | Purpose            |
+| -------------------------------- | ------------------ |
+| `npm run seed:forum-groups`      | Forum groups       |
+| `npm run seed:forum-group-posts` | Forum group posts  |
+| `npm run seed:reviews`           | Reviews / delivery |
+| `npm run seed:organic-harvest`   | Organic harvest    |
+| `npm run seed:bookings`          | Bookings           |
+| `npm run seed:partnerships`      | Partnerships       |
+| `npm run seed:bisa-express`      | BISA Express       |
+| `npm run seed:vouchers`          | Vouchers           |
 
 ## Do not run deleted orphans
 

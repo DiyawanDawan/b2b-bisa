@@ -1,8 +1,5 @@
 import { z } from 'zod';
-import {
-  sanitizeProductDescriptionHtml,
-  stripHtmlToPlain,
-} from '#utils/htmlSanitize.util';
+import { sanitizeProductDescriptionHtml, stripHtmlToPlain } from '#utils/htmlSanitize.util';
 
 const forumMediaSchema = z.object({
   url: z
@@ -75,7 +72,7 @@ export const updatePostSchema = z.object({
     .string()
     .max(20000, 'Konten terlalu panjang')
     .optional()
-    .transform((v) => (v === undefined ? undefined : sanitizeProductDescriptionHtml(v) ?? '')),
+    .transform((v) => (v === undefined ? undefined : (sanitizeProductDescriptionHtml(v) ?? ''))),
   categoryId: z.string().uuid('Kategori ID tidak valid').nullable().optional(),
   mediaUrls: z.array(forumMediaSchema).max(10, 'Maksimal 10 media per posting').optional(),
   status: z.enum(['PUBLISHED', 'DRAFT', 'ARCHIVED']).optional(),

@@ -57,10 +57,7 @@ const fetchCategories = async ({
       ...(type && { categoryType: type }),
       ...(productMode && { productMode }),
       ...(biomassaType && {
-        OR: [
-          { biomassaType },
-          { biomassaType: null, level: { in: [1, 2] } },
-        ],
+        OR: [{ biomassaType }, { biomassaType: null, level: { in: [1, 2] } }],
       }),
       ...(parentId !== undefined && { parentId }),
       ...(onlyLeaves && { level: 3 }),
@@ -152,11 +149,13 @@ const buildTree = (
 /**
  * Nested L1 → L2 → L3 category tree for product pickers.
  */
-export const getCategoryTree = async (params: {
-  type?: CATEGORY_TYPE;
-  productMode?: ProductMode;
-  biomassaType?: BiomassaType;
-} = {}) => {
+export const getCategoryTree = async (
+  params: {
+    type?: CATEGORY_TYPE;
+    productMode?: ProductMode;
+    biomassaType?: BiomassaType;
+  } = {},
+) => {
   const type = params.type ?? CATEGORY_TYPE.PRODUK;
   return cacheAside(
     cacheKeys.categoryList({ ...params, tree: true } as Record<string, unknown>),

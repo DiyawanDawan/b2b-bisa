@@ -1,7 +1,4 @@
-import {
-  applyShippingMarkup,
-  normalizeMarkupConfig,
-} from '../../src/utils/shipping-markup.util';
+import { applyShippingMarkup, normalizeMarkupConfig } from '../../src/utils/shipping-markup.util';
 
 describe('shipping-markup.util', () => {
   describe('applyShippingMarkup', () => {
@@ -41,9 +38,7 @@ describe('shipping-markup.util', () => {
 
     it('rounds to nearest rupiah', () => {
       // 10001 * 1.1 = 11001.1 → 11001
-      expect(applyShippingMarkup(10_001, { markupPercent: 10, markupFlat: 0 }).cost).toBe(
-        11_001,
-      );
+      expect(applyShippingMarkup(10_001, { markupPercent: 10, markupFlat: 0 }).cost).toBe(11_001);
     });
   });
 

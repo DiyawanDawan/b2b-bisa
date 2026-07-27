@@ -50,14 +50,8 @@ export const JWT_REFRESH_EXPIRES_IN = optional('JWT_REFRESH_EXPIRES_IN', '30d');
 
 // Email — ZeptoMail HTTP API (primary). SMTP is legacy fallback only.
 export const ZEPTOMAIL_TOKEN = optional('ZEPTOMAIL_TOKEN');
-export const ZEPTOMAIL_URL = optional(
-  'ZEPTOMAIL_URL',
-  'https://api.zeptomail.com/v1.1/email',
-);
-export const ZEPTOMAIL_FROM_ADDRESS = optional(
-  'ZEPTOMAIL_FROM_ADDRESS',
-  'noreply@bisaagri.com',
-);
+export const ZEPTOMAIL_URL = optional('ZEPTOMAIL_URL', 'https://api.zeptomail.com/v1.1/email');
+export const ZEPTOMAIL_FROM_ADDRESS = optional('ZEPTOMAIL_FROM_ADDRESS', 'noreply@bisaagri.com');
 
 // Legacy SMTP (optional fallback when ZEPTOMAIL_TOKEN is empty)
 export const EMAIL_SMTP_HOST = optional('EMAIL_SMTP_HOST', 'smtp.gmail.com');

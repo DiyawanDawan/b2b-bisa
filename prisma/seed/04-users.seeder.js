@@ -4,7 +4,12 @@ import { faker } from '@faker-js/faker/locale/id_ID';
 import { avatarSeedPath } from '../../src/utils/loremFlickrMedia.util.ts';
 import { encryptField } from '../../src/utils/encryption.util.ts';
 import { sealAccountName, sealAccountNumber } from '../../src/utils/payoutAccount.util.ts';
-import { sealAddress, sealAddressPhone, sealDocumentFile, sealDocumentTitle } from '../../src/utils/piiField.util.ts';
+import {
+  sealAddress,
+  sealAddressPhone,
+  sealDocumentFile,
+  sealDocumentTitle,
+} from '../../src/utils/piiField.util.ts';
 import { searchDomesticDestinations } from '../../src/services/rajaongkir.service.ts';
 
 export async function seedUsers(prisma) {
@@ -15,7 +20,9 @@ export async function seedUsers(prisma) {
   const country = await prisma.country.findFirst();
   const province = await prisma.province.findFirst();
   const regency = await prisma.regency.findFirst();
-  const regencyProvince = regency ? await prisma.province.findUnique({ where: { id: regency.provinceId } }) : null;
+  const regencyProvince = regency
+    ? await prisma.province.findUnique({ where: { id: regency.provinceId } })
+    : null;
 
   if (!country) throw new Error('Need at least 1 Country from taxonomies seeder.');
   if (!regency) throw new Error('Need at least 1 Regency from regions seeder.');
@@ -65,7 +72,12 @@ export async function seedUsers(prisma) {
   });
   const hendra = await prisma.user.upsert({
     where: { email: 'h.wijaya@surabayaindustrial.com' },
-    update: { ...proSubscription, avatarUrl: avatarSeedPath(102), regency: regency.name, province: regencyProvince?.name },
+    update: {
+      ...proSubscription,
+      avatarUrl: avatarSeedPath(102),
+      regency: regency.name,
+      province: regencyProvince?.name,
+    },
     create: {
       email: 'h.wijaya@surabayaindustrial.com',
       fullName: 'Hendra Wijaya',
@@ -93,10 +105,14 @@ export async function seedUsers(prisma) {
   });
 
   // 3. THE "PRO" SUPPLIER (Siti Aminah from Screenshot)
-  const sitiAddr = await createEliteAddress('Taman Tekno Industrial Park, Blok B-5, Serpong', null, {
-    provinceId: regProvinceId,
-    regencyId: regency.id,
-  });
+  const sitiAddr = await createEliteAddress(
+    'Taman Tekno Industrial Park, Blok B-5, Serpong',
+    null,
+    {
+      provinceId: regProvinceId,
+      regencyId: regency.id,
+    },
+  );
 
   // Cari rajaongkirOriginId dari API ongkir (safe — log warning kalau gagal)
   const sitiSearchQuery = regencyProvince?.name
@@ -114,12 +130,19 @@ export async function seedUsers(prisma) {
       }
     }
   } catch (err) {
-    logger.warn(`   ⚠️ RajaOngkir search gagal untuk Siti (${sitiSearchQuery}): ${err.message?.slice(0, 80)}`);
+    logger.warn(
+      `   ⚠️ RajaOngkir search gagal untuk Siti (${sitiSearchQuery}): ${err.message?.slice(0, 80)}`,
+    );
   }
 
   const siti = await prisma.user.upsert({
     where: { email: 'siti.aminah@agritech.com' },
-    update: { ...proSubscription, avatarUrl: avatarSeedPath(103), regency: regency.name, province: regencyProvince?.name },
+    update: {
+      ...proSubscription,
+      avatarUrl: avatarSeedPath(103),
+      regency: regency.name,
+      province: regencyProvince?.name,
+    },
     create: {
       email: 'siti.aminah@agritech.com',
       fullName: 'Siti Aminah',
@@ -167,12 +190,19 @@ export async function seedUsers(prisma) {
       }
     }
   } catch (err) {
-    logger.warn(`   ⚠️ RajaOngkir search gagal untuk Green Earth (${greenSearchQuery}): ${err.message?.slice(0, 80)}`);
+    logger.warn(
+      `   ⚠️ RajaOngkir search gagal untuk Green Earth (${greenSearchQuery}): ${err.message?.slice(0, 80)}`,
+    );
   }
 
   const green = await prisma.user.upsert({
     where: { email: 'hello@greenearth.co' },
-    update: { ...proSubscription, avatarUrl: avatarSeedPath(104), regency: regency.name, province: regencyProvince?.name },
+    update: {
+      ...proSubscription,
+      avatarUrl: avatarSeedPath(104),
+      regency: regency.name,
+      province: regencyProvince?.name,
+    },
     create: {
       email: 'hello@greenearth.co',
       fullName: 'Green Earth Co.',
@@ -280,8 +310,18 @@ export async function seedUsers(prisma) {
 
     // 6c. User Documents
     const docData = [
-      { title: 'KTP_Verification.pdf', fileUrl: 'https://bisa.es/docs/identity.pdf', fileType: 'IDENTITY', fileSize: '1.2 MB' },
-      { title: 'Tax_ID_NPWP.pdf', fileUrl: 'https://bisa.es/docs/tax.pdf', fileType: 'TAX_REPORT', fileSize: '0.8 MB' },
+      {
+        title: 'KTP_Verification.pdf',
+        fileUrl: 'https://bisa.es/docs/identity.pdf',
+        fileType: 'IDENTITY',
+        fileSize: '1.2 MB',
+      },
+      {
+        title: 'Tax_ID_NPWP.pdf',
+        fileUrl: 'https://bisa.es/docs/tax.pdf',
+        fileType: 'TAX_REPORT',
+        fileSize: '0.8 MB',
+      },
     ];
     for (const doc of docData) {
       await prisma.userDocument.create({

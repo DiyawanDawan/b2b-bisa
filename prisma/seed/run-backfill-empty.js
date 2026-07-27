@@ -4,7 +4,7 @@ import logger from '../../src/config/logger.js';
 
 async function backfillPickupVehicleUnits() {
   const count = await prisma.$queryRawUnsafe(
-    `SELECT COUNT(*) AS cnt FROM shipping_pickup_vehicle_units`
+    `SELECT COUNT(*) AS cnt FROM shipping_pickup_vehicle_units`,
   );
   const vehicles = await prisma.shippingPickupVehicle.findMany({
     where: { isActive: true },
@@ -27,7 +27,9 @@ async function backfillPickupVehicleUnits() {
         const id = crypto.randomUUID();
         await prisma.$executeRawUnsafe(
           `INSERT INTO shipping_pickup_vehicle_units (id, vehicle_id, unit) VALUES (?, ?, ?)`,
-          id, v.id, unit
+          id,
+          v.id,
+          unit,
         );
         n++;
       } catch (e) {
@@ -97,15 +99,26 @@ async function backfillNegotiations() {
   });
   const buyers = await prisma.user.findMany({ where: { role: 'BUYER' }, take: 5 });
   const suppliers = await prisma.user.findMany({ where: { role: 'SUPPLIER' }, take: 5 });
-  const products = await prisma.product.findMany({ select: { id: true, userId: true, pricePerUnit: true }, take: 50 });
-  const buyerProducts = products.filter(p => suppliers.some(s => s.id === p.userId));
+  const products = await prisma.product.findMany({
+    select: { id: true, userId: true, pricePerUnit: true },
+    take: 50,
+  });
+  const buyerProducts = products.filter((p) => suppliers.some((s) => s.id === p.userId));
 
   if (!buyers.length || !suppliers.length || !buyerProducts.length) {
     logger.warn('⚠️ Data user/produk tidak cukup untuk backfill negotiations.');
     return 0;
   }
 
-  const statuses = ['OPEN_NEGOTIATION', 'OFFER_SUBMITTED', 'OFFER_ACCEPTED', 'OFFER_REJECTED', 'EXPIRED', 'LOCKED', 'CANCELLED'];
+  const statuses = [
+    'OPEN_NEGOTIATION',
+    'OFFER_SUBMITTED',
+    'OFFER_ACCEPTED',
+    'OFFER_REJECTED',
+    'EXPIRED',
+    'LOCKED',
+    'CANCELLED',
+  ];
   const linkedOrders = await prisma.order.findMany({
     where: { status: 'PENDING' },
     select: { id: true, buyerId: true, sellerId: true },
@@ -122,9 +135,10 @@ async function backfillNegotiations() {
       const qty = 800 + j * 200;
       const pricePerUnit = Number(product.pricePerUnit) * (status === 'OFFER_REJECTED' ? 0.85 : 1);
       const totalEstimate = qty * pricePerUnit;
-      const createdAt = status === 'EXPIRED'
-        ? new Date(Date.now() - 30 * 86400000)
-        : new Date(Date.now() - ((i * 3 + j) % 7) * 86400000);
+      const createdAt =
+        status === 'EXPIRED'
+          ? new Date(Date.now() - 30 * 86400000)
+          : new Date(Date.now() - ((i * 3 + j) % 7) * 86400000);
       const linkOrder = status === 'LOCKED' ? (linkedOrders[j]?.id ?? null) : null;
 
       try {
@@ -194,9 +208,7 @@ async function backfillChatMessages() {
       { from: 'buyer', text: 'Masih bisa lanjut?' },
       { from: 'system', text: 'Negosiasi kedaluwarsa 72 jam tanpa respons.' },
     ],
-    LOCKED: [
-      { from: 'seller', text: 'Kontrak dikunci, menunggu pembayaran.' },
-    ],
+    LOCKED: [{ from: 'seller', text: 'Kontrak dikunci, menunggu pembayaran.' }],
     CANCELLED: [
       { from: 'buyer', text: 'Mohon maaf, proyek ditunda. Dibatalkan.' },
       { from: 'seller', text: 'Baik, hubungi kami jika siap lanjut.' },
@@ -205,7 +217,9 @@ async function backfillChatMessages() {
 
   let n = 0;
   for (const neg of negotiations) {
-    const msgs = msgTemplates[neg.status] || [{ from: 'buyer', text: `Tertarik ${neg.product.name}.` }];
+    const msgs = msgTemplates[neg.status] || [
+      { from: 'buyer', text: `Tertarik ${neg.product.name}.` },
+    ];
     for (let idx = 0; idx < msgs.length; idx++) {
       const m = msgs[idx];
       try {

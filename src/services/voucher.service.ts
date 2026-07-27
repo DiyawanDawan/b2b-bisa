@@ -179,10 +179,7 @@ export const validateVoucherForCheckout = async (
     }
     eligibleSellerSubtotals.set(voucher.supplierId, input.subtotal);
   } else if (needsCartLines) {
-    throw new AppError(
-      'Detail keranjang diperlukan untuk memvalidasi kode promo ini.',
-      400,
-    );
+    throw new AppError('Detail keranjang diperlukan untuk memvalidasi kode promo ini.', 400);
   } else if (input.sellerIds?.length) {
     const share = input.subtotal.div(input.sellerIds.length);
     for (const sellerId of input.sellerIds) {
@@ -445,9 +442,7 @@ export const createVoucherAdmin = async (input: CreateVoucherAdminInput) => {
         scope === VoucherScope.CATEGORY ? input.categoryId! : (cleared.categoryId ?? null),
       productId: scope === VoucherScope.PRODUCT ? input.productId! : (cleared.productId ?? null),
       productMode:
-        scope === VoucherScope.PRODUCT_MODE
-          ? input.productMode!
-          : (cleared.productMode ?? null),
+        scope === VoucherScope.PRODUCT_MODE ? input.productMode! : (cleared.productMode ?? null),
       usageLimit: input.usageLimit ?? null,
       usagePerUser: input.usagePerUser ?? 1,
       startsAt: input.startsAt ?? null,

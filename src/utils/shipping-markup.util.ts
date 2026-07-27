@@ -20,10 +20,12 @@ const toNonNegNumber = (value: unknown): number => {
   return n;
 };
 
-export const normalizeMarkupConfig = (row?: {
-  markupPercent?: unknown;
-  markupFlat?: unknown;
-} | null): ShippingMarkupConfig => ({
+export const normalizeMarkupConfig = (
+  row?: {
+    markupPercent?: unknown;
+    markupFlat?: unknown;
+  } | null,
+): ShippingMarkupConfig => ({
   markupPercent: toNonNegNumber(row?.markupPercent),
   markupFlat: toNonNegNumber(row?.markupFlat),
 });
@@ -53,13 +55,7 @@ export const loadCourierMarkupMap = async (
   codes?: string[],
 ): Promise<Map<string, ShippingMarkupConfig>> => {
   const normalized = codes?.length
-    ? Array.from(
-        new Set(
-          codes
-            .map((c) => c.trim().toLowerCase())
-            .filter((c) => c.length >= 2),
-        ),
-      )
+    ? Array.from(new Set(codes.map((c) => c.trim().toLowerCase()).filter((c) => c.length >= 2)))
     : undefined;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

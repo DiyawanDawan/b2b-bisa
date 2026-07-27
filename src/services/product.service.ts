@@ -1477,9 +1477,9 @@ export const getProductRecommendations = async (productId: string, limit = 8) =>
           productId,
         },
         select: { orderId: true },
-      take: 40,
-      orderBy: { order: { createdAt: 'desc' } },
-    });
+        take: 40,
+        orderBy: { order: { createdAt: 'desc' } },
+      });
       const orderIds = coPurchase.map((r) => r.orderId);
       let coProductIds: string[] = [];
       if (orderIds.length > 0) {
@@ -1511,50 +1511,50 @@ export const getProductRecommendations = async (productId: string, limit = 8) =>
               },
               orderBy: [{ totalSold: 'desc' }, { averageRating: 'desc' }],
               take: limit - coProductIds.length,
-            select: {
-              id: true,
-              name: true,
-              pricePerUnit: true,
-              originalPrice: true,
-              unit: true,
-              thumbnailUrl: true,
-              biomassaType: true,
-              grade: true,
-              productMode: true,
-              averageRating: true,
-              totalReviews: true,
-              totalSold: true,
-              isCertified: true,
-              userId: true,
-              isIotMonitored: true,
-              user: { select: { id: true, fullName: true } },
-            },
-          });
+              select: {
+                id: true,
+                name: true,
+                pricePerUnit: true,
+                originalPrice: true,
+                unit: true,
+                thumbnailUrl: true,
+                biomassaType: true,
+                grade: true,
+                productMode: true,
+                averageRating: true,
+                totalReviews: true,
+                totalSold: true,
+                isCertified: true,
+                userId: true,
+                isIotMonitored: true,
+                user: { select: { id: true, fullName: true } },
+              },
+            });
 
-    const coProducts =
-      coProductIds.length === 0
-        ? []
-        : await prisma.product.findMany({
-            where: { id: { in: coProductIds }, status: ProductStatus.ACTIVE },
-            select: {
-              id: true,
-              name: true,
-              pricePerUnit: true,
-              originalPrice: true,
-              unit: true,
-              thumbnailUrl: true,
-              biomassaType: true,
-              grade: true,
-              productMode: true,
-              averageRating: true,
-              totalReviews: true,
-              totalSold: true,
-              isCertified: true,
-              userId: true,
-              isIotMonitored: true,
-              user: { select: { id: true, fullName: true } },
-            },
-          });
+      const coProducts =
+        coProductIds.length === 0
+          ? []
+          : await prisma.product.findMany({
+              where: { id: { in: coProductIds }, status: ProductStatus.ACTIVE },
+              select: {
+                id: true,
+                name: true,
+                pricePerUnit: true,
+                originalPrice: true,
+                unit: true,
+                thumbnailUrl: true,
+                biomassaType: true,
+                grade: true,
+                productMode: true,
+                averageRating: true,
+                totalReviews: true,
+                totalSold: true,
+                isCertified: true,
+                userId: true,
+                isIotMonitored: true,
+                user: { select: { id: true, fullName: true } },
+              },
+            });
 
       const byId = new Map(coProducts.map((p) => [p.id, p]));
       const ordered = coProductIds

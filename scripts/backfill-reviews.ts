@@ -2,15 +2,28 @@ import prisma from '../src/config/prisma';
 import logger from '../src/config/logger';
 
 const REVIEW_TEMPLATES = [
-  { rating: 5, comment: 'Kualitas biomassa sangat baik! Pengiriman tepat waktu, dokumentasi lengkap.' },
-  { rating: 4, comment: 'Produk sesuai spesifikasi. Sedikit keterlambatan kirim tapi overall puas.' },
+  {
+    rating: 5,
+    comment: 'Kualitas biomassa sangat baik! Pengiriman tepat waktu, dokumentasi lengkap.',
+  },
+  {
+    rating: 4,
+    comment: 'Produk sesuai spesifikasi. Sedikit keterlambatan kirim tapi overall puas.',
+  },
   { rating: 5, comment: 'Supplier profesional, respon cepat. Harga kompetitif untuk grade A.' },
   { rating: 4, comment: 'Barang sampai dengan aman, packing rapi. Akan repeat order.' },
-  { rating: 3, comment: 'Kualitas OK untuk harga segini. Ada beberapa yang kurang kering tapi masih bisa dipakai.' },
+  {
+    rating: 3,
+    comment:
+      'Kualitas OK untuk harga segini. Ada beberapa yang kurang kering tapi masih bisa dipakai.',
+  },
 ];
 
 const ORGANIC_REVIEW_TEMPLATES = [
-  { rating: 5, comment: 'Sayuran segar, panen langsung dari kebun. Rasa lebih enak dari yang di pasar.' },
+  {
+    rating: 5,
+    comment: 'Sayuran segar, panen langsung dari kebun. Rasa lebih enak dari yang di pasar.',
+  },
   { rating: 4, comment: 'Beras organik berkualitas. Dikemas vakum, tidak ada kutu.' },
   { rating: 5, comment: 'Pengiriman pre-harvest sesuai jadwal. Buah matang sempurna saat tiba.' },
 ];
@@ -76,5 +89,8 @@ async function main() {
 }
 
 main()
-  .catch((err) => { logger.error('[REVIEW-BACKFILL] Gagal:', err); process.exitCode = 1; })
+  .catch((err) => {
+    logger.error('[REVIEW-BACKFILL] Gagal:', err);
+    process.exitCode = 1;
+  })
   .finally(() => prisma.$disconnect());

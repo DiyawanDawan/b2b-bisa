@@ -355,9 +355,7 @@ export const calculateDomesticCost = async (params: {
   }
 
   const activeRaja = await loadActiveRajaOngkirCourierCodes();
-  const requestedRaw = params.courier?.trim()
-    ? normalizeCourierCodes(params.courier)
-    : activeRaja;
+  const requestedRaw = params.courier?.trim() ? normalizeCourierCodes(params.courier) : activeRaja;
   const courierCodes = requestedRaw.filter(
     (code) => activeRaja.includes(code) && !isLocalCourierCode(code),
   );
@@ -390,9 +388,7 @@ export const calculateDomesticCost = async (params: {
     });
 
     const options = Array.isArray(data) ? data : [];
-    const filtered = options.filter((o) =>
-      courierCodes.includes(o.code?.toLowerCase?.() ?? ''),
-    );
+    const filtered = options.filter((o) => courierCodes.includes(o.code?.toLowerCase?.() ?? ''));
     if (!filtered.length) return [];
 
     const markupMap = await loadCourierMarkupMap(
@@ -651,7 +647,11 @@ export const updateShippingCourier = async (
     data: {
       ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
       ...(data.label !== undefined
-        ? { label: data.label?.trim() || (isLocalCourierCode(normalized) ? 'BISA Express' : normalized.toUpperCase()) }
+        ? {
+            label:
+              data.label?.trim() ||
+              (isLocalCourierCode(normalized) ? 'BISA Express' : normalized.toUpperCase()),
+          }
         : {}),
       ...(data.sortOrder !== undefined ? { sortOrder: data.sortOrder } : {}),
       ...(data.markupPercent !== undefined

@@ -11,13 +11,23 @@ async function backfillFeeBreakdown() {
 
   for (let offset = 0; offset < total; offset += BATCH) {
     const orders = await prisma.order.findMany({
-      select: { id: true, subtotal: true, platformFee: true, logisticsFee: true, vatAmount: true, feeBreakdownSnapshot: true },
+      select: {
+        id: true,
+        subtotal: true,
+        platformFee: true,
+        logisticsFee: true,
+        vatAmount: true,
+        feeBreakdownSnapshot: true,
+      },
       skip: offset,
       take: BATCH,
     });
 
     for (const order of orders) {
-      if (order.feeBreakdownSnapshot) { skip++; continue; }
+      if (order.feeBreakdownSnapshot) {
+        skip++;
+        continue;
+      }
 
       const platformFee = Number(order.platformFee);
       const logisticsFee = Number(order.logisticsFee);
@@ -48,5 +58,8 @@ async function main() {
 }
 
 main()
-  .catch((err) => { logger.error('[FEE-BACKFILL] Gagal:', err); process.exitCode = 1; })
+  .catch((err) => {
+    logger.error('[FEE-BACKFILL] Gagal:', err);
+    process.exitCode = 1;
+  })
   .finally(() => prisma.$disconnect());

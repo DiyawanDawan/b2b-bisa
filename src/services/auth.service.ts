@@ -212,10 +212,19 @@ export const register = async (userData: {
     const otp = await tokenService.generateOtp(user.id, TokenType.EMAIL_VERIFICATION);
     emailService.deliverOtpEmail(user.email, user.fullName, otp).catch((mailErr) => {
       if (process.env.NODE_ENV !== 'test') {
-        console.warn('[Auth] Gagal mengirim email OTP (register-reuse):', (mailErr as Error).message);
+        console.warn(
+          '[Auth] Gagal mengirim email OTP (register-reuse):',
+          (mailErr as Error).message,
+        );
       }
     });
-    return { id: user.id, email: user.email, fullName: user.fullName, role: user.role, createdAt: user.createdAt };
+    return {
+      id: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      role: user.role,
+      createdAt: user.createdAt,
+    };
   }
 
   if (existingByEmail) throw new AppError('Email atau nomor telepon sudah terdaftar', 400);
@@ -252,7 +261,13 @@ export const register = async (userData: {
       console.warn('[Auth] Gagal mengirim email OTP (register):', (mailErr as Error).message);
     }
   });
-  return { id: user.id, email: user.email, fullName: user.fullName, role: user.role, createdAt: user.createdAt };
+  return {
+    id: user.id,
+    email: user.email,
+    fullName: user.fullName,
+    role: user.role,
+    createdAt: user.createdAt,
+  };
 };
 
 // ─── Verify OTP ──────────────────────────────────────────

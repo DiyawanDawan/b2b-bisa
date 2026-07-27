@@ -589,9 +589,7 @@ export type SuggestProductTitlesInput = {
 /**
  * Suggest several product titles (Tokopedia-style "Saran").
  */
-export const suggestProductTitles = async (
-  input: SuggestProductTitlesInput,
-): Promise<string[]> => {
+export const suggestProductTitles = async (input: SuggestProductTitlesInput): Promise<string[]> => {
   if (!GOOGLE_GEMINI_API_KEY) {
     throw new Error('Layanan AI tidak tersedia saat ini. Silakan hubungi administrator.');
   }

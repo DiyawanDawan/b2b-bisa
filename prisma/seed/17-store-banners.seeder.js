@@ -267,8 +267,7 @@ export async function seedStoreBanners(prisma, users) {
 
 async function seedBannerModerationDemo(prisma, users) {
   const admin =
-    users?.admin ??
-    (await prisma.user.findUnique({ where: { email: 'admin@bisaes.com' } }));
+    users?.admin ?? (await prisma.user.findUnique({ where: { email: 'admin@bisaes.com' } }));
   if (!admin) {
     logger.warn('⚠️ [17] Admin tidak ditemukan — moderasi banner dilewati.');
     return;

@@ -19,7 +19,14 @@ async function seedMarketSnapshots() {
 
   const snapshots = [];
   const grades = ['A', 'B', 'C'];
-  const types = ['BIOCHAR', 'SEKAM_PADI', 'TONGKOL_JAGUNG', 'TEMPURUNG_KELAPA', 'WOOD_CHIP', 'OTHER'];
+  const types = [
+    'BIOCHAR',
+    'SEKAM_PADI',
+    'TONGKOL_JAGUNG',
+    'TEMPURUNG_KELAPA',
+    'WOOD_CHIP',
+    'OTHER',
+  ];
 
   for (const bt of types) {
     if (bt === 'BIOCHAR') {
@@ -40,10 +47,30 @@ async function seedMarketSnapshots() {
         quantity_kg_30d, quantity_kg_90d, quantity_ton_90d, completed_quantity_kg_90d,
         supply_demand_ratio, balance, computed_at, updated_at, is_published)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [s.id, s.label, s.category, s.biomassa_type, s.grade, s.product_count, s.listing_count,
-       s.total_stock_kg, s.total_stock_ton, s.province_count, s.order_count_30d, s.order_count_90d,
-       s.open_order_count, s.quantity_kg_30d, s.quantity_kg_90d, s.quantity_ton_90d,
-       s.completed_quantity_kg_90d, s.supply_demand_ratio, s.balance, s.computed_at, s.updated_at, 1]
+      [
+        s.id,
+        s.label,
+        s.category,
+        s.biomassa_type,
+        s.grade,
+        s.product_count,
+        s.listing_count,
+        s.total_stock_kg,
+        s.total_stock_ton,
+        s.province_count,
+        s.order_count_30d,
+        s.order_count_90d,
+        s.open_order_count,
+        s.quantity_kg_30d,
+        s.quantity_kg_90d,
+        s.quantity_ton_90d,
+        s.completed_quantity_kg_90d,
+        s.supply_demand_ratio,
+        s.balance,
+        s.computed_at,
+        s.updated_at,
+        1,
+      ],
     );
   }
 
@@ -61,7 +88,7 @@ async function buildBmSnap(conn, bt, grade, days30, days90, now) {
     `SELECT COUNT(*) AS cnt, COUNT(DISTINCT province) AS provinces,
             CAST(COALESCE(SUM(stock), 0) AS UNSIGNED) AS stock_kg
      FROM products WHERE product_mode = 'BIOMASS_MATERIAL' AND status = 'ACTIVE'
-     AND biomassa_type = '${bt}' ${gradeFilter}`
+     AND biomassa_type = '${bt}' ${gradeFilter}`,
   );
 
   const [ord30] = await conn.query(
@@ -69,36 +96,42 @@ async function buildBmSnap(conn, bt, grade, days30, days90, now) {
      FROM orders o JOIN order_items oi ON oi.order_id = o.id
      JOIN products p ON p.id = oi.product_id
      WHERE p.product_mode = 'BIOMASS_MATERIAL' AND p.biomassa_type = '${bt}' ${gradeJoin}
-     AND o.status != 'CANCELLED' AND o.created_at >= ?`, [days30]
+     AND o.status != 'CANCELLED' AND o.created_at >= ?`,
+    [days30],
   );
   const [ord90] = await conn.query(
     `SELECT COUNT(DISTINCT o.id) AS cnt, CAST(COALESCE(SUM(oi.quantity), 0) AS UNSIGNED) AS qty_kg
      FROM orders o JOIN order_items oi ON oi.order_id = o.id
      JOIN products p ON p.id = oi.product_id
      WHERE p.product_mode = 'BIOMASS_MATERIAL' AND p.biomassa_type = '${bt}' ${gradeJoin}
-     AND o.status != 'CANCELLED' AND o.created_at >= ?`, [days90]
+     AND o.status != 'CANCELLED' AND o.created_at >= ?`,
+    [days90],
   );
   const [comp90] = await conn.query(
     `SELECT CAST(COALESCE(SUM(oi.quantity), 0) AS UNSIGNED) AS qty_kg
      FROM orders o JOIN order_items oi ON oi.order_id = o.id
      JOIN products p ON p.id = oi.product_id
      WHERE p.product_mode = 'BIOMASS_MATERIAL' AND p.biomassa_type = '${bt}' ${gradeJoin}
-     AND o.status = 'COMPLETED' AND o.created_at >= ?`, [days90]
+     AND o.status = 'COMPLETED' AND o.created_at >= ?`,
+    [days90],
   );
   const [open] = await conn.query(
     `SELECT COUNT(DISTINCT o.id) AS cnt
      FROM orders o JOIN order_items oi ON oi.order_id = o.id
      JOIN products p ON p.id = oi.product_id
      WHERE p.product_mode = 'BIOMASS_MATERIAL' AND p.biomassa_type = '${bt}' ${gradeJoin}
-     AND o.status IN ('PENDING','CONFIRMED','PROCESSING')`
+     AND o.status IN ('PENDING','CONFIRMED','PROCESSING')`,
   );
 
   const stockKg = Number(prod[0]?.stock_kg ?? 0);
   const qty90 = Number(ord90[0]?.qty_kg ?? 0);
 
   return {
-    id: crypto.randomUUID(), label, category: 'BIOMASSA',
-    biomassa_type: bt, grade: grade ?? null,
+    id: crypto.randomUUID(),
+    label,
+    category: 'BIOMASSA',
+    biomassa_type: bt,
+    grade: grade ?? null,
     product_count: Number(prod[0]?.cnt ?? 0),
     listing_count: Number(prod[0]?.cnt ?? 0),
     total_stock_kg: stockKg,
@@ -113,7 +146,8 @@ async function buildBmSnap(conn, bt, grade, days30, days90, now) {
     completed_quantity_kg_90d: Number(comp90[0]?.qty_kg ?? 0),
     supply_demand_ratio: qty90 > 0 ? +(stockKg / qty90).toFixed(2) : null,
     balance: stockKg > qty90 * 2 ? 'surplus' : stockKg > qty90 ? 'balanced' : 'deficit',
-    computed_at: now, updated_at: now,
+    computed_at: now,
+    updated_at: now,
   };
 }
 
@@ -121,39 +155,45 @@ async function buildOrgSnap(conn, days30, days90, now) {
   const [prod] = await conn.query(
     `SELECT COUNT(*) AS cnt, COUNT(DISTINCT province) AS provinces,
             CAST(COALESCE(SUM(stock), 0) AS UNSIGNED) AS stock_kg
-     FROM products WHERE product_mode = 'ORGANIC_PRODUCE' AND status = 'ACTIVE'`
+     FROM products WHERE product_mode = 'ORGANIC_PRODUCE' AND status = 'ACTIVE'`,
   );
   const [ord30] = await conn.query(
     `SELECT COUNT(DISTINCT o.id) AS cnt, CAST(COALESCE(SUM(oi.quantity), 0) AS UNSIGNED) AS qty_kg
      FROM orders o JOIN order_items oi ON oi.order_id = o.id
      JOIN products p ON p.id = oi.product_id
-     WHERE p.product_mode = 'ORGANIC_PRODUCE' AND o.status != 'CANCELLED' AND o.created_at >= ?`, [days30]
+     WHERE p.product_mode = 'ORGANIC_PRODUCE' AND o.status != 'CANCELLED' AND o.created_at >= ?`,
+    [days30],
   );
   const [ord90] = await conn.query(
     `SELECT COUNT(DISTINCT o.id) AS cnt, CAST(COALESCE(SUM(oi.quantity), 0) AS UNSIGNED) AS qty_kg
      FROM orders o JOIN order_items oi ON oi.order_id = o.id
      JOIN products p ON p.id = oi.product_id
-     WHERE p.product_mode = 'ORGANIC_PRODUCE' AND o.status != 'CANCELLED' AND o.created_at >= ?`, [days90]
+     WHERE p.product_mode = 'ORGANIC_PRODUCE' AND o.status != 'CANCELLED' AND o.created_at >= ?`,
+    [days90],
   );
   const [comp90] = await conn.query(
     `SELECT CAST(COALESCE(SUM(oi.quantity), 0) AS UNSIGNED) AS qty_kg
      FROM orders o JOIN order_items oi ON oi.order_id = o.id
      JOIN products p ON p.id = oi.product_id
-     WHERE p.product_mode = 'ORGANIC_PRODUCE' AND o.status = 'COMPLETED' AND o.created_at >= ?`, [days90]
+     WHERE p.product_mode = 'ORGANIC_PRODUCE' AND o.status = 'COMPLETED' AND o.created_at >= ?`,
+    [days90],
   );
   const [open] = await conn.query(
     `SELECT COUNT(DISTINCT o.id) AS cnt
      FROM orders o JOIN order_items oi ON oi.order_id = o.id
      JOIN products p ON p.id = oi.product_id
-     WHERE p.product_mode = 'ORGANIC_PRODUCE' AND o.status IN ('PENDING','CONFIRMED','PROCESSING')`
+     WHERE p.product_mode = 'ORGANIC_PRODUCE' AND o.status IN ('PENDING','CONFIRMED','PROCESSING')`,
   );
 
   const stockKg = Number(prod[0]?.stock_kg ?? 0);
   const qty90 = Number(ord90[0]?.qty_kg ?? 0);
 
   return {
-    id: crypto.randomUUID(), label: 'Produk Organik', category: 'ORGANIC',
-    biomassa_type: null, grade: null,
+    id: crypto.randomUUID(),
+    label: 'Produk Organik',
+    category: 'ORGANIC',
+    biomassa_type: null,
+    grade: null,
     product_count: Number(prod[0]?.cnt ?? 0),
     listing_count: Number(prod[0]?.cnt ?? 0),
     total_stock_kg: stockKg,
@@ -168,7 +208,8 @@ async function buildOrgSnap(conn, days30, days90, now) {
     completed_quantity_kg_90d: Number(comp90[0]?.qty_kg ?? 0),
     supply_demand_ratio: qty90 > 0 ? +(stockKg / qty90).toFixed(2) : null,
     balance: stockKg > qty90 * 2 ? 'surplus' : stockKg > qty90 ? 'balanced' : 'deficit',
-    computed_at: now, updated_at: now,
+    computed_at: now,
+    updated_at: now,
   };
 }
 
@@ -178,4 +219,7 @@ async function main() {
   console.log('\n🎉 Selesai.');
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

@@ -50,7 +50,9 @@ async function backfillEncryptUserDocuments() {
     }
   }
 
-  logger.info(`✅ user_documents: ${encryptedCount} dienkripsi, ${skipCount} sudah terenkripsi, ${errorCount} error.`);
+  logger.info(
+    `✅ user_documents: ${encryptedCount} dienkripsi, ${skipCount} sudah terenkripsi, ${errorCount} error.`,
+  );
 }
 
 async function backfillMissingOrderSnapshot() {

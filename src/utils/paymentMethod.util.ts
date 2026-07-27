@@ -303,9 +303,9 @@ export const extractPaymentExpiryDate = (raw: unknown): string | null => {
 export const paymentDataHasPayableDetail = (paymentData: Record<string, unknown>): boolean =>
   Boolean(
     paymentData.virtual_account_number ||
-      paymentData.virtualAccountNumber ||
-      paymentData.qrString ||
-      paymentData.qr_string ||
-      paymentData.redirectUrl ||
-      paymentData.payment_code,
+    paymentData.virtualAccountNumber ||
+    paymentData.qrString ||
+    paymentData.qr_string ||
+    paymentData.redirectUrl ||
+    paymentData.payment_code,
   );

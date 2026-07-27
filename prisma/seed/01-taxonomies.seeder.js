@@ -30,7 +30,11 @@ const BIOMASS_L2 = [
   { name: 'Biochar', biomassaType: 'BIOCHAR', description: 'Produk hasil pirolisis biochar' },
   { name: 'Sekam Padi', biomassaType: 'SEKAM_PADI', description: 'Limbah sekam padi' },
   { name: 'Tongkol Jagung', biomassaType: 'TONGKOL_JAGUNG', description: 'Limbah tongkol jagung' },
-  { name: 'Tempurung Kelapa', biomassaType: 'TEMPURUNG_KELAPA', description: 'Limbah tempurung kelapa' },
+  {
+    name: 'Tempurung Kelapa',
+    biomassaType: 'TEMPURUNG_KELAPA',
+    description: 'Limbah tempurung kelapa',
+  },
   { name: 'Wood Chip', biomassaType: 'WOOD_CHIP', description: 'Serpihan / serbuk kayu' },
   { name: 'Lainnya', biomassaType: 'OTHER', description: 'Limbah biomassa lainnya' },
 ];
@@ -62,9 +66,7 @@ const BIOMASS_L3 = {
     { name: 'Wood Chip Kering', description: 'Serpihan kayu kering industri' },
     { name: 'Serbuk Kayu', description: 'Serbuk kayu halus untuk pirolisis' },
   ],
-  OTHER: [
-    { name: 'Limbah Biomassa Lainnya', description: 'Limbah biomassa campuran / lainnya' },
-  ],
+  OTHER: [{ name: 'Limbah Biomassa Lainnya', description: 'Limbah biomassa campuran / lainnya' }],
 };
 
 const ORGANIC_L2 = [
@@ -198,10 +200,30 @@ export async function seedTaxonomies(prisma) {
   await seedProductCategoryTree(prisma);
 
   const contentCategories = [
-    { name: 'Berita Karbon', description: 'Update terbaru bursa karbon', categoryType: 'ARTICLE', level: 1 },
-    { name: 'Regulasi Pemerintah', description: 'Hukum terkait emisi', categoryType: 'ARTICLE', level: 1 },
-    { name: 'Inovasi Pertanian', description: 'Teknologi tani terbaru', categoryType: 'ARTICLE', level: 1 },
-    { name: 'Teknologi Pirolisis', description: 'Diskusi seputar alat pembakar', categoryType: 'FORUM', level: 1 },
+    {
+      name: 'Berita Karbon',
+      description: 'Update terbaru bursa karbon',
+      categoryType: 'ARTICLE',
+      level: 1,
+    },
+    {
+      name: 'Regulasi Pemerintah',
+      description: 'Hukum terkait emisi',
+      categoryType: 'ARTICLE',
+      level: 1,
+    },
+    {
+      name: 'Inovasi Pertanian',
+      description: 'Teknologi tani terbaru',
+      categoryType: 'ARTICLE',
+      level: 1,
+    },
+    {
+      name: 'Teknologi Pirolisis',
+      description: 'Diskusi seputar alat pembakar',
+      categoryType: 'FORUM',
+      level: 1,
+    },
     { name: 'Supply Chain', description: 'Diskusi logistik', categoryType: 'FORUM', level: 1 },
     { name: 'Tanya Jawab Petani', description: 'QnA umum', categoryType: 'FORUM', level: 1 },
   ];

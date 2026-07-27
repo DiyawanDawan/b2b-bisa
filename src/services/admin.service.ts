@@ -1640,7 +1640,8 @@ async function resolveCategoryParent(prismaClient: typeof prisma, parentId?: str
     select: { id: true, level: true, productMode: true, biomassaType: true, categoryType: true },
   });
   if (!parent) throw new AppError('Parent kategori tidak ditemukan', 404);
-  if (parent.level >= 3) throw new AppError('Tidak bisa menambah sub-kategori di level 3 (maksimal kedalaman 3)', 400);
+  if (parent.level >= 3)
+    throw new AppError('Tidak bisa menambah sub-kategori di level 3 (maksimal kedalaman 3)', 400);
   return {
     parentId: parent.id,
     level: parent.level + 1,
@@ -1739,8 +1740,8 @@ export const createCategory = async (data: {
       name: data.name,
       description: data.description,
       categoryType: parent.inheritCategoryType ?? data.categoryType,
-      productMode: parent.inheritProductMode ?? (data.productMode ?? null),
-      biomassaType: parent.inheritBiomassaType ?? (data.biomassaType ?? null),
+      productMode: parent.inheritProductMode ?? data.productMode ?? null,
+      biomassaType: parent.inheritBiomassaType ?? data.biomassaType ?? null,
       parentId: parent.parentId,
       level: parent.level,
     },

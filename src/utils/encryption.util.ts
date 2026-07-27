@@ -93,7 +93,9 @@ export const decryptField = (payload: string): string => {
     const key = getEncryptionKeyBufferForVersion(version);
     return decryptWithKey(payload, key);
   } catch (err) {
-    console.warn(`[encryption] Gagal dekrip v${version}: ${(err as Error).message}. Pastikan ENCRYPTION_KEY sinkron antara env.`);
+    console.warn(
+      `[encryption] Gagal dekrip v${version}: ${(err as Error).message}. Pastikan ENCRYPTION_KEY sinkron antara env.`,
+    );
     return '';
   }
 };

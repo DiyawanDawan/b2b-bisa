@@ -27,13 +27,7 @@ export const listVouchersAdminSchema = z.object({
   period: z.enum(['active_now', 'upcoming', 'expired']).optional(),
 });
 
-const voucherScopeEnum = z.enum([
-  'PLATFORM',
-  'SUPPLIER',
-  'CATEGORY',
-  'PRODUCT',
-  'PRODUCT_MODE',
-]);
+const voucherScopeEnum = z.enum(['PLATFORM', 'SUPPLIER', 'CATEGORY', 'PRODUCT', 'PRODUCT_MODE']);
 
 export const createVoucherAdminSchema = z
   .object({

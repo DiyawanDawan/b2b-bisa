@@ -19,7 +19,7 @@ export async function seedMediaUploadSessions(prisma, users) {
 
   const now = new Date();
   const future = new Date(now.getTime() + 24 * 60 * 60 * 1000); // +24 jam
-  const past = new Date(now.getTime() - 2 * 60 * 60 * 1000);    // -2 jam
+  const past = new Date(now.getTime() - 2 * 60 * 60 * 1000); // -2 jam
 
   const sessions = [
     {

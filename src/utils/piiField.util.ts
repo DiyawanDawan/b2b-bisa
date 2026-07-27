@@ -164,7 +164,9 @@ export const sealDocumentTitle = (value: string | null | undefined): string | nu
   return encryptField(value);
 };
 
-export const revealDocumentTitle = (value: string | null | undefined): string | null | undefined => {
+export const revealDocumentTitle = (
+  value: string | null | undefined,
+): string | null | undefined => {
   if (value == null || value === '') return value;
   return decryptField(value);
 };
