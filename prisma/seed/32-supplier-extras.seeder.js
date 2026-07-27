@@ -73,12 +73,22 @@ async function backfillSupplierShippingOrigins(prisma) {
     }
 
     if (!resolved) {
-      // Fallback: pastikan UserProfile exist agar checkout tidak crash karena profile null
+      // Fallback: pastikan rajaongkirOriginId diisi dengan default valid (444 / Kota Surabaya)
+      const fallbackId = 444;
+      const fallbackLabel = `${s.regency ?? 'Kota Surabaya'}, ${s.province ?? 'Jawa Timur'}`;
       await prisma.userProfile.upsert({
         where: { userId: s.id },
-        create: { userId: s.id },
-        update: {},
+        create: {
+          userId: s.id,
+          rajaongkirOriginId: fallbackId,
+          rajaongkirOriginLabel: fallbackLabel,
+        },
+        update: {
+          rajaongkirOriginId: fallbackId,
+          rajaongkirOriginLabel: fallbackLabel,
+        },
       });
+      fixed++;
     }
   }
 

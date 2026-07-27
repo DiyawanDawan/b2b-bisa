@@ -23,6 +23,8 @@ export async function seedUsers(prisma) {
   const regencyProvince = regency
     ? await prisma.province.findUnique({ where: { id: regency.provinceId } })
     : null;
+  const district = regency ? await prisma.district.findFirst({ where: { regencyId: regency.id } }) : null;
+  const village = district ? await prisma.village.findFirst({ where: { districtId: district.id } }) : null;
 
   if (!country) throw new Error('Need at least 1 Country from taxonomies seeder.');
   if (!regency) throw new Error('Need at least 1 Regency from regions seeder.');
@@ -37,13 +39,15 @@ export async function seedUsers(prisma) {
     const addr = await prisma.address.create({
       data: {
         countryId: country.id,
-        provinceId: opts?.provinceId ?? province?.id,
-        regencyId: opts?.regencyId ?? null,
+        provinceId: opts?.provinceId ?? regProvinceId,
+        regencyId: opts?.regencyId ?? regency.id,
+        districtId: opts?.districtId ?? district?.id ?? null,
+        villageId: opts?.villageId ?? village?.id ?? null,
         fullAddress: sealAddress(fullAddress),
-        zipCode: '60111',
-        phoneNumber: phoneNumber ? sealAddressPhone(phoneNumber) : null,
-        latitude: -7.2575,
-        longitude: 112.7521,
+        zipCode: opts?.zipCode ?? '60111',
+        phoneNumber: phoneNumber ? sealAddressPhone(phoneNumber) : sealAddressPhone('+6281234567890'),
+        latitude: opts?.latitude ?? -7.2575,
+        longitude: opts?.longitude ?? 112.7521,
       },
     });
     // Create Partner record for this address
@@ -346,7 +350,7 @@ export async function seedUsers(prisma) {
     });
 
     // 6e. Customer Addresses (Additional locations)
-    const extraAddr = await createEliteAddress(faker.location.streetAddress(), null, {
+    const extraAddr = await createEliteAddress(faker.location.streetAddress(), '+6281234567890', {
       provinceId: regProvinceId,
       regencyId: regency.id,
     });
@@ -355,6 +359,9 @@ export async function seedUsers(prisma) {
         userId: user.id,
         addressId: extraAddr.id,
         label: faker.helpers.arrayElement(['Gudang Utama', 'Kantor Cabang', 'Workshop']),
+        rajaongkirDestinationId: 444,
+        rajaongkirDestinationLabel: `${regency.name}, ${regencyProvince?.name ?? ''}`,
+        isPrimary: true,
       },
     });
 
