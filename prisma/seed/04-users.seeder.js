@@ -320,11 +320,15 @@ export async function seedUsers(prisma) {
 
     // 6f. Company Profile (Linked via Address)
     if (user.addressId) {
-      await prisma.companyProfile.upsert({
-        where: { addressId: user.addressId },
-        update: {},
-        create: { addressId: user.addressId },
-      });
+      try {
+        await prisma.companyProfile.upsert({
+          where: { addressId: user.addressId },
+          update: {},
+          create: { addressId: user.addressId },
+        });
+      } catch {
+        // table mungkin belum ada / migration belum jalan
+      }
     }
   }
 
