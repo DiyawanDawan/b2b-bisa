@@ -33,3 +33,8 @@ export const validateVoucher = catchAsync(async (req: AuthRequest, res: Response
   );
   successResponse(res, result);
 });
+
+export const listAvailableVouchers = catchAsync(async (req: AuthRequest, res: Response) => {
+  const vouchers = await voucherService.listAvailableVouchers(req.user!.id);
+  successResponse(res, vouchers, 'Daftar voucher tersedia');
+});

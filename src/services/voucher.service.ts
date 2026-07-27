@@ -602,3 +602,46 @@ export const deleteOrDisableVoucherAdmin = async (id: string) => {
     item: null,
   };
 };
+
+/**
+ * List vouchers yang tersedia untuk user (non-admin endpoint).
+ * Filter: aktif, sudah mulai, belum expired, belum mencapai usageLimit, dan belum dipakai user ini.
+ */
+export const listAvailableVouchers = async (userId: string) => {
+  const now = new Date();
+
+  // ID voucher yang sudah dipakai user ini (via VoucherRedemption)
+  const usedRedemptions = await prisma.voucherRedemption.findMany({
+    where: { userId },
+    select: { voucherId: true },
+  });
+  const usedIds = usedRedemptions.map((u) => u.voucherId);
+
+  const vouchers = await prisma.voucher.findMany({
+    where: {
+      isActive: true,
+      AND: [
+        { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+        { OR: [{ expiresAt: null }, { expiresAt: { gte: now } }] },
+      ],
+      ...(usedIds.length > 0 && { id: { notIn: usedIds } }),
+    },
+    select: {
+      id: true,
+      code: true,
+      type: true,
+      value: true,
+      minOrderAmount: true,
+      maxDiscount: true,
+      expiresAt: true,
+      scope: true,
+      usageLimit: true,
+      usageCount: true,
+    },
+    orderBy: { expiresAt: 'asc' },
+    take: 30,
+  });
+
+  // Filter yang belum mencapai batas pemakaian
+  return vouchers.filter((v) => v.usageLimit === null || v.usageCount < v.usageLimit);
+};

@@ -52,4 +52,6 @@ router.post(
   voucherController.validateVoucher,
 );
 
+router.get('/vouchers/available', requireAuth, voucherController.listAvailableVouchers);
+
 export default router;

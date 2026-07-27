@@ -55,7 +55,9 @@ const fetchCategories = async ({
     where: {
       isActive: true,
       ...(type && { categoryType: type }),
-      ...(productMode && { productMode }),
+      ...(productMode && {
+        OR: [{ productMode }, { productMode: null, level: { in: [1, 2] } }],
+      }),
       ...(biomassaType && {
         OR: [{ biomassaType }, { biomassaType: null, level: { in: [1, 2] } }],
       }),

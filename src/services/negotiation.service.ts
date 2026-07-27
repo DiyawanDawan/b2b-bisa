@@ -1,4 +1,4 @@
-﻿import prisma from '#config/prisma';
+import prisma from '#config/prisma';
 import pusher from '#config/pusher';
 import AppError from '#utils/appError';
 import { assertQuantityMeetsMinOrder } from '#utils/productOrderRules';
@@ -279,8 +279,15 @@ export const createOffer = async (
     },
   });
 
-  // Contoh Notifikasi:
-  // await sendNotification(product.userId, 'Tawaran Baru Masuk', `Seseorang menawar ${product.name}`, 'OFFER', negotiation.id);
+  // Kirim Notifikasi ke Seller
+  void createNotification({
+    userId: product.userId,
+    title: 'Tawaran Harga Baru Masuk 🏷️',
+    body: `Seseorang mengajukan penawaran harga sebesar Rp ${Number(data.pricePerUnit).toLocaleString('id-ID')} untuk produk ${product.name}`,
+    type: NotificationType.RFQ,
+    priority: NotificationPriority.MEDIUM,
+    refId: negotiation.id,
+  });
 
   // Trigger Pusher for Seller
   pusher.trigger(`private-user-${product.userId}`, 'new-negotiation', {
@@ -547,6 +554,20 @@ export const updateOfferStatus = async (
   pusher.trigger(`private-negotiation-${id}`, 'status-updated', {
     status: updated.status,
     negotiation: updated,
+  });
+
+  // Kirim Notifikasi ke Buyer mengenai status penawaran
+  void createNotification({
+    userId: negotiation.buyerId,
+    title:
+      status === NegotiationStatus.OFFER_ACCEPTED ? 'Tawaran Disetujui! ✅' : 'Tawaran Ditolak ❌',
+    body:
+      status === NegotiationStatus.OFFER_ACCEPTED
+        ? `Penawaran Anda disetujui oleh supplier. Silakan lanjutkan ke pembayaran.`
+        : `Penawaran Anda ditolak oleh supplier. Alasan: ${rejectionReason}`,
+    type: NotificationType.RFQ,
+    priority: NotificationPriority.HIGH,
+    refId: updated.id,
   });
 
   return updated;

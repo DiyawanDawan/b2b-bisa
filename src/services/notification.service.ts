@@ -202,3 +202,35 @@ export const markAllAsRead = async (userId: string) => {
     data: { isRead: true },
   });
 };
+
+/**
+ * Notify all ADMIN users about a critical system error.
+ */
+export const notifyAdminsOfError = async (data: {
+  title: string;
+  errorMessage: string;
+  sourceModule: string;
+  refId?: string;
+}) => {
+  try {
+    const admins = await prisma.user.findMany({
+      where: { role: 'ADMIN', status: 'ACTIVE' },
+      select: { id: true },
+    });
+
+    if (admins.length === 0) return;
+
+    for (const admin of admins) {
+      await createNotification({
+        userId: admin.id,
+        title: `[ERROR ALERT] ${data.title}`,
+        body: `Module: ${data.sourceModule} | Detail: ${data.errorMessage}`,
+        type: NotificationType.SYSTEM_ANNOUNCEMENT,
+        priority: NotificationPriority.HIGH,
+        refId: data.refId,
+      });
+    }
+  } catch (error) {
+    logger.error('Failed to notify admins of system error:', error);
+  }
+};

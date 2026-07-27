@@ -114,6 +114,7 @@ import integrationsRoutes from '#routes/integrations';
 import liveSessionsRoutes from '#routes/live-sessions';
 import supportRoutes from '#routes/support';
 import bisaExpressRoutes from '#routes/bisa-express';
+import { notifyAdminsOfError } from '#services/notification.service';
 
 const app = express();
 const IGNORED_404_PATHS = new Set([
@@ -308,6 +309,11 @@ app.use((err: AppError, req: Request, res: Response, _next: NextFunction) => {
 
     if (statusCode >= 500) {
       logger.error(`${err.name}: ${err.message}`, logPayload);
+      void notifyAdminsOfError({
+        title: err.name || 'System Error',
+        errorMessage: err.message || 'Unknown Server Error',
+        sourceModule: `API ${req.method} ${req.path}`,
+      });
     } else if (statusCode === 404) {
       logger.warn(`${err.name}: ${err.message}`, logPayload);
     } else {
