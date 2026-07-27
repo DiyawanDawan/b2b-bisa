@@ -5,6 +5,7 @@ import { avatarSeedPath } from '../../src/utils/loremFlickrMedia.util.ts';
 import { encryptField } from '../../src/utils/encryption.util.ts';
 import { sealAccountName, sealAccountNumber } from '../../src/utils/payoutAccount.util.ts';
 import { sealAddress, sealAddressPhone, sealDocumentFile, sealDocumentTitle } from '../../src/utils/piiField.util.ts';
+import { searchDomesticDestinations } from '../../src/services/rajaongkir.service.ts';
 
 export async function seedUsers(prisma) {
   logger.info('🌱 [04] Seeding BISA Elite Users (PRO Tiers)...');
@@ -13,17 +14,24 @@ export async function seedUsers(prisma) {
   // Get Geographic references
   const country = await prisma.country.findFirst();
   const province = await prisma.province.findFirst();
+  const regency = await prisma.regency.findFirst();
+  const regencyProvince = regency ? await prisma.province.findUnique({ where: { id: regency.provinceId } }) : null;
 
   if (!country) throw new Error('Need at least 1 Country from taxonomies seeder.');
+  if (!regency) throw new Error('Need at least 1 Regency from regions seeder.');
 
   const proExpiresAt = new Date();
   proExpiresAt.setFullYear(proExpiresAt.getFullYear() + 1);
   const proSubscription = { tier: 'PRO', subscriptionExpiresAt: proExpiresAt };
-  const createEliteAddress = async (fullAddress, phoneNumber) => {
+
+  const regProvinceId = regencyProvince?.id ?? province?.id;
+
+  const createEliteAddress = async (fullAddress, phoneNumber, opts) => {
     const addr = await prisma.address.create({
       data: {
         countryId: country.id,
-        provinceId: province?.id,
+        provinceId: opts?.provinceId ?? province?.id,
+        regencyId: opts?.regencyId ?? null,
         fullAddress: sealAddress(fullAddress),
         zipCode: '60111',
         phoneNumber: phoneNumber ? sealAddressPhone(phoneNumber) : null,
@@ -51,10 +59,13 @@ export async function seedUsers(prisma) {
   });
 
   // 2. THE "PRO" BUYER (Hendra Wijaya from Screenshot)
-  const HendraAddr = await createEliteAddress('Surabaya Industrial Hub, Central Block A-12');
+  const HendraAddr = await createEliteAddress('Surabaya Industrial Hub, Central Block A-12', null, {
+    provinceId: regProvinceId,
+    regencyId: regency.id,
+  });
   const hendra = await prisma.user.upsert({
     where: { email: 'h.wijaya@surabayaindustrial.com' },
-    update: { ...proSubscription, avatarUrl: avatarSeedPath(102) },
+    update: { ...proSubscription, avatarUrl: avatarSeedPath(102), regency: regency.name, province: regencyProvince?.name },
     create: {
       email: 'h.wijaya@surabayaindustrial.com',
       fullName: 'Hendra Wijaya',
@@ -68,6 +79,8 @@ export async function seedUsers(prisma) {
       preferredLanguage: 'Bahasa Indonesia',
       isEmailVerified: true,
       addressId: HendraAddr.id,
+      regency: regency.name,
+      province: regencyProvince?.name,
       profile: {
         create: {
           companyName: 'Surabaya Industrial Hub',
@@ -80,10 +93,33 @@ export async function seedUsers(prisma) {
   });
 
   // 3. THE "PRO" SUPPLIER (Siti Aminah from Screenshot)
-  const sitiAddr = await createEliteAddress('Taman Tekno Industrial Park, Blok B-5, Serpong');
+  const sitiAddr = await createEliteAddress('Taman Tekno Industrial Park, Blok B-5, Serpong', null, {
+    provinceId: regProvinceId,
+    regencyId: regency.id,
+  });
+
+  // Cari rajaongkirOriginId dari API ongkir (safe — log warning kalau gagal)
+  const sitiSearchQuery = regencyProvince?.name
+    ? `${regency.name}, ${regencyProvince.name}`
+    : `Kota ${regency.name}`;
+  let sitiOriginId = null;
+  let sitiOriginLabel = null;
+  try {
+    const sitiResults = await searchDomesticDestinations({ search: sitiSearchQuery, limit: 8 });
+    if (sitiResults.length > 0) {
+      const parsed = Number(sitiResults[0].id);
+      if (!Number.isNaN(parsed) && parsed > 0) {
+        sitiOriginId = parsed;
+        sitiOriginLabel = sitiResults[0].label ?? regency.name;
+      }
+    }
+  } catch (err) {
+    logger.warn(`   ⚠️ RajaOngkir search gagal untuk Siti (${sitiSearchQuery}): ${err.message?.slice(0, 80)}`);
+  }
+
   const siti = await prisma.user.upsert({
     where: { email: 'siti.aminah@agritech.com' },
-    update: { ...proSubscription, avatarUrl: avatarSeedPath(103) },
+    update: { ...proSubscription, avatarUrl: avatarSeedPath(103), regency: regency.name, province: regencyProvince?.name },
     create: {
       email: 'siti.aminah@agritech.com',
       fullName: 'Siti Aminah',
@@ -96,21 +132,47 @@ export async function seedUsers(prisma) {
       jobTitle: 'Hardware Engineer',
       isEmailVerified: true,
       addressId: sitiAddr.id,
+      regency: regency.name,
+      province: regencyProvince?.name,
       profile: {
         create: {
           companyName: 'AgriTech Solutions',
           businessType: 'IoT & Biomass Hardware',
           addressId: sitiAddr.id,
+          rajaongkirOriginId: sitiOriginId,
+          rajaongkirOriginLabel: sitiOriginLabel,
         },
       },
     },
   });
 
   // 4. THE PREMIUM SELLER (Green Earth Co. from Screenshot)
-  const greenAddr = await createEliteAddress('Green Green Business Park, Jakarta');
+  const greenAddr = await createEliteAddress('Green Green Business Park, Jakarta', null, {
+    provinceId: regProvinceId,
+    regencyId: regency.id,
+  });
+
+  const greenSearchQuery = regencyProvince?.name
+    ? `${regency.name}, ${regencyProvince.name}`
+    : `Kota ${regency.name}`;
+  let greenOriginId = null;
+  let greenOriginLabel = null;
+  try {
+    const greenResults = await searchDomesticDestinations({ search: greenSearchQuery, limit: 8 });
+    if (greenResults.length > 0) {
+      const parsed = Number(greenResults[0].id);
+      if (!Number.isNaN(parsed) && parsed > 0) {
+        greenOriginId = parsed;
+        greenOriginLabel = greenResults[0].label ?? regency.name;
+      }
+    }
+  } catch (err) {
+    logger.warn(`   ⚠️ RajaOngkir search gagal untuk Green Earth (${greenSearchQuery}): ${err.message?.slice(0, 80)}`);
+  }
+
   const green = await prisma.user.upsert({
     where: { email: 'hello@greenearth.co' },
-    update: { ...proSubscription, avatarUrl: avatarSeedPath(104) },
+    update: { ...proSubscription, avatarUrl: avatarSeedPath(104), regency: regency.name, province: regencyProvince?.name },
     create: {
       email: 'hello@greenearth.co',
       fullName: 'Green Earth Co.',
@@ -122,11 +184,15 @@ export async function seedUsers(prisma) {
       subscriptionExpiresAt: proExpiresAt,
       isEmailVerified: true,
       addressId: greenAddr.id,
+      regency: regency.name,
+      province: regencyProvince?.name,
       profile: {
         create: {
           companyName: 'Green Earth Co.',
           businessType: 'Premium Biochar Producer',
           addressId: greenAddr.id,
+          rajaongkirOriginId: greenOriginId,
+          rajaongkirOriginLabel: greenOriginLabel,
         },
       },
     },
@@ -134,16 +200,22 @@ export async function seedUsers(prisma) {
 
   // 5. BULK FREE USERS (To fill the gap)
   for (let i = 0; i < 5; i++) {
-    const dummyAddr = await createEliteAddress(faker.location.streetAddress());
+    const isSupplier = i % 2 !== 0;
+    const dummyAddr = await createEliteAddress(faker.location.streetAddress(), null, {
+      provinceId: regProvinceId,
+      regencyId: regency.id,
+    });
     await prisma.user.create({
       data: {
         email: faker.internet.email(),
         fullName: faker.person.fullName(),
         password: passwordHash,
-        role: i % 2 === 0 ? 'BUYER' : 'SUPPLIER',
+        role: isSupplier ? 'SUPPLIER' : 'BUYER',
         tier: 'FREE',
         addressId: dummyAddr.id,
         avatarUrl: avatarSeedPath(200 + i),
+        regency: regency.name,
+        province: regencyProvince?.name,
       },
     });
   }
@@ -234,7 +306,10 @@ export async function seedUsers(prisma) {
     });
 
     // 6e. Customer Addresses (Additional locations)
-    const extraAddr = await createEliteAddress(faker.location.streetAddress());
+    const extraAddr = await createEliteAddress(faker.location.streetAddress(), null, {
+      provinceId: regProvinceId,
+      regencyId: regency.id,
+    });
     await prisma.customerAddress.create({
       data: {
         userId: user.id,
