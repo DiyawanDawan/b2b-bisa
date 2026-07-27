@@ -49,17 +49,21 @@ const fetchCategories = async ({
   parentId,
 }: ListCategoriesParams = {}) => {
   const q = search?.trim();
-  const onlyLeaves =
-    leavesOnly === true || (leavesOnly !== false && type === CATEGORY_TYPE.PRODUK && parentId === undefined);
+  const onlyLeaves = leavesOnly === true;
 
   return prisma.category.findMany({
     where: {
       isActive: true,
       ...(type && { categoryType: type }),
       ...(productMode && { productMode }),
-      ...(biomassaType && { biomassaType }),
+      ...(biomassaType && {
+        OR: [
+          { biomassaType },
+          { biomassaType: null, level: { in: [1, 2] } },
+        ],
+      }),
       ...(parentId !== undefined && { parentId }),
-      ...(onlyLeaves && type === CATEGORY_TYPE.PRODUK && { level: 3 }),
+      ...(onlyLeaves && { level: 3 }),
       ...(q && {
         OR: [{ name: { contains: q } }, { description: { contains: q } }],
       }),

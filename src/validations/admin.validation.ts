@@ -139,14 +139,15 @@ export const categorySchema = z
     productMode: z.nativeEnum(ProductMode).nullable().optional(),
     biomassaType: z.nativeEnum(BiomassaType).nullable().optional(),
     parentId: z.string().uuid().nullable().optional(),
-    level: z.number().int().min(1).max(3).optional(),
   })
   .superRefine((data, ctx) => {
-    if (data.categoryType === CATEGORY_TYPE.PRODUK) {
+    const isRoot = !data.parentId;
+
+    if (data.categoryType === CATEGORY_TYPE.PRODUK && isRoot) {
       if (!data.productMode) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: 'Mode produk wajib: Biomassa atau Hasil Tani',
+          message: 'Mode produk wajib untuk kategori root: Biomassa atau Hasil Tani',
           path: ['productMode'],
         });
       }
