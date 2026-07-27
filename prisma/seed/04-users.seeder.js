@@ -23,8 +23,12 @@ export async function seedUsers(prisma) {
   const regencyProvince = regency
     ? await prisma.province.findUnique({ where: { id: regency.provinceId } })
     : null;
-  const district = regency ? await prisma.district.findFirst({ where: { regencyId: regency.id } }) : null;
-  const village = district ? await prisma.village.findFirst({ where: { districtId: district.id } }) : null;
+  const district = regency
+    ? await prisma.district.findFirst({ where: { regencyId: regency.id } })
+    : null;
+  const village = district
+    ? await prisma.village.findFirst({ where: { districtId: district.id } })
+    : null;
 
   if (!country) throw new Error('Need at least 1 Country from taxonomies seeder.');
   if (!regency) throw new Error('Need at least 1 Regency from regions seeder.');
@@ -45,7 +49,9 @@ export async function seedUsers(prisma) {
         villageId: opts?.villageId ?? village?.id ?? null,
         fullAddress: sealAddress(fullAddress),
         zipCode: opts?.zipCode ?? '60111',
-        phoneNumber: phoneNumber ? sealAddressPhone(phoneNumber) : sealAddressPhone('+6281234567890'),
+        phoneNumber: phoneNumber
+          ? sealAddressPhone(phoneNumber)
+          : sealAddressPhone('+6281234567890'),
         latitude: opts?.latitude ?? -7.2575,
         longitude: opts?.longitude ?? 112.7521,
       },
